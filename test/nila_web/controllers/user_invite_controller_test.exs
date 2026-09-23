@@ -26,7 +26,10 @@ defmodule NilaWeb.UserInviteControllerTest do
     test "renders the set-password form for a valid token", %{conn: conn, org: org} do
       token = invite(org, %{name: "Jaimathi", email: "jaimathi@example.com"})
 
-      {:ok, _view, html} = live(conn, ~p"/users/invite/#{token}")
+      {:ok, view, html} = live(conn, ~p"/users/invite/#{token}")
+
+      assert has_element?(view, "#invite-form[method=post]")
+      refute has_element?(view, "#invite-form input[name=_method][value=put]")
 
       assert html =~ "Set up your Nila workspace"
       assert html =~ "Welcome, Jaimathi"

@@ -1,4 +1,5 @@
 defmodule NilaWeb.PurchaseWorkspaceControllerTest do
+  import NilaWeb.ApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
   import Ecto.Query
@@ -27,7 +28,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
 
   test "empty client month has honest input states and full-page source actions", c do
     response = get(c.conn, c.path)
-    body = json_response(response, 200)
+    body = contract_response(response, 200)
     assert body["client"]["id"] == c.client.id
     assert body["month_label"] == "August 2026"
     assert body["rows"] == []
@@ -42,7 +43,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
   test "source counts differ from review groups; filters preserve exact source links", c do
     books = [invoice("A", "SHARED", 90_000), invoice("B", "SHARED", 90_000)]
     seed(c, books, [invoice(nil, "SHARED", 90_000)])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     assert body["inputs"]["books"]["count"] == 2
     assert body["inputs"]["portal"]["count"] == 1
     assert length(body["rows"]) == 2
@@ -55,16 +56,16 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
              )
            )
 
-    filtered = c.conn |> get(c.path, %{filter: "gstr2b", q: "shared"}) |> json_response(200)
+    filtered = c.conn |> get(c.path, %{filter: "gstr2b", q: "shared"}) |> contract_response(200)
     assert length(filtered["rows"]) == 1
     assert hd(filtered["rows"])["review_url"] =~ "filter=gstr2b"
     assert hd(filtered["rows"])["review_url"] =~ "q=shared"
-    assert (c.conn |> get(c.path, %{q: "absent"}) |> json_response(200))["rows"] == []
+    assert (c.conn |> get(c.path, %{q: "absent"}) |> contract_response(200))["rows"] == []
   end
 
   test "2B-only month does not claim reconciliation is complete", c do
     seed(c, [], [invoice(nil, "PORTAL", 90_000)])
-    body = c.conn |> get(c.path, %{filter: "gstr2b"}) |> json_response(200)
+    body = c.conn |> get(c.path, %{filter: "gstr2b"}) |> contract_response(200)
     refute body["overview"]["comparison_available"]
     refute body["overview"]["complete"]
     assert body["inputs"]["portal"]["present"]
@@ -80,7 +81,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
       |> Map.put("tax_paise", %{"cgst" => 10_000, "sgst" => 10_000, "igst" => 0, "cess" => 5_000})
 
     seed(c, [row], [Map.delete(row, "id")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     expected = NilaWeb.Gst.PurchaseWorkspace.money(-25_000)
     assert body["inputs"]["books"]["tax"] == expected
     assert hd(body["rows"])["tax"] == expected
@@ -90,7 +91,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
 
   test "mismatch remains reviewable and draft workbook remains available", c do
     seed(c, [invoice("A", "INV-1", 90_000)], [invoice(nil, "INV-1", 95_000)])
-    body = c.conn |> get(c.path, %{filter: "mismatch"}) |> json_response(200)
+    body = c.conn |> get(c.path, %{filter: "mismatch"}) |> contract_response(200)
     assert length(body["rows"]) == 1
     assert body["overview"]["remaining"] > 0
     refute body["overview"]["complete"]
@@ -123,7 +124,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
       }
     })
 
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     assert body["signed_off"]
     refute body["can_edit"]
     assert body["overview"]["itc"]["claim"] == NilaWeb.Gst.PurchaseWorkspace.money(987_654)
@@ -131,11 +132,11 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
   end
 
   test "tenant, session, invalid input and viewer rules", c do
-    assert c.conn |> get(c.path, %{q: %{bad: "shape"}}) |> json_response(400)
+    assert c.conn |> get(c.path, %{q: %{bad: "shape"}}) |> contract_response(400)
     %{user: other} = user_with_org_fixture()
-    assert build_conn() |> log_in_user(other) |> get(c.path) |> json_response(404)
-    assert build_conn() |> get(c.path) |> json_response(401)
-    assert c.conn |> get(String.replace(c.path, "2026-08", "2026-99")) |> json_response(400)
+    assert build_conn() |> log_in_user(other) |> get(c.path) |> contract_response(404)
+    assert build_conn() |> get(c.path) |> contract_response(401)
+    assert c.conn |> get(String.replace(c.path, "2026-08", "2026-99")) |> contract_response(400)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^c.user.id and m.org_id == ^c.org.id),
@@ -143,7 +144,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
     )
 
     seed(c, [invoice("A", "INV-1", 90_000)], [])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     refute body["can_edit"]
     assert body["working"]["enabled"]
   end

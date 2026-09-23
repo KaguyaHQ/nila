@@ -272,6 +272,7 @@ defmodule Nila.Formatters do
   end
 
   defp part(0, _label), do: ""
+  defp part(n, label) when n >= 100, do: "#{rupees_in_words(n)} #{label}"
   defp part(n, label), do: "#{two_digit_in_words(n)} #{label}"
 
   # Omit a trailing "Zero" when higher parts already carry the value.

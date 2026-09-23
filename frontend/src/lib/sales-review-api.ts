@@ -1,6 +1,6 @@
 import { ApiError } from "./sales-api";
 
-import type { components } from "./generated/sales-workspace";
+import type { components } from "./generated/workspace";
 
 export type ReviewValues = components["schemas"]["ReviewValues"];
 export type SalesInvoiceReviewData = components["schemas"]["SalesInvoiceReviewData"];

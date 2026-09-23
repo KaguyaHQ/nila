@@ -1,23 +1,12 @@
+import type { components } from "./generated/workspace";
 import { ApiError } from "./sales-api";
 
-export type ClientIdentity = { id: number; name: string; gstin: string | null };
-export type ClientsDirectory = {
-  clients: (ClientIdentity & { sales_path: string })[];
-  user: { name: string; org: string };
-  can_edit: boolean;
-  period: string;
-};
-export type ClientDetail = { client: ClientIdentity; can_edit: boolean };
-export type ImportRow = {
-  row: number;
-  name: string | null;
-  gstin: string | null;
-  gst_username?: string | null;
-  status: "ready" | "skip" | "invalid" | "added";
-  message: string;
-};
-export type ImportPreview = { rows: ImportRow[]; token: string; ready_count: number };
-export type ImportResult = { rows: ImportRow[]; added_count: number; skipped_count: number; invalid_count: number };
+export type ClientIdentity = components["schemas"]["ClientIdentity"];
+export type ClientsDirectory = components["schemas"]["ClientsDirectory"];
+export type ClientDetail = components["schemas"]["ClientDetail"];
+export type ImportRow = components["schemas"]["ImportRow"];
+export type ImportPreview = components["schemas"]["ImportPreview"];
+export type ImportResult = components["schemas"]["ImportResult"];
 
 export class ClientApiError extends ApiError {
   constructor(status: number, message: string, public fields: Record<string, string[]> = {}) {
@@ -49,8 +38,8 @@ export function fetchClients(period: string | null, signal: AbortSignal) {
 export function fetchClient(id: string, signal: AbortSignal) {
   return request<ClientDetail>(`/${encodeURIComponent(id)}`, signal);
 }
-export function saveClient(id: number | undefined, client: { name: string; gstin: string }, signal: AbortSignal) {
-  return request<ClientDetail>(id === undefined ? "" : `/${id}`, signal, id === undefined ? "POST" : "PATCH", { client });
+export function saveClient(id: number | undefined, client: components["schemas"]["ClientInput"], signal: AbortSignal) {
+  return request<ClientDetail>(id === undefined ? "" : `/${id}`, signal, id === undefined ? "POST" : "PATCH", { client } satisfies components["schemas"]["ClientWrite"]);
 }
 export function previewClients(file: File, signal: AbortSignal) {
   const body = new FormData();
@@ -58,5 +47,5 @@ export function previewClients(file: File, signal: AbortSignal) {
   return request<ImportPreview>("/import/preview", signal, "POST", body);
 }
 export function importClients(token: string, signal: AbortSignal) {
-  return request<ImportResult>("/import", signal, "POST", { token });
+  return request<ImportResult>("/import", signal, "POST", { token } satisfies components["schemas"]["ImportClients"]);
 }

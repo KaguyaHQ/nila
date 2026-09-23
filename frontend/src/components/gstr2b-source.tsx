@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-import { Gstr2bError, gstr2bRequest, type Gstr2bState, type Gstr2bChallenge } from "@/lib/gstr2b-api";
+import { Gstr2bError, gstr2bRequest, type Gstr2bState, type Gstr2bChallenge, type Gstr2bWrite } from "@/lib/gstr2b-api";
 
 
 
@@ -56,18 +56,19 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
   const connect = () => { setUsername(state?.connection.username ?? ""); setChallenge(null); setOtp(""); setDownloadError(null); mutation.reset(); setOpen(true); };
 
-  type SourceWrite = { action: "fetch" | "otp" | "verify" | "import"; body: unknown; controller: AbortController };
+  type SourceWrite = Gstr2bWrite & { controller: AbortController };
   const mutation = useMutation({
     retry: false,
     networkMode: "always",
-    mutationFn: async ({ action, body, controller }: SourceWrite) => {
+    mutationFn: async (write: SourceWrite) => {
+      const { action, controller } = write;
       if (action !== "otp") await cache.cancelQueries({ queryKey: key, exact: true });
       controller.signal.throwIfAborted();
-      return gstr2bRequest<Gstr2bState | Gstr2bChallenge>(client, period, controller.signal, action, body);
+      return gstr2bRequest(client, period, controller.signal, write);
     },
     onSuccess: async (result, { action, controller }) => {
       if (controller.signal.aborted) return;
-      if (action === "otp") { setChallenge(result as Gstr2bChallenge); setOtp(""); }
+      if ("challenge" in result) { setChallenge(result); setOtp(""); }
       else {
         // Discard any status read started before this action finished.
         await cache.cancelQueries({ queryKey: key, exact: true });
@@ -111,18 +112,19 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
       awaitingFetch.current = null;
 
-      if (state.import.needed && !preparing(state)) void act("import");
+      if (state.import.needed && !preparing(state)) void act({ action: "import", body: {} });
 
     }
 
   }, [state, pending]);
 
-  function act(action: SourceWrite["action"], body: unknown = {}) {
+  function act(write: Gstr2bWrite) {
+    const { action } = write;
     if (pending || request.current) return;
     const controller = new AbortController(); request.current = controller;
     setDownloadError(null);
     if (action === "fetch" || action === "verify") awaitingFetch.current = { fetchedAt: state?.statement?.fetched_at ?? null };
-    mutation.mutate({ action, body, controller });
+    mutation.mutate({ ...write, controller });
   }
 
   async function download() {
@@ -167,13 +169,13 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
     <div className="flex items-center gap-2">
 
-      <Button ref={opener} variant="outline" size="sm" disabled={!state || busy || !(needsConnection ? state.permissions.connect : state.permissions.fetch) || state.connection.state === "missing_gstin"} onClick={() => needsConnection ? connect() : void act("fetch")}>
+      <Button ref={opener} variant="outline" size="sm" disabled={!state || busy || !(needsConnection ? state.permissions.connect : state.permissions.fetch) || state.connection.state === "missing_gstin"} onClick={() => needsConnection ? connect() : void act({ action: "fetch", body: {} })}>
 
         {state?.fetching ? <><RefreshCw className="animate-spin" />Fetching GSTR-2B…</> : preparing(state) ? "Preparing purchases…" : needsConnection ? state?.connection.state === "expired" ? "Reconnect GST" : "Connect GST" : state?.statement?.fetched_at ? <><RefreshCw />Refresh GSTR-2B</> : "Fetch GSTR-2B"}
 
       </Button>
 
-      {state?.import.needed && !state.fetching && !preparing(state) && <Button size="sm" variant="outline" disabled={busy || !state.permissions.fetch} onClick={() => void act("import")}>{state.import.error ? "Retry preparation" : "Prepare for review"}</Button>}
+      {state?.import.needed && !state.fetching && !preparing(state) && <Button size="sm" variant="outline" disabled={busy || !state.permissions.fetch} onClick={() => void act({ action: "import", body: {} })}>{state.import.error ? "Retry preparation" : "Prepare for review"}</Button>}
 
       {state?.statement?.download_url && state.permissions.export && <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="GSTR-2B source actions" />}><MoreHorizontal /></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-52"><DropdownMenuItem disabled={pending} onClick={() => void download()}><Download />Download source JSON</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
 
@@ -193,7 +195,7 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
       <DialogContent finalFocus={opener} className="sm:max-w-sm"><DialogHeader><DialogTitle>{challenge ? "Enter GST verification code" : "Connect GST"}</DialogTitle><DialogDescription>{challenge ? "Enter the six-digit OTP sent to the mobile number and email registered with GST." : "Use this client’s GST portal username. We’ll send an OTP to verify the connection."}</DialogDescription></DialogHeader>
 
-        <form className="space-y-4" onSubmit={event => { event.preventDefault(); void (challenge ? act("verify", { challenge: challenge.challenge, otp }) : act("otp", { username: username.trim() })); }}>
+        <form className="space-y-4" onSubmit={event => { event.preventDefault(); void (challenge ? act({ action: "verify", body: { challenge: challenge.challenge, otp } }) : act({ action: "otp", body: { username: username.trim() } })); }}>
 
           {challenge ? <div className="space-y-2"><Label htmlFor="gst-otp">Verification code</Label><Input id="gst-otp" autoFocus required disabled={pending} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, ""))} /></div> : <div className="space-y-2"><Label htmlFor="gst-username">GST username</Label><Input id="gst-username" autoFocus required maxLength={100} disabled={pending} autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} /></div>}
 

@@ -2,7 +2,11 @@ defmodule Nila.Accounts.Scope do
   alias Nila.Accounts.User
   alias Nila.Repo
 
-  defstruct user: nil, current_org: nil, current_client: nil, membership: nil
+  defstruct user: nil,
+            current_org: nil,
+            current_client: nil,
+            membership: nil,
+            business_client: nil
 
   def for_user(nil), do: nil
 
@@ -17,7 +21,8 @@ defmodule Nila.Accounts.Scope do
     %__MODULE__{
       user: user,
       current_org: membership && membership.org,
-      membership: membership
+      membership: membership,
+      business_client: if(is_nil(membership), do: Nila.Business.Access.client_for_user(user.id))
     }
   end
 end

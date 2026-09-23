@@ -1,4 +1,5 @@
 defmodule NilaWeb.PurchaseWorkingsControllerTest do
+  import NilaWeb.ApiContract, only: [contract_file: 2]
   use NilaWeb.ConnCase, async: true
   alias Nila.Gst.Purchase.Months
 
@@ -26,10 +27,10 @@ defmodule NilaWeb.PurchaseWorkingsControllerTest do
 
     path = "/gst/#{client.id}/2026-08/purchases/workings.xlsx"
     downloaded = conn |> log_in_user(user) |> get(path)
-    assert response(downloaded, 200) =~ "PK"
+    assert contract_file(downloaded, 200) =~ "PK"
     assert get_resp_header(downloaded, "content-disposition") |> hd() =~ "purchase_working_"
     %{user: other} = user_with_org_fixture()
-    assert conn |> recycle() |> log_in_user(other) |> get(path) |> response(404)
+    assert conn |> recycle() |> log_in_user(other) |> get(path) |> contract_file(404)
   end
 
   test "requires export permission", %{conn: conn} do
@@ -94,7 +95,7 @@ defmodule NilaWeb.PurchaseWorkingsControllerTest do
       conn
       |> log_in_user(user)
       |> get("/gst/#{client.id}/2026-08/purchases/workings.xlsx")
-      |> response(200)
+      |> contract_file(200)
 
     {:ok, files} = :zip.unzip(bytes, [:memory])
     files = Map.new(files, fn {path, data} -> {to_string(path), data} end)

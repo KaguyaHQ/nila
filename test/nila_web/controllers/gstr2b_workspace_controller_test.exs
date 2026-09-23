@@ -1,4 +1,5 @@
 defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
+  import NilaWeb.ApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: false
   import Ecto.Query
   alias Nila.Repo
@@ -43,7 +44,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
 
   test "read has connection permissions and no side effects", c do
     response = get(c.conn, c.path)
-    body = json_response(response, 200)
+    body = contract_response(response, 200)
     assert body["connection"]["state"] == "not_connected"
     assert body["permissions"]["connect"]
     assert body["statement"] == nil
@@ -53,12 +54,12 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
     assert Repo.aggregate(Statement, :count) == 0
 
-    assert c.conn |> post(c.path <> "/fetch", %{}) |> json_response(409) |> Map.get("code") ==
+    assert c.conn |> post(c.path <> "/fetch", %{}) |> contract_response(409) |> Map.get("code") ==
              "connection_required"
   end
 
   test "authentication tenant and role boundaries", c do
-    assert build_conn() |> get(c.path) |> json_response(401)
+    assert build_conn() |> get(c.path) |> contract_response(401)
     %{org: other_org} = user_with_org_fixture()
 
     {:ok, other} =
@@ -71,7 +72,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
 
     assert c.conn
            |> get("/api/workspace/purchases/#{other.id}/2026-08/gstr2b")
-           |> json_response(404)
+           |> contract_response(404)
 
     Repo.update_all(from(m in Nila.Orgs.Membership, where: m.user_id == ^c.user.id),
       set: [role: "viewer"]
@@ -80,7 +81,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
     for action <- ["fetch", "otp", "verify", "import"] do
       assert c.conn
              |> post(c.path <> "/" <> action, %{username: "user", otp: "123456", challenge: "bad"})
-             |> json_response(403)
+             |> contract_response(403)
     end
   end
 
@@ -94,14 +95,14 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
       })
     end)
 
-    body = c.conn |> post(c.path <> "/otp", %{username: "portaluser"}) |> json_response(200)
+    body = c.conn |> post(c.path <> "/otp", %{username: "portaluser"}) |> contract_response(200)
     refute body["challenge"] =~ "private-provider-transaction"
     assert body["expires_in"] == 900
     wrong_month = String.replace(c.path, "2026-08", "2026-09")
 
     assert c.conn
            |> post(wrong_month <> "/verify", %{challenge: body["challenge"], otp: "123456"})
-           |> json_response(422)
+           |> contract_response(422)
 
     Req.Test.expect(Whitebooks, fn conn ->
       assert conn.request_path == "/authentication/authtoken"
@@ -111,7 +112,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
     result =
       c.conn
       |> post(c.path <> "/verify", %{challenge: body["challenge"], otp: "123456"})
-      |> json_response(202)
+      |> contract_response(202)
 
     assert result["fetching"]
     assert result["connection"]["state"] == "connected"
@@ -158,7 +159,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
     for token <- tokens do
       assert c.conn
              |> post(c.path <> "/verify", %{challenge: token, otp: "123456"})
-             |> json_response(422)
+             |> contract_response(422)
     end
 
     assert Repo.aggregate(Nila.Gst.Portal.Connection, :count) == 0
@@ -179,12 +180,12 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
         failure_reason: "statement_unavailable"
       })
 
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     assert body["statement"]["last_error"] == "Not available"
     assert body["statement"]["download_url"] =~ Integer.to_string(saved.id)
     assert body["import"]["needed"]
     assert Repo.get!(Statement, saved.id).document == document
-    assert c.conn |> post(c.path <> "/import", %{}) |> json_response(202)
+    assert c.conn |> post(c.path <> "/import", %{}) |> contract_response(202)
   end
 
   test "signed-off month refuses preparation without changing its source", c do
@@ -202,7 +203,7 @@ defmodule NilaWeb.Gstr2bWorkspaceControllerTest do
       snapshot: %{}
     })
 
-    body = c.conn |> post(c.path <> "/import", %{}) |> json_response(422)
+    body = c.conn |> post(c.path <> "/import", %{}) |> contract_response(422)
     assert body["error"] =~ "signed off"
     refute Repo.exists?(from d in Nila.Gst.Intake.Dump, where: d.client_id == ^c.client.id)
   end

@@ -6,6 +6,7 @@ import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { BusinessInvitation } from "@/components/business-invitation";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/sales-api";
 import { ClientApiError, fetchClient, fetchClients, importClients, previewClients, saveClient, type ClientIdentity, type ClientsDirectory } from "@/lib/clients-api";
@@ -117,6 +118,7 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
       <div className="flex justify-end gap-3"><Button type="button" variant="outline" nativeButton={false} role="link" render={<Link to={pathFor(data.period)} />}>Cancel</Button><Button type="submit" disabled={busy || !canEdit} aria-describedby={!canEdit ? "client-role" : undefined}>{busy ? "Saving…" : client ? "Save changes" : "Add client"}</Button></div>
     </form>
     {client && <a href={`/clients/${client.id}/edit`} className="inline-flex items-center gap-2 text-sm underline underline-offset-4">GST and Tally connections <ArrowRight className="size-4" /></a>}
+    {client && data.can_manage_users && <BusinessInvitation clientId={client.id} />}
   </div>;
 }
 

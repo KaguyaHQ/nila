@@ -1,4 +1,5 @@
 defmodule NilaWeb.ClientsWorkspaceControllerTest do
+  import NilaWeb.ApiContract, only: [contract_response: 2, contract_response: 3]
   use NilaWeb.ConnCase, async: true
   import Ecto.Query
   alias Nila.{Clients, Repo}
@@ -30,7 +31,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
       Clients.create_client(%{org_id: other.id, name: "Other firm client", type: "company"})
 
     response = get(conn, @base <> "?period=2026-06")
-    body = json_response(response, 200)
+    body = contract_response(response, 200)
 
     assert body["clients"] == [
              %{
@@ -46,7 +47,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
     assert body["period"] == "2026-06"
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
 
-    assert conn |> get(@base <> "/#{client.id}") |> json_response(200) == %{
+    assert conn |> get(@base <> "/#{client.id}") |> contract_response(200) == %{
              "client" => %{"id" => client.id, "name" => client.name, "gstin" => client.gstin},
              "can_edit" => true
            }
@@ -69,7 +70,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
           gst_username: "injected"
         }
       })
-      |> json_response(200)
+      |> contract_response(200, request: false)
 
     {:ok, saved} = Clients.get_client(org.id, created["client"]["id"])
     assert saved.type == "company"
@@ -82,20 +83,20 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
       |> patch(@base <> "/#{client.id}", %{
         client: %{name: "Renamed", gstin: "33aewph4158j1z3", org_id: -1, type: "individual"}
       })
-      |> json_response(200)
+      |> contract_response(200, request: false)
 
     assert changed["client"]["name"] == "Renamed"
     assert changed["client"]["gstin"] == client.gstin
     {:ok, saved} = Clients.get_client(org.id, client.id)
     assert saved.type == "company"
-    invalid = conn |> post(@base, %{client: %{name: "", gstin: "bad"}}) |> json_response(422)
+    invalid = conn |> post(@base, %{client: %{name: "", gstin: "bad"}}) |> contract_response(422)
     assert invalid["errors"]["name"] != []
     assert invalid["errors"]["gstin"] != []
-    assert conn |> post(@base, %{client: %{name: "New client"}}) |> json_response(422)
+    assert conn |> post(@base, %{client: %{name: "New client"}}) |> contract_response(422)
 
     assert conn
            |> post(@base, %{client: %{name: String.duplicate("x", 256)}})
-           |> json_response(422)
+           |> contract_response(422)
   end
 
   test "tenant, login, role and malformed identifiers are enforced", %{
@@ -104,28 +105,32 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
     org: org,
     user: user
   } do
-    assert build_conn() |> get(@base) |> json_response(401)
+    assert build_conn() |> get(@base) |> contract_response(401)
     %{user: other} = user_with_org_fixture()
     outsider = build_conn() |> log_in_user(other)
-    assert outsider |> get(@base <> "/#{client.id}") |> json_response(404)
+    assert outsider |> get(@base <> "/#{client.id}") |> contract_response(404)
 
     assert outsider
            |> patch(@base <> "/#{client.id}", %{client: %{name: "Stolen"}})
-           |> json_response(404)
+           |> contract_response(404)
 
-    assert conn |> get(@base <> "/bad") |> json_response(400)
-    assert conn |> get(@base <> "?period=2026-13") |> json_response(400)
+    assert conn |> get(@base <> "/bad") |> contract_response(400)
+    assert conn |> get(@base <> "?period=2026-13") |> contract_response(400)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id and m.org_id == ^org.id),
       set: [role: "viewer"]
     )
 
-    refute (conn |> get(@base) |> json_response(200))["can_edit"]
-    assert conn |> post(@base, %{client: %{name: "No"}}) |> json_response(403)
-    assert conn |> patch(@base <> "/#{client.id}", %{client: %{name: "No"}}) |> json_response(403)
-    assert conn |> post(@base <> "/import/preview", %{}) |> json_response(403)
-    assert conn |> post(@base <> "/import", %{token: "anything"}) |> json_response(403)
+    refute (conn |> get(@base) |> contract_response(200))["can_edit"]
+    assert conn |> post(@base, %{client: %{name: "No"}}) |> contract_response(403)
+
+    assert conn
+           |> patch(@base <> "/#{client.id}", %{client: %{name: "No"}})
+           |> contract_response(403)
+
+    assert conn |> post(@base <> "/import/preview", %{}) |> contract_response(403)
+    assert conn |> post(@base <> "/import", %{token: "anything"}) |> contract_response(403)
   end
 
   test "Excel preview writes nothing, retains username, and import retry skips duplicates", %{
@@ -139,7 +144,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
         ["Broken", "bad", ""]
       ])
 
-    preview = conn |> post(@base <> "/import/preview", %{file: upload}) |> json_response(200)
+    preview = conn |> post(@base <> "/import/preview", %{file: upload}) |> contract_response(200)
     assert preview["ready_count"] == 1
     assert Enum.map(preview["rows"], & &1["status"]) == ["ready", "skip", "invalid"]
     assert Enum.at(preview["rows"], 1)["gst_username"] == "portal-user"
@@ -152,12 +157,15 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
         rows: [%{name: "Injected", status: "ready"}],
         org_id: -1
       })
-      |> json_response(200)
+      |> contract_response(200, request: false)
 
     assert saved["added_count"] == 1
     assert saved["skipped_count"] == 1
     assert saved["invalid_count"] == 1
-    retried = conn |> post(@base <> "/import", %{token: preview["token"]}) |> json_response(200)
+
+    retried =
+      conn |> post(@base <> "/import", %{token: preview["token"]}) |> contract_response(200)
+
     assert retried["added_count"] == 0
     assert retried["skipped_count"] == 2
 
@@ -169,7 +177,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
 
   test "import tickets reject tampering, expiry, another user and firm", %{conn: conn} do
     upload = workbook([["Import client", "", ""]])
-    preview = conn |> post(@base <> "/import/preview", %{file: upload}) |> json_response(200)
+    preview = conn |> post(@base <> "/import/preview", %{file: upload}) |> contract_response(200)
 
     {:ok, payload} =
       Phoenix.Token.verify(NilaWeb.Endpoint, "clients workspace import", preview["token"],
@@ -188,7 +196,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
       })
 
     for token <- [preview["token"] <> "bad", expired, wrong_user, nil] do
-      assert conn |> post(@base <> "/import", %{token: token}) |> json_response(422)
+      assert conn |> post(@base <> "/import", %{token: token}) |> contract_response(422)
     end
 
     %{user: other} = user_with_org_fixture()
@@ -196,11 +204,11 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
     assert build_conn()
            |> log_in_user(other)
            |> post(@base <> "/import", %{token: preview["token"]})
-           |> json_response(422)
+           |> contract_response(422)
   end
 
   test "preview rejects missing and invalid workbooks", %{conn: conn} do
-    assert conn |> post(@base <> "/import/preview", %{}) |> json_response(422)
+    assert conn |> post(@base <> "/import/preview", %{}) |> contract_response(422)
     path = Path.join(System.tmp_dir!(), "clients-bad-#{Ecto.UUID.generate()}.xlsx")
     File.write!(path, "not an Excel workbook")
     on_exit(fn -> File.rm(path) end)
@@ -209,7 +217,7 @@ defmodule NilaWeb.ClientsWorkspaceControllerTest do
            |> post(@base <> "/import/preview", %{
              file: %Plug.Upload{path: path, filename: "bad.xlsx"}
            })
-           |> json_response(422)
+           |> contract_response(422)
   end
 
   defp workbook(rows) do

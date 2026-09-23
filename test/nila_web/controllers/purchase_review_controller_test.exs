@@ -1,4 +1,5 @@
 defmodule NilaWeb.PurchaseReviewControllerTest do
+  import NilaWeb.ApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
   import Ecto.Query
@@ -27,7 +28,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
   test "2B-only comparison records document then claims with fresh tokens", c do
     seed(c, [], [invoice(nil, "PORTAL")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     [line] = body["cases"]
     assert line["can_record_document"]
     refute line["claimable"]
@@ -40,9 +41,13 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     assert c.conn
            |> post(path <> "/treatment", payload([line], %{choice: "claim"}))
-           |> json_response(422)
+           |> contract_response(422)
 
-    held = c.conn |> post(path <> "/document", payload([line], %{})) |> json_response(200)
+    held =
+      c.conn
+      |> post(path <> "/document", Map.delete(payload([line], %{}), :values))
+      |> contract_response(200)
+
     [fresh] = held["cases"]
     assert fresh["claimable"]
     assert fresh["document_state"] == "held"
@@ -50,19 +55,19 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     assert c.conn
            |> post(path <> "/treatment", payload([line], %{choice: "claim"}))
-           |> json_response(409)
+           |> contract_response(409)
 
     claimed =
       c.conn
       |> post(path <> "/treatment", payload([fresh], %{choice: "claim"}))
-      |> json_response(200)
+      |> contract_response(200)
 
     assert hd(claimed["cases"])["values"]["choice"] == "claim"
 
     summary =
       c.conn
       |> get("/api/workspace/purchases/#{c.client.id}/2026-08")
-      |> json_response(200)
+      |> contract_response(200)
 
     assert summary["overview"]["itc"]["claim"] == "₹1,800.00"
     assert summary["overview"]["itc"]["pending"] == "₹0.00"
@@ -87,26 +92,26 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     assert c.conn
            |> post(path <> "/treatment", payload([fresh], %{choice: "claim"}))
-           |> json_response(409)
+           |> contract_response(409)
   end
 
   test "bulk Later requires structured reason and Other note, then carried month remains actionable",
        c do
     seed(c, [], [invoice(nil, "ONE"), invoice(nil, "TWO")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     lines = body["cases"]
     assert length(lines) == 2
 
     assert c.conn
            |> post(c.path <> "/treatment", payload(lines, %{choice: "later"}))
-           |> json_response(422)
+           |> contract_response(422)
 
     assert c.conn
            |> post(
              c.path <> "/treatment",
              payload(lines, %{choice: "later", later_reason: "other"})
            )
-           |> json_response(422)
+           |> contract_response(422)
 
     assert c.conn
            |> post(
@@ -117,10 +122,10 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
                note: "Check originals"
              })
            )
-           |> json_response(200)
+           |> contract_response(200)
 
     september = String.replace(c.path, "2026-08", "2026-09")
-    carried = c.conn |> get(september, %{filter: "carried"}) |> json_response(200)
+    carried = c.conn |> get(september, %{filter: "carried"}) |> contract_response(200)
     assert length(carried["queue"]) == 2
     assert String.starts_with?(carried["item"]["id"], "case-")
 
@@ -136,14 +141,14 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
              september <> "/treatment?filter=carried",
              payload([line], %{choice: "later", later_reason: "review_pending"})
            )
-           |> json_response(200)
+           |> contract_response(200)
   end
 
   test "cess cannot be claimed or deferred, but split can exclude cess and claim ordinary heads",
        c do
     row = invoice("BOOK", "CESS") |> put_in(["tax_paise", "cess"], 2_000)
     seed(c, [row], [Map.delete(row, "id")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     [line] = body["cases"]
     assert line["cess_issue"] =~ "cess"
     refute line["claimable"]
@@ -156,7 +161,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
           c.path <> "/treatment",
           payload([line], %{choice: choice, later_reason: "review_pending"})
         )
-        |> json_response(422)
+        |> contract_response(422)
 
       assert response["code"] == "cess_review_required"
     end
@@ -173,7 +178,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
         c.path <> "/treatment",
         payload([line], %{choice: "split", split: split, exclude_reason: "blocked_credit"})
       )
-      |> json_response(200)
+      |> contract_response(200)
 
     assert hd(saved["cases"])["values"]["split"]["exclude"]["cess"] == "20.00"
   end
@@ -181,7 +186,7 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
   test "changed source amounts make token stale",
        c do
     month = seed(c, [invoice("BOOK", "A")], [invoice(nil, "A")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     [line] = body["cases"]
 
     attrs = [
@@ -204,27 +209,27 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
              c.path <> "/treatment",
              payload([line], %{choice: "later", later_reason: "review_pending"})
            )
-           |> json_response(409)
+           |> contract_response(409)
   end
 
   test "no fallback invoice, tenant, viewer and signed-off guards", c do
     month = seed(c, [], [invoice(nil, "ONE")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     [line] = body["cases"]
-    assert c.conn |> get(c.path <> "/unknown") |> json_response(404)
+    assert c.conn |> get(c.path <> "/unknown") |> contract_response(404)
     %{user: other} = user_with_org_fixture()
-    assert build_conn() |> log_in_user(other) |> get(c.path) |> json_response(404)
+    assert build_conn() |> log_in_user(other) |> get(c.path) |> contract_response(404)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^c.user.id and m.org_id == ^c.org.id),
       set: [role: "viewer"]
     )
 
-    refute (c.conn |> get(c.path) |> json_response(200))["can_edit"]
+    refute (c.conn |> get(c.path) |> contract_response(200))["can_edit"]
 
     assert c.conn
            |> post(c.path <> "/treatment", payload([line], %{choice: "later"}))
-           |> json_response(403)
+           |> contract_response(403)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^c.user.id and m.org_id == ^c.org.id),
@@ -235,12 +240,12 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     assert c.conn
            |> post(c.path <> "/treatment", payload([line], %{choice: "later"}))
-           |> json_response(409)
+           |> contract_response(409)
   end
 
   test "uncertain pairing blocks forged treatment and exposes source comparison", c do
     seed(c, [invoice("BOOK", "1134")], [invoice(nil, "CHN-SER-1134")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
     assert body["item"]["pairing_pending"]
     assert body["cases"] != []
     assert Enum.all?(body["cases"], &(not &1["available"]))
@@ -251,14 +256,14 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
         c.path <> "/treatment",
         payload(body["cases"], %{choice: "later", later_reason: "review_pending"})
       )
-      |> json_response(422)
+      |> contract_response(422)
 
     assert response["code"] == "pairing_pending"
   end
 
   test "malformed and unbalanced split values do not write", c do
     seed(c, [], [invoice(nil, "ONE")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
 
     for split <- ["bad", %{claim: "bad"}, %{claim: %{cgst: "-1"}, later: %{}, exclude: %{}}] do
       assert c.conn
@@ -266,16 +271,20 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
                c.path <> "/treatment",
                payload(body["cases"], %{choice: "split", split: split})
              )
-             |> json_response(422)
+             |> contract_response(422)
     end
 
     values = %{choice: "split", split: %{claim: %{}, later: %{}, exclude: %{}}}
 
     response =
-      c.conn |> post(c.path <> "/treatment", payload(body["cases"], values)) |> json_response(422)
+      c.conn
+      |> post(c.path <> "/treatment", payload(body["cases"], values))
+      |> contract_response(422)
 
     assert response["code"] == "amounts_do_not_balance"
-    assert hd((c.conn |> get(c.path) |> json_response(200))["cases"])["values"]["choice"] == nil
+
+    assert hd((c.conn |> get(c.path) |> contract_response(200))["cases"])["values"]["choice"] ==
+             nil
   end
 
   test "carried original uses its upload month and settled cases leave Needs review", c do
@@ -294,17 +303,17 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
 
     row = invoice("d#{dump.id}_excel_1", "CARRIED")
     seed(c, [row], [Map.delete(row, "id")])
-    body = c.conn |> get(c.path) |> json_response(200)
+    body = c.conn |> get(c.path) |> contract_response(200)
 
     assert c.conn
            |> post(
              c.path <> "/treatment",
              payload(body["cases"], %{choice: "later", later_reason: "review_pending"})
            )
-           |> json_response(200)
+           |> contract_response(200)
 
     september = String.replace(c.path, "2026-08", "2026-09")
-    carried = c.conn |> get(september, %{filter: "needs_review"}) |> json_response(200)
+    carried = c.conn |> get(september, %{filter: "needs_review"}) |> contract_response(200)
     assert length(carried["queue"]) == 1
     url = hd(carried["item"]["comparisons"])["original_url"]
     assert url == "/gst/#{c.client.id}/2026-08/original/#{dump.id}/0"
@@ -316,11 +325,11 @@ defmodule NilaWeb.PurchaseReviewControllerTest do
         september <> "/treatment?filter=needs_review",
         payload(carried["cases"], %{choice: "claim"})
       )
-      |> json_response(200)
+      |> contract_response(200)
 
     assert result["queue"] == []
     assert result["item"] == nil
-    all = c.conn |> get(september, %{filter: "carried"}) |> json_response(200)
+    all = c.conn |> get(september, %{filter: "carried"}) |> contract_response(200)
     assert length(all["queue"]) == 1
     refute hd(all["queue"])["needs_review"]
   end

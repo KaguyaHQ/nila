@@ -1,6 +1,6 @@
 import { ApiError } from "./sales-api";
 
-import type { components } from "./generated/sales-workspace";
+import type { components } from "./generated/workspace";
 
 export type UploadHistory = components["schemas"]["UploadHistory"];
 export type PreparedUpload = components["schemas"]["PreparedUpload"];

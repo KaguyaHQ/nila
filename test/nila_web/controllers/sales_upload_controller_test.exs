@@ -1,5 +1,5 @@
 defmodule NilaWeb.SalesUploadControllerTest do
-  import NilaWeb.SalesApiContract, only: [contract_response: 2]
+  import NilaWeb.ApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Ecto.Query
 

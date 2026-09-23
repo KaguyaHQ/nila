@@ -1,5 +1,5 @@
 defmodule NilaWeb.SalesWorkspaceControllerTest do
-  import NilaWeb.SalesApiContract, only: [contract_response: 2]
+  import NilaWeb.ApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
 
@@ -194,10 +194,10 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     body = conn |> get("/api/workspace/sales/#{client.id}/2026-01") |> contract_response(200)
 
     assert {:error, _} =
-             NilaWeb.SalesApiContract.validate("SalesWorkspace", Map.delete(body, "exports"))
+             NilaWeb.ApiContract.validate("SalesWorkspace", Map.delete(body, "exports"))
 
     assert {:error, _} =
-             NilaWeb.SalesApiContract.validate(
+             NilaWeb.ApiContract.validate(
                "SalesWorkspace",
                Map.put(body, "invoice_count", "0")
              )

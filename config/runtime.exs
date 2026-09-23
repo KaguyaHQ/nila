@@ -15,6 +15,10 @@ if config_env() != :test do
   _ = source([".env", System.get_env()])
 end
 
+if business_url = System.get_env("NILA_BUSINESS_URL") do
+  config :nila, :business_url, business_url
+end
+
 # ## Using releases
 #
 # If you use `mix release`, you need to explicitly enable the server
@@ -366,7 +370,14 @@ if config_env() == :prod do
     ],
     # Behind Caddy/Cloudflare the browser's Origin is the public host. Reject
     # LiveView socket connections from any other origin.
-    check_origin: ["https://#{host}"],
+    check_origin:
+      Enum.uniq(
+        ["https://#{host}"] ++
+          case System.get_env("NILA_BUSINESS_URL") do
+            nil -> []
+            url -> [url |> URI.parse() |> Map.put(:path, nil) |> URI.to_string()]
+          end
+      ),
     secret_key_base: secret_key_base
 
   # ## SSL Support

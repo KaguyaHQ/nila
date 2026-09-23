@@ -16,18 +16,18 @@ defmodule NilaWeb.UserAuth do
   def log_in_user(conn, user, params \\ %{}) do
     token = Accounts.generate_user_session_token(user)
     user_return_to = get_session(conn, :user_return_to)
+    scope = scope_for_user(user, get_session(conn, :current_client_id))
+
+    destination =
+      if scope && scope.business_client,
+        do: "/app/business/invoices",
+        else: user_return_to || NilaWeb.GoTo.sales_home(scope && scope.current_client)
 
     conn
     |> renew_session()
     |> put_token_in_session(token)
     |> maybe_write_remember_me_cookie(token, params)
-    |> redirect(
-      to:
-        user_return_to ||
-          NilaWeb.GoTo.sales_home(
-            scope_for_user(user, get_session(conn, :current_client_id)).current_client
-          )
-    )
+    |> redirect(to: destination)
   end
 
   def log_out_user(conn) do
@@ -115,6 +115,17 @@ defmodule NilaWeb.UserAuth do
     end
   end
 
+  def on_mount(:require_firm, _params, session, socket) do
+    socket =
+      if Map.has_key?(socket.assigns, :current_scope),
+        do: socket,
+        else: mount_current_scope(socket, session)
+
+    if firm_scope?(socket.assigns.current_scope),
+      do: {:cont, socket},
+      else: {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
+  end
+
   def on_mount(:redirect_if_authenticated, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
@@ -183,6 +194,15 @@ defmodule NilaWeb.UserAuth do
       |> halt()
     end
   end
+
+  def require_firm_user(conn, _opts) do
+    if firm_scope?(conn.assigns[:current_scope]),
+      do: conn,
+      else: conn |> redirect(to: signed_in_path(conn)) |> halt()
+  end
+
+  defp firm_scope?(%Scope{current_org: %{}, membership: %{}}), do: true
+  defp firm_scope?(_), do: false
 
   def require_verified_user(conn, _opts) do
     cond do
@@ -263,6 +283,7 @@ defmodule NilaWeb.UserAuth do
   defp mount_session_disconnect(socket), do: socket
 
   defp scope_for_user(nil, _client_id), do: nil
+  defp scope_for_user(%Nila.Accounts.User{active: false}, _client_id), do: nil
 
   defp scope_for_user(user, client_id) do
     scope = Scope.for_user(user)
@@ -333,6 +354,9 @@ defmodule NilaWeb.UserAuth do
   defp maybe_store_return_to(conn), do: conn
 
   defp user_sessions_topic(user), do: "users:#{user.id}:sessions"
+
+  defp signed_in_path(%{assigns: %{current_scope: %{business_client: %{}}}}),
+    do: "/app/business/invoices"
 
   defp signed_in_path(%{assigns: %{current_scope: %{current_client: client}}}),
     do: NilaWeb.GoTo.sales_home(client)

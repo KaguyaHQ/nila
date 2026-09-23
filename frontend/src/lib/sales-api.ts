@@ -1,4 +1,4 @@
-import type { components, paths } from "./generated/sales-workspace";
+import type { components, paths } from "./generated/workspace";
 
 export type SalesSectionRow = components["schemas"]["SalesSectionRow"];
 export type SalesSectionDetail = components["schemas"]["SalesSectionDetail"];

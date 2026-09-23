@@ -50,6 +50,7 @@ defmodule NilaWeb.UserInviteLive do
           <.form
             for={@form}
             id="invite-form"
+            method="post"
             action={~p"/users/invite/#{@token}"}
             phx-change="validate"
             class="space-y-block"

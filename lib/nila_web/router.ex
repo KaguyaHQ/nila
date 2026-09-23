@@ -23,6 +23,10 @@ defmodule NilaWeb.Router do
     plug :require_verified_user
   end
 
+  pipeline :firm_browser do
+    plug :require_firm_user
+  end
+
   pipeline :require_workspace_management do
     plug :require_capability, :manage_connectors
   end
@@ -55,6 +59,7 @@ defmodule NilaWeb.Router do
     post "/clients/import", ClientsWorkspaceController, :import_clients
     get "/clients/:id", ClientsWorkspaceController, :show
     patch "/clients/:id", ClientsWorkspaceController, :update
+    post "/clients/:client_id/business-invitation", BusinessInvitationController, :create
     get "/sales/:client_id/:period", SalesWorkspaceController, :show
     get "/purchases/:client_id/:period", PurchaseWorkspaceController, :show
     get "/purchases/:client_id/:period/gstr2b", Gstr2bWorkspaceController, :show
@@ -90,7 +95,7 @@ defmodule NilaWeb.Router do
   end
 
   scope "/app", NilaWeb do
-    pipe_through [:browser, :authenticated_browser, :verified_browser]
+    pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
     get "/", ReactAppController, :home
     get "/clients", ReactAppController, :index
     get "/clients/new", ReactAppController, :index
@@ -107,6 +112,50 @@ defmodule NilaWeb.Router do
     get "/gst/:client_id/:period/purchases/register", ReactAppController, :index
     get "/gst/:client_id/:period/purchases/review", ReactAppController, :index
     get "/gst/:client_id/:period/purchases/review/:itemId", ReactAppController, :index
+  end
+
+  pipeline :business_api do
+    plug :accepts, ["json", "pdf"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :fetch_current_scope_for_user
+  end
+
+  scope "/api/business", NilaWeb do
+    pipe_through :business_api
+    get "/", BusinessController, :bootstrap
+    get "/bootstrap", BusinessController, :bootstrap
+    patch "/profile", BusinessController, :profile
+    get "/services", BusinessController, :services
+    post "/services", BusinessController, :create_service
+    patch "/services/:id", BusinessController, :update_service
+    delete "/services/:id", BusinessController, :delete_service
+    post "/customers", BusinessController, :create_customer
+    patch "/customers/:id", BusinessController, :update_customer
+    post "/invoices", BusinessController, :create_invoice
+    post "/invoices/preview", BusinessController, :preview
+    post "/invoices/calculate", BusinessController, :calculate
+    get "/invoices/:id", BusinessController, :show_invoice
+    patch "/invoices/:id", BusinessController, :update_invoice
+    post "/invoices/:id/issue", BusinessController, :issue_invoice
+    post "/invoices/:id/quotation-status", BusinessController, :quotation_status
+    post "/invoices/:id/convert", BusinessController, :convert_quotation
+    get "/invoices/:id/pdf", BusinessController, :pdf
+  end
+
+  scope "/app/business", NilaWeb do
+    pipe_through [:browser, :authenticated_browser, :verified_browser]
+    get "/", ReactAppController, :index
+    get "/invoices", ReactAppController, :index
+    get "/invoices/new", ReactAppController, :index
+    get "/invoices/:invoice_id", ReactAppController, :index
+    get "/quotations", ReactAppController, :index
+    get "/quotations/new", ReactAppController, :index
+    get "/quotations/:invoice_id", ReactAppController, :index
+    get "/customers", ReactAppController, :index
+    get "/services", ReactAppController, :index
+    get "/settings", ReactAppController, :index
   end
 
   pipeline :webhook do
@@ -127,7 +176,7 @@ defmodule NilaWeb.Router do
     end
   end
 
-  # Health probe â€” used by the container healthcheck and uptime monitors.
+  # Health probe — used by the container healthcheck and uptime monitors.
   # Excluded from force_ssl (see config/prod.exs) so the in-container HTTP
   # check isn't redirected to https.
   scope "/", NilaWeb do
@@ -148,7 +197,7 @@ defmodule NilaWeb.Router do
     post "/syncs/:id/fail", TallySyncController, :fail
   end
 
-  # Public legal & contact pages â€” reachable by everyone, logged in or out.
+  # Public legal & contact pages — reachable by everyone, logged in or out.
   scope "/", NilaWeb do
     pipe_through :browser
 
@@ -159,7 +208,7 @@ defmodule NilaWeb.Router do
     post "/contact/callback", PageController, :request_callback
   end
 
-  # Public marketing site â€” served to logged-out visitors.
+  # Public marketing site — served to logged-out visitors.
   scope "/", NilaWeb do
     pipe_through [:browser, :redirect_if_authenticated]
 
@@ -198,11 +247,12 @@ defmodule NilaWeb.Router do
   end
 
   scope "/", NilaWeb do
-    pipe_through [:browser, :authenticated_browser, :verified_browser]
+    pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
 
     live_session :require_verified,
       on_mount: [
         {NilaWeb.UserAuth, :require_verified},
+        {NilaWeb.UserAuth, :require_firm},
         {NilaWeb.UserAuth, :mount_current_path}
       ] do
       live "/today", TodayLive, :index
@@ -348,7 +398,7 @@ defmodule NilaWeb.Router do
       forward "/mailbox", Plug.Swoosh.MailboxPreview
       live "/design-system", NilaWeb.Dev.DesignSystemLive
 
-      # The error pages, previewable â€” `debug_errors: true` means a real 404 in
+      # The error pages, previewable — `debug_errors: true` means a real 404 in
       # dev renders the Plug debugger instead of ours.
       get "/errors/:status", NilaWeb.ErrorPreviewController, :show
     end
@@ -365,6 +415,9 @@ defmodule NilaWeb.Router do
 
   defp require_verified_user(conn, opts),
     do: NilaWeb.UserAuth.require_verified_user(conn, opts)
+
+  defp require_firm_user(conn, opts),
+    do: NilaWeb.UserAuth.require_firm_user(conn, opts)
 
   defp require_capability(conn, capability),
     do: NilaWeb.UserAuth.require_capability(conn, capability)

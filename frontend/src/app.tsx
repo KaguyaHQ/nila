@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
+import { BusinessLayout, BusinessInvoices, BusinessInvoiceEditor, BusinessCustomers, BusinessSettings, BusinessServices } from "@/pages/business";
 import { Shell } from "@/components/workspace-shell";
 import SalesSummary from "@/pages/sales-summary";
 import SalesRegister from "@/pages/sales-register";
@@ -42,6 +43,18 @@ function NotFound() {
 export default function App() {
   return (
     <KeyboardShortcuts><Routes>
+      <Route path="business" element={<BusinessLayout />}>
+        <Route index element={<Navigate to="invoices" replace />} />
+        <Route path="invoices" element={<BusinessInvoices />} />
+        <Route path="invoices/new" element={<BusinessInvoiceEditor />} />
+        <Route path="invoices/:invoiceId" element={<BusinessInvoiceEditor />} />
+        <Route path="quotations" element={<BusinessInvoices mode="quotation" />} />
+        <Route path="quotations/new" element={<BusinessInvoiceEditor mode="quotation" />} />
+        <Route path="quotations/:invoiceId" element={<BusinessInvoiceEditor mode="quotation" />} />
+        <Route path="customers" element={<BusinessCustomers />} />
+        <Route path="services" element={<BusinessServices />} />
+        <Route path="settings" element={<BusinessSettings />} />
+      </Route>
       <Route path="gst/:clientId/:period/sales/invoices/:invoiceId" element={<SalesInvoiceReview />} />
       <Route path="gst/:clientId/:period/purchases/review" element={<PurchaseReview />} />
       <Route path="gst/:clientId/:period/purchases/review/:itemId" element={<PurchaseReview />} />

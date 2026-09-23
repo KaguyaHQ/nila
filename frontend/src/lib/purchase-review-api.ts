@@ -1,39 +1,10 @@
+import type { components } from "./generated/workspace";
 import { ApiError } from "@/lib/sales-api";
 
-export type TreatmentChoice = "claim" | "later" | "exclude" | "split";
-export type TaxHead = "cgst" | "sgst" | "igst" | "cess";
-export type TreatmentValues = {
-  choice: string | null;
-  later_reason: string;
-  exclude_reason: string;
-  note: string;
-  split: Record<"claim" | "later" | "exclude", Record<TaxHead, string>>;
-};
-export type PurchaseReviewData = {
-  client: { id: number; name: string; gstin: string | null };
-  period: string;
-  month_label: string;
-  can_edit: boolean;
-  lock_reason: string | null;
-  filter: string;
-  q: string;
-  queue: { id: string; number: string; vendor: string; status: string; needs_review: boolean; case_ids: number[] }[];
-  item: null | {
-    id: string; number: string; vendor: string; document_type: string; status: string; reason: string | null; pairing_pending: boolean; case_ids: number[];
-    comparisons: { id: string; facts: { label: string; books: string; portal: string; different: boolean }[]; original_url: string | null }[];
-    images: string[];
-    legacy_url: string;
-  };
-  cases: {
-    id: number; basis: string; number: string; vendor: string; available: boolean; unavailable_reason: string | null;
-    claimable: boolean; can_claim_split: boolean; claim_block_reason: string | null; cess_issue: string | null;
-    can_record_document: boolean; document_state: string;
-    heads: { id: TaxHead; label: string; amount: string; value: string }[];
-    values: TreatmentValues;
-  }[];
-  reasons: { later: { id: string; label: string }[]; exclude: { id: string; label: string }[] };
-  legacy_url: string;
-};
+export type TreatmentChoice = components["schemas"]["TreatmentChoice"];
+export type TaxHead = components["schemas"]["TaxHead"];
+export type TreatmentValues = components["schemas"]["TreatmentValues"];
+export type PurchaseReviewData = components["schemas"]["PurchaseReviewData"];
 
 export class PurchaseReviewError extends ApiError {
   constructor(status: number, message: string, public code?: string) { super(status, message); }
@@ -57,9 +28,9 @@ async function request(path: string, signal: AbortSignal, body?: unknown): Promi
 export function fetchPurchaseReview(client: string, period: string, item: string, filter: string, q: string, signal: AbortSignal) {
   return request(`${base(client, period)}${item ? `/${encodeURIComponent(item)}` : ""}?${new URLSearchParams({ filter, q })}`, signal);
 }
-export function savePurchaseTreatment(client: string, period: string, item: string, filter: string, q: string, body: { case_ids: number[]; basis: Record<string, string>; values: TreatmentValues }, signal: AbortSignal) {
+export function savePurchaseTreatment(client: string, period: string, item: string, filter: string, q: string, body: components["schemas"]["PurchaseTreatment"], signal: AbortSignal) {
   return request(`${base(client, period)}/${encodeURIComponent(item)}/treatment?${new URLSearchParams({ filter, q })}`, signal, body);
 }
-export function recordPurchaseDocument(client: string, period: string, item: string, filter: string, q: string, body: { case_ids: number[]; basis: Record<string, string> }, signal: AbortSignal) {
+export function recordPurchaseDocument(client: string, period: string, item: string, filter: string, q: string, body: components["schemas"]["PurchaseSelection"], signal: AbortSignal) {
   return request(`${base(client, period)}/${encodeURIComponent(item)}/document?${new URLSearchParams({ filter, q })}`, signal, body);
 }

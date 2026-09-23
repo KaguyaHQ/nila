@@ -77,6 +77,7 @@ defmodule NilaWeb.ClientsWorkspaceController do
          clients: clients,
          user: %{name: scope.user.name, org: scope.current_org.name},
          can_edit: Policy.can?(scope, :edit_records),
+         can_manage_users: Policy.can?(scope, :manage_users),
          period: period
        }}
     end

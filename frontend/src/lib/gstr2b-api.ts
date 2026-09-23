@@ -1,20 +1,21 @@
+import type { components } from "./generated/workspace";
 import { ApiError } from "@/lib/sales-api";
 
-export type Gstr2bState = {
-  client: { id: number; name: string; gstin: string | null };
-  period: string;
-  connection: { state: "connected" | "expired" | "not_connected" | "missing_gstin"; username: string | null };
-  permissions: { fetch: boolean; connect: boolean; export: boolean };
-  statement: null | { id: number; status: string; fetched_at: string | null; last_error: string | null; failure_reason: string | null; download_url: string | null };
-  fetching: boolean;
-  import: { needed: boolean; status: string | null; error: string | null };
-  availability_hint: string | null;
-};
-export type Gstr2bChallenge = { challenge: string; username: string; expires_in: number };
+export type Gstr2bState = components["schemas"]["Gstr2bState"];
+export type Gstr2bChallenge = components["schemas"]["Gstr2bChallenge"];
 export class Gstr2bError extends ApiError {
   constructor(status: number, message: string, public code?: string) { super(status, message); }
 }
-export async function gstr2bRequest<T = Gstr2bState>(client: number, period: string, signal: AbortSignal, action = "", body?: unknown): Promise<T> {
+export type Gstr2bWrite =
+  | { action: "fetch" | "import"; body: components["schemas"]["EmptyRequest"] }
+  | { action: "otp"; body: components["schemas"]["Gstr2bOtp"] }
+  | { action: "verify"; body: components["schemas"]["Gstr2bVerify"] };
+
+export function gstr2bRequest(client: number, period: string, signal: AbortSignal): Promise<Gstr2bState>;
+export function gstr2bRequest(client: number, period: string, signal: AbortSignal, write: Gstr2bWrite): Promise<Gstr2bState | Gstr2bChallenge>;
+export async function gstr2bRequest(client: number, period: string, signal: AbortSignal, write?: Gstr2bWrite): Promise<Gstr2bState | Gstr2bChallenge> {
+  const action = write?.action;
+  const body = write?.body;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";

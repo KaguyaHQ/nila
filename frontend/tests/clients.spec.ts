@@ -7,7 +7,7 @@ function directory(period = "2026-06", canEdit = true): ClientsDirectory {
       { id: 1, name: "Breeze Tech", gstin: "33AABCT3518Q1ZF", sales_path: `/gst/1/${period}/sales` },
       { id: 2, name: "Harbour Services", gstin: null, sales_path: `/gst/2/${period}/sales` },
     ],
-    user: { name: "Accountant", org: "Test firm" }, can_edit: canEdit, period,
+    user: { name: "Accountant", org: "Test firm" }, can_edit: canEdit, can_manage_users: false, period,
   };
 }
 const rootApi = /\/api\/workspace\/clients(?:\?.*)?$/;

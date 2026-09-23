@@ -1,5 +1,12 @@
 import Config
 
+business_typst = Path.expand("../tmp/tools/typst.exe", __DIR__)
+
+config :nila, Nila.Business.Pdf,
+  bin:
+    System.get_env("TYPST_BIN") ||
+      if(File.exists?(business_typst), do: business_typst, else: "typst")
+
 # The local sales app uses the tested table input and two-amount contract.
 config :nila, Nila.Gst.Extraction.Sales.Extractor, input: :native, contract: :semantic
 

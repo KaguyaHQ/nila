@@ -1,0 +1,776 @@
+defmodule Nila.Business.Invoicing do
+  @moduledoc "Domestic service billing for an already-authorized business client."
+  import Ecto.Query
+  import Ecto.Changeset
+  alias Nila.Business.{Customer, Invoice, Profile, Service}
+  alias Nila.Clients.Client
+  alias Nila.Gst.Intake.{Dump, Dumps}
+  alias Nila.Gst.Sales.{Derivation, Month, Processing}
+  alias Nila.{Repo, Storage}
+
+  # Positive rate values accepted by the existing GSTR-1 output boundary.
+  @gst_rates ~w(0.1 0.25 1 1.5 3 5 6 7.5 12 18 28 40)
+
+  def get_profile(%Client{} = client) do
+    Repo.get_by(Profile, client_id: client.id) ||
+      %Profile{
+        client_id: client.id,
+        legal_name: client.name,
+        address: client.address,
+        state_code: Nila.Gst.StateCodes.from_gstin(client.gstin)
+      }
+  end
+
+  def save_profile(%Client{} = client, attrs) do
+    profile = get_profile(client)
+    changeset = Profile.changeset(profile, attrs)
+
+    changeset =
+      if get_field(changeset, :state_code) == Nila.Gst.StateCodes.from_gstin(client.gstin),
+        do: changeset,
+        else: add_error(changeset, :state_code, "must match your GST registration")
+
+    Repo.insert_or_update(changeset)
+  end
+
+  def list_services(%Client{id: id}),
+    do:
+      Repo.all(
+        from s in Service, where: s.client_id == ^id, order_by: [asc: s.description, asc: s.id]
+      )
+
+  def create_service(%Client{id: id}, attrs),
+    do: %Service{client_id: id} |> Service.changeset(attrs) |> Repo.insert()
+
+  def update_service(%Client{id: client_id}, id, attrs) do
+    with {:ok, service} <- Repo.fetch_by(Service, id: id, client_id: client_id),
+         do: service |> Service.changeset(attrs) |> Repo.update()
+  end
+
+  def delete_service(%Client{id: client_id}, id) do
+    with {:ok, service} <- Repo.fetch_by(Service, id: id, client_id: client_id),
+         do: Repo.delete(service)
+  end
+
+  def list_customers(%Client{id: id}),
+    do:
+      Repo.all(from c in Customer, where: c.client_id == ^id, order_by: [asc: c.name, asc: c.id])
+
+  def create_customer(%Client{id: id}, attrs),
+    do: %Customer{client_id: id} |> Customer.changeset(attrs) |> Repo.insert()
+
+  def update_customer(%Client{} = client, id, attrs) do
+    with {:ok, customer} <- Repo.fetch_by(Customer, id: id, client_id: client.id),
+         do: customer |> Customer.changeset(attrs) |> Repo.update()
+  end
+
+  def list_invoices(%Client{id: id}),
+    do:
+      Repo.all(
+        from i in Invoice,
+          where: i.client_id == ^id,
+          order_by: [desc: i.invoice_date, desc: i.id],
+          preload: [:customer]
+      )
+
+  def get_invoice(%Client{id: client_id}, id) do
+    with {:ok, invoice} <- Repo.fetch_by(Invoice, client_id: client_id, id: id),
+         do: {:ok, Repo.preload(invoice, :customer)}
+  end
+
+  def preview(%Client{} = client, attrs, opts \\ []) do
+    with {:ok, customer} <- customer_for(client, attrs),
+         {:ok, original} <- original_for(client, attrs),
+         :ok <- matching_original(customer, original),
+         {:ok, invoice} <-
+           %Invoice{
+             client_id: client.id,
+             customer_id: customer.id,
+             original_invoice_id: original && original.id,
+             document_type: document_type(attrs, original)
+           }
+           |> Invoice.draft_changeset(attrs)
+           |> validate_lines(client)
+           |> apply_action(:validate),
+         profile <- get_profile(client),
+         {:ok, lines} <-
+           calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply) do
+      client
+      |> snapshot(profile, customer, invoice, lines, "DRAFT", original)
+      |> Map.put("draft", true)
+      |> render(opts)
+    end
+  end
+
+  def calculate(%Client{} = client, %{"lines" => lines, "place_of_supply" => state})
+      when is_list(lines) and length(lines) in 1..100 do
+    if state in Enum.map(Nila.Gst.StateCodes.all(), &Nila.Gst.StateCodes.code_for/1) do
+      intra? = Nila.Gst.StateCodes.from_gstin(client.gstin) == state
+
+      lines
+      |> Enum.reduce_while({:ok, []}, fn line, {:ok, acc} ->
+        case calculate_amounts(line, intra?) do
+          {:ok, calculated} -> {:cont, {:ok, [calculated | acc]}}
+          error -> {:halt, error}
+        end
+      end)
+      |> case do
+        {:ok, calculated} ->
+          calculated = Enum.reverse(calculated)
+          totals = line_totals(calculated)
+
+          {:ok,
+           %{
+             lines: calculated,
+             totals: totals,
+             total_in_words: Nila.Formatters.amount_in_words(totals["total_paise"])
+           }}
+
+        error ->
+          error
+      end
+    else
+      {:error, :invalid_attrs}
+    end
+  end
+
+  def calculate(%Client{}, _), do: {:error, :invalid_attrs}
+
+  def save_draft(%Client{} = client, actor_id, attrs) do
+    with {:ok, customer} <- customer_for(client, attrs),
+         {:ok, original} <- original_for(client, attrs),
+         :ok <- matching_original(customer, original) do
+      %Invoice{
+        client_id: client.id,
+        customer_id: customer.id,
+        created_by_id: actor_id,
+        original_invoice_id: original && original.id,
+        document_type: document_type(attrs, original)
+      }
+      |> Invoice.draft_changeset(attrs)
+      |> validate_lines(client)
+      |> Repo.insert()
+    end
+  end
+
+  def update_draft(%Client{} = client, id, _actor_id, attrs) do
+    Repo.transact(fn ->
+      with {:ok, invoice} <- locked_invoice(client, id),
+           :ok <- draft?(invoice),
+           {:ok, customer} <-
+             customer_for(
+               client,
+               Map.put_new(string_keys(attrs), "customer_id", invoice.customer_id)
+             ),
+           :ok <-
+             matching_original(
+               customer,
+               invoice.original_invoice_id && Repo.get!(Invoice, invoice.original_invoice_id)
+             ) do
+        invoice
+        |> Invoice.draft_changeset(attrs)
+        |> put_change(:customer_id, customer.id)
+        |> validate_lines(client)
+        |> Repo.update()
+      end
+    end)
+  end
+
+  def issue(%Client{} = client, id, actor_id, opts \\ []) do
+    # Client lock also serializes creation of the first sales month and its numbering row.
+    # Keep lock order client -> invoice -> sales month for all business issuance.
+    Repo.transact(
+      fn ->
+        current_client =
+          Repo.one!(
+            from c in Client,
+              where: c.id == ^client.id and c.org_id == ^client.org_id,
+              lock: "FOR UPDATE"
+          )
+
+        with {:ok, invoice} <- locked_invoice(current_client, id),
+             :ok <- draft?(invoice),
+             {:ok, profile} <- ready_profile(current_client, invoice.document_type),
+             {:ok, customer} <-
+               Repo.fetch_by(Customer, id: invoice.customer_id, client_id: current_client.id),
+             :ok <- open_document_month(current_client, invoice),
+             {:ok, lines} <-
+               calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply),
+             {:ok, original} <- issue_original(current_client, invoice, lines),
+             number <- next_number(current_client, invoice),
+             snapshot <-
+               snapshot(current_client, profile, customer, invoice, lines, number, original),
+             {:ok, bytes} <- render(snapshot, opts),
+             key <-
+               "orgs/#{current_client.org_id}/clients/#{current_client.id}/business/#{invoice.id}/#{Ecto.UUID.generate()}.pdf",
+             {:ok, _stored} <- Storage.put(key, bytes, content_type: "application/pdf"),
+             {:ok, issued} <-
+               persist_issue(current_client, invoice, actor_id, snapshot, key, bytes) do
+          {:ok, Repo.preload(issued, :customer)}
+        end
+      end,
+      timeout: 60_000
+    )
+  end
+
+  # Like Bigcapital estimates, approval/rejection is only available after finalizing,
+  # and conversion retains a link to the created invoice. Locking makes retries safe.
+  def quotation_status(%Client{} = client, id, _actor_id, status)
+      when status in ["accepted", "declined"] do
+    Repo.transact(fn ->
+      with {:ok, quote} <- locked_invoice(client, id),
+           :ok <- quotation_transition(quote) do
+        quote |> change(status: status) |> Repo.update()
+      end
+    end)
+  end
+
+  def quotation_status(%Client{}, _id, _actor_id, _status),
+    do: {:error, :invalid_quotation_status}
+
+  def convert_quotation(%Client{} = client, id, actor_id) do
+    Repo.transact(fn ->
+      with {:ok, quote} <- locked_invoice(client, id) do
+        case quote do
+          %Invoice{
+            document_type: "quotation",
+            status: "converted",
+            converted_invoice_id: invoice_id
+          } ->
+            with {:ok, invoice} <- get_invoice(client, invoice_id),
+                 do: {:ok, %{invoice: invoice, quotation: quote}}
+
+          %Invoice{document_type: "quotation", status: "accepted"} ->
+            attrs =
+              quote
+              |> Map.take([
+                :customer_id,
+                :place_of_supply,
+                :lines,
+                :notes,
+                :purchase_order_number,
+                :purchase_order_date,
+                :delivery_address
+              ])
+              |> Map.put(:invoice_date, Date.utc_today())
+              |> string_keys()
+
+            with {:ok, invoice} <- save_draft(client, actor_id, attrs) do
+              quotation =
+                quote
+                |> change(status: "converted", converted_invoice_id: invoice.id)
+                |> Repo.update!()
+
+              {:ok, %{invoice: invoice, quotation: quotation}}
+            end
+
+          _ ->
+            {:error, :quotation_not_accepted}
+        end
+      end
+    end)
+  end
+
+  defp quotation_transition(%Invoice{document_type: "quotation", status: status})
+       when status in ["issued", "accepted", "declined"], do: :ok
+
+  defp quotation_transition(_), do: {:error, :invalid_quotation_status}
+
+  def download(%Client{} = client, id) do
+    with {:ok, %Invoice{status: status, pdf_key: key}}
+         when status in ["issued", "accepted", "declined", "converted"] <- get_invoice(client, id),
+         do: Storage.get(key),
+         else: (_ -> {:error, :not_issued})
+  end
+
+  defp persist_issue(
+         _client,
+         %Invoice{document_type: "quotation"} = invoice,
+         actor_id,
+         snapshot,
+         key,
+         bytes
+       ) do
+    invoice
+    |> change(
+      status: "issued",
+      number: snapshot["number"],
+      snapshot: snapshot,
+      totals: snapshot["totals"],
+      pdf_key: key,
+      issued_by_id: actor_id,
+      pdf_sha256: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower),
+      issued_at: DateTime.utc_now()
+    )
+    |> Repo.update()
+  end
+
+  defp persist_issue(client, invoice, actor_id, snapshot, key, bytes) do
+    period = Calendar.strftime(invoice.invoice_date, "%Y-%m")
+
+    with {:ok, dump} <-
+           Dumps.record(
+             %{org_id: client.org_id, client_id: client.id, brought_in_by_id: actor_id},
+             %{
+               kind: "sales",
+               period: period,
+               status: "extracted",
+               file_keys: [key],
+               meta: %{
+                 "sales_batch" => true,
+                 "original_name" => "#{String.replace(snapshot["number"], "/", "-")}.pdf",
+                 "business_invoice_id" => invoice.id
+               }
+             }
+           ) do
+      facts = sales_facts(snapshot) |> Map.put("id", Processing.source_id(dump, 1))
+      dump = dump |> Dump.changeset(%{invoices: [facts]}) |> Repo.update!()
+      :ok = Derivation.refresh_in_transaction(dump)
+
+      invoice
+      |> change(
+        status: "issued",
+        number: snapshot["number"],
+        snapshot: snapshot,
+        totals: snapshot["totals"],
+        pdf_key: key,
+        dump_id: dump.id,
+        issued_by_id: actor_id,
+        pdf_sha256: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower),
+        issued_at: DateTime.utc_now()
+      )
+      |> Repo.update()
+    end
+  end
+
+  defp locked_invoice(client, id),
+    do:
+      Repo.fetch_one(
+        from i in Invoice, where: i.client_id == ^client.id and i.id == ^id, lock: "FOR UPDATE"
+      )
+
+  defp draft?(%Invoice{status: "draft"}), do: :ok
+  defp draft?(_), do: {:error, :already_issued}
+
+  defp ready_profile(client, document_type) do
+    profile = get_profile(client)
+
+    cond do
+      not Nila.Gstin.valid?(client.gstin) ->
+        {:error, :seller_gstin_required}
+
+      document_type == "quotation" and not Profile.changeset(profile, %{}).valid? ->
+        {:error, :profile_incomplete}
+
+      document_type != "quotation" and
+          (is_nil(profile.id) or not profile.e_invoice_not_applicable or
+             not profile.domestic_services_only) ->
+        {:error, :profile_incomplete}
+
+      profile.state_code != Nila.Gst.StateCodes.from_gstin(client.gstin) ->
+        {:error, :seller_state_mismatch}
+
+      true ->
+        {:ok, profile}
+    end
+  end
+
+  defp customer_for(client, attrs) do
+    case Map.get(string_keys(attrs), "customer_id") do
+      nil -> {:error, :customer_required}
+      id -> Repo.fetch_by(Customer, id: id, client_id: client.id)
+    end
+  end
+
+  defp original_for(client, attrs) do
+    attrs = string_keys(attrs)
+
+    case {attrs["document_type"] || "invoice", attrs["original_invoice_id"]} do
+      {type, nil} when type in ["invoice", "quotation"] ->
+        {:ok, nil}
+
+      {"credit_note", id} when not is_nil(id) ->
+        case Repo.fetch_by(Invoice,
+               id: id,
+               client_id: client.id,
+               status: "issued",
+               document_type: "invoice"
+             ) do
+          {:ok, invoice} -> {:ok, invoice}
+          _ -> {:error, :original_invoice_required}
+        end
+
+      _ ->
+        {:error, :invalid_document_type}
+    end
+  end
+
+  defp document_type(attrs, original) do
+    if original,
+      do: "credit_note",
+      else: Map.get(string_keys(attrs), "document_type") || "invoice"
+  end
+
+  defp matching_original(_customer, nil), do: :ok
+  defp matching_original(%{id: id}, %{customer_id: id}), do: :ok
+  defp matching_original(_, _), do: {:error, :credit_customer_mismatch}
+
+  defp open_document_month(_client, %Invoice{document_type: "quotation"}), do: :ok
+  defp open_document_month(client, invoice), do: open_month(client, invoice.invoice_date)
+
+  defp open_month(client, date) do
+    period = Calendar.strftime(date, "%Y-%m")
+
+    case Repo.one(
+           from m in Month,
+             where:
+               m.org_id == ^client.org_id and m.client_id == ^client.id and m.period == ^period,
+             lock: "FOR UPDATE"
+         ) do
+      %Month{filed_at: filed} when not is_nil(filed) -> {:error, :month_filed}
+      _ -> :ok
+    end
+  end
+
+  defp issue_original(_client, %Invoice{document_type: type}, _lines)
+       when type in ["invoice", "quotation"], do: {:ok, nil}
+
+  defp issue_original(client, invoice, lines) do
+    with {:ok, original} <-
+           Repo.fetch_by(Invoice,
+             id: invoice.original_invoice_id,
+             client_id: client.id,
+             status: "issued",
+             document_type: "invoice"
+           ),
+         true <-
+           original.customer_id == invoice.customer_id and
+             original.place_of_supply == invoice.place_of_supply,
+         true <- Date.compare(invoice.invoice_date, original.invoice_date) != :lt do
+      previous =
+        Repo.all(
+          from i in Invoice,
+            where: i.original_invoice_id == ^original.id and i.status == "issued",
+            select: i.snapshot
+        )
+
+      credited = Enum.flat_map(previous, & &1["lines"]) ++ lines
+
+      if within_original?(credited, original.snapshot["lines"]),
+        do: {:ok, original},
+        else: {:error, :credit_exceeds_original}
+    else
+      false -> {:error, :credit_original_mismatch}
+      error -> error
+    end
+  end
+
+  defp within_original?(credited, original) do
+    original = buckets(original)
+
+    Enum.all?(buckets(credited), fn {key, amounts} ->
+      allowed = Map.get(original, key, %{})
+      Enum.all?(amounts, fn {field, value} -> value <= Map.get(allowed, field, 0) end)
+    end)
+  end
+
+  defp buckets(lines) do
+    Enum.reduce(lines, %{}, fn line, buckets ->
+      key = {line["sac"], line["gst_rate"]}
+      amounts = Map.take(line, ~w(taxable_paise cgst_paise sgst_paise igst_paise))
+      Map.update(buckets, key, amounts, &Map.merge(&1, amounts, fn _, a, b -> a + b end))
+    end)
+  end
+
+  defp next_number(client, invoice) do
+    date = invoice.invoice_date
+    year = if date.month < 4, do: date.year - 1, else: date.year
+
+    %{rows: [[sequence]]} =
+      Repo.query!(
+        "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1,$2,$3,1) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = business_invoice_counters.last_number + 1 RETURNING last_number",
+        [client.id, year, invoice.document_type]
+      )
+
+    prefix =
+      %{"credit_note" => "CN", "invoice" => "INV", "quotation" => "QT"}[invoice.document_type]
+
+    "#{prefix}/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
+  end
+
+  defp validate_lines(changeset, client) do
+    intra? =
+      Nila.Gst.StateCodes.from_gstin(client.gstin) == get_field(changeset, :place_of_supply)
+
+    case calculate_lines(get_field(changeset, :lines), intra?) do
+      {:ok, lines} -> put_change(changeset, :totals, line_totals(lines))
+      {:error, reason} -> add_error(changeset, :lines, reason)
+    end
+  end
+
+  def calculate_lines(lines, intra?) when is_list(lines) and length(lines) in 1..100 do
+    Enum.reduce_while(lines, {:ok, []}, fn line, {:ok, acc} ->
+      case calculate_line(line, intra?) do
+        {:ok, line} -> {:cont, {:ok, acc ++ [line]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  def calculate_lines(_, _), do: {:error, "add between 1 and 100 service lines"}
+
+  defp calculate_line(line, intra?) when is_map(line) do
+    line = string_keys(line)
+
+    description =
+      if is_binary(line["description"]), do: String.trim(line["description"]), else: ""
+
+    with true <- description != "" and String.length(description) <= 1000,
+         true <- is_binary(line["sac"]) and Regex.match?(~r/^99\d{4}$/, line["sac"]) do
+      calculate_amounts(Map.put(line, "description", description), intra?)
+    else
+      _ -> {:error, "each service needs a description and six-digit SAC starting 99"}
+    end
+  end
+
+  defp calculate_line(_, _), do: {:error, "invalid service line"}
+
+  defp calculate_amounts(line, intra?) when is_map(line) do
+    line = string_keys(line)
+
+    with {:ok, quantity} <- positive_decimal(line["quantity"], 4),
+         {:ok, price} <- positive_decimal(line["unit_price"], 2),
+         {:ok, rate} <- positive_decimal(line["gst_rate"], 3),
+         true <- decimal_string(rate) in @gst_rates,
+         true <-
+           is_nil(line["unit"]) or (is_binary(line["unit"]) and String.length(line["unit"]) <= 30) do
+      taxable =
+        quantity
+        |> Decimal.mult(price)
+        |> Decimal.mult(100)
+        |> Decimal.round(0, :half_up)
+        |> Decimal.to_integer()
+
+      gst = fn divisor ->
+        taxable
+        |> Decimal.new()
+        |> Decimal.mult(rate)
+        |> Decimal.div(divisor)
+        |> Decimal.round(0, :half_up)
+        |> Decimal.to_integer()
+      end
+
+      {cgst, sgst, igst} = if intra?, do: {gst.(200), gst.(200), 0}, else: {0, 0, gst.(100)}
+
+      if taxable > 0 and taxable <= 100_000_000_000 do
+        {:ok,
+         %{
+           "description" => line["description"],
+           "sac" => line["sac"],
+           "unit" => line["unit"],
+           "quantity" => decimal_string(quantity),
+           "unit_price" => decimal_string(price),
+           "gst_rate" => decimal_string(rate),
+           "taxable_paise" => taxable,
+           "cgst_paise" => cgst,
+           "sgst_paise" => sgst,
+           "igst_paise" => igst
+         }}
+      else
+        {:error, "line amount must be greater than zero and within the supported limit"}
+      end
+    else
+      _ ->
+        {:error,
+         "each service needs a description, six-digit SAC starting 99, positive quantity and price, and a supported GST rate"}
+    end
+  end
+
+  defp calculate_amounts(_, _), do: {:error, "invalid service line"}
+
+  defp positive_decimal(value, places) when is_binary(value) do
+    if byte_size(value) <= 24 and Regex.match?(~r/^\d+(\.\d+)?$/, value) do
+      decimal = Decimal.new(value)
+
+      if Decimal.compare(decimal, Decimal.new(0)) == :gt and decimal.exp >= -places,
+        do: {:ok, decimal},
+        else: {:error, :invalid_number}
+    else
+      {:error, :invalid_number}
+    end
+  end
+
+  defp positive_decimal(value, places) when is_integer(value),
+    do: positive_decimal(to_string(value), places)
+
+  defp positive_decimal(_, _), do: {:error, :invalid_number}
+  defp decimal_string(value), do: value |> Decimal.normalize() |> Decimal.to_string(:normal)
+
+  defp line_totals(lines) do
+    totals =
+      Enum.reduce(
+        lines,
+        Map.new(~w(taxable_paise cgst_paise sgst_paise igst_paise), &{&1, 0}),
+        fn line, totals ->
+          Map.new(totals, fn {key, amount} -> {key, amount + line[key]} end)
+        end
+      )
+
+    Map.put(totals, "total_paise", Enum.sum(Map.values(totals)))
+  end
+
+  defp snapshot(client, profile, customer, invoice, lines, number, original) do
+    totals = line_totals(lines)
+
+    %{
+      "number" => number,
+      "document_type" => invoice.document_type,
+      "invoice_date" => Date.to_iso8601(invoice.invoice_date),
+      "due_date" => invoice.due_date && Date.to_iso8601(invoice.due_date),
+      "valid_until" => invoice.valid_until && Date.to_iso8601(invoice.valid_until),
+      "notes" => invoice.notes,
+      "purchase_order_number" => invoice.purchase_order_number,
+      "purchase_order_date" =>
+        invoice.purchase_order_date && Date.to_iso8601(invoice.purchase_order_date),
+      "delivery_address" => invoice.delivery_address,
+      "total_in_words" => Nila.Formatters.amount_in_words(totals["total_paise"]),
+      "supplier" => %{
+        "name" => profile.legal_name,
+        "address" => profile.address,
+        "gstin" => client.gstin,
+        "state_code" => profile.state_code
+      },
+      "customer" =>
+        if(original,
+          do: original.snapshot["customer"],
+          else: %{
+            "name" => customer.name,
+            "address" => customer.address,
+            "gstin" => customer.gstin,
+            "state_code" => customer.state_code
+          }
+        ),
+      "place_of_supply" => invoice.place_of_supply,
+      "lines" => lines,
+      "totals" => totals,
+      "original_invoice_number" => original && original.number,
+      "original_invoice_date" => original && Date.to_iso8601(original.invoice_date),
+      "original_sale_category" => original && sale_category(original.snapshot)
+    }
+  end
+
+  defp sale_category(snapshot) do
+    cond do
+      snapshot["customer"]["gstin"] ->
+        "b2b"
+
+      snapshot["supplier"]["state_code"] == snapshot["place_of_supply"] ->
+        "b2cs"
+
+      true ->
+        threshold = if snapshot["invoice_date"] < "2024-08-01", do: 25_000_000, else: 10_000_000
+        if snapshot["totals"]["total_paise"] > threshold, do: "b2cl", else: "b2cs"
+    end
+  end
+
+  defp render(snapshot, opts),
+    do: Keyword.get(opts, :render_pdf, &Nila.Business.Pdf.render/1).(snapshot)
+
+  defp sales_facts(snapshot) do
+    totals = snapshot["totals"]
+    intra? = snapshot["supplier"]["state_code"] == snapshot["place_of_supply"]
+    rupees = fn paise -> paise / 100 end
+
+    data = %{
+      "invoice_number" => snapshot["number"],
+      "invoice_date" => snapshot["invoice_date"],
+      "seller" => snapshot["supplier"],
+      "buyer" => snapshot["customer"],
+      "document_type" => snapshot["document_type"],
+      "document_status" => "active",
+      "recipient_registration" =>
+        if(snapshot["customer"]["gstin"], do: "registered", else: "unregistered"),
+      "place_of_supply" => snapshot["place_of_supply"],
+      "supply_type" => "taxable",
+      "tax_payment" => "not_applicable",
+      "reverse_charge" => false,
+      "original_sale_category" => snapshot["original_sale_category"],
+      "printed_total_taxable" => rupees.(totals["taxable_paise"]),
+      "printed_total_tax" =>
+        rupees.(totals["cgst_paise"] + totals["sgst_paise"] + totals["igst_paise"]),
+      "printed_grand_total" => rupees.(totals["total_paise"]),
+      "line_items" =>
+        Enum.map(snapshot["lines"], fn line ->
+          rate =
+            String.to_float(
+              line["gst_rate"] <> if(String.contains?(line["gst_rate"], "."), do: "", else: ".0")
+            )
+
+          %{
+            "description" => line["description"],
+            "hsn_sac" => line["sac"],
+            "quantity" => Decimal.to_float(Decimal.new(line["quantity"])),
+            "uom" => "OTH",
+            "printed_unit_price" => Decimal.to_float(Decimal.new(line["unit_price"])),
+            "printed_taxable_value" => rupees.(line["taxable_paise"]),
+            "cgst_rate" => if(intra?, do: rate / 2, else: 0),
+            "sgst_rate" => if(intra?, do: rate / 2, else: 0),
+            "igst_rate" => if(intra?, do: 0, else: rate),
+            "cgst_amount" => rupees.(line["cgst_paise"]),
+            "sgst_amount" => rupees.(line["sgst_paise"]),
+            "igst_amount" => rupees.(line["igst_paise"])
+          }
+        end)
+    }
+
+    Nila.Gst.Extraction.Sales.Normalizer.normalize(%{"data" => data, "source_pages" => [1]})
+    |> Map.put("original_invoice_number", snapshot["original_invoice_number"])
+    |> Map.put("original_invoice_date", snapshot["original_invoice_date"])
+  end
+
+  def error_message(:already_issued),
+    do: "This invoice has already been issued. Use a credit note to correct it."
+
+  def error_message(:not_issued), do: "Issue the invoice before downloading its PDF."
+  def error_message(:month_filed), do: "The CA has filed this month. Choose an open period."
+
+  def error_message(:profile_incomplete),
+    do: "Complete your business details and confirm the supported billing scope first."
+
+  def error_message(:seller_gstin_required),
+    do: "A valid business GSTIN is required. Ask your CA to update it."
+
+  def error_message(:seller_state_mismatch),
+    do: "Your business state must match its GST registration."
+
+  def error_message(:customer_required), do: "Choose a customer."
+
+  def error_message(:original_invoice_required),
+    do: "Choose an issued invoice for this credit note."
+
+  def error_message(:credit_exceeds_original),
+    do: "This credit exceeds the original invoice's remaining amount or tax."
+
+  def error_message(:credit_original_mismatch),
+    do:
+      "A credit note must keep the original customer and place of supply, and cannot precede the original invoice."
+
+  def error_message(:credit_customer_mismatch),
+    do: "A credit note must use the original invoice's customer."
+
+  def error_message(:invalid_document_type),
+    do: "Choose an invoice or a credit note linked to an issued invoice."
+
+  def error_message(:invalid_quotation_status),
+    do:
+      "Finalize the quotation before marking it accepted or declined. Converted quotations cannot change status."
+
+  def error_message(:quotation_not_accepted),
+    do: "Mark the quotation accepted before converting it to an invoice."
+
+  def error_message(:not_found), do: "The record was not found."
+  def error_message(reason) when is_binary(reason), do: reason
+  def error_message(_), do: "The invoice could not be saved. Please try again."
+
+  defp string_keys(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
+end

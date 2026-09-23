@@ -13,8 +13,8 @@
     "check": "pnpm run api:check && tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1 --port 5174 --strictPort",
     "test": "playwright test",
-    "api:generate": "openapi-typescript ../priv/openapi/sales-workspace.json -o src/lib/generated/sales-workspace.ts",
-    "api:check": "openapi-typescript ../priv/openapi/sales-workspace.json -o src/lib/generated/sales-workspace.ts --check"
+    "api:generate": "openapi-typescript ../priv/openapi/workspace.json -o src/lib/generated/workspace.ts",
+    "api:check": "openapi-typescript ../priv/openapi/workspace.json -o src/lib/generated/workspace.ts --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
