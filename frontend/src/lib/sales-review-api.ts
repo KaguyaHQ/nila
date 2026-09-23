@@ -1,24 +1,10 @@
 import { ApiError } from "./sales-api";
 
-export type ReviewValues = Record<string, string>;
-export type SalesInvoiceReviewData = {
-  client: { id: number; name: string };
-  period: string;
-  invoice: { id: string; number: string; date: string | null; buyer_name: string | null; buyer_gstin: string | null; place_of_supply: string | null };
-  facts: ReviewValues;
-  lines: { index: number; values: ReviewValues; display: ReviewValues }[];
-  totals: { field: string; label: string; calculated: string; printed: string; difference: string | null; status: "matches" | "mismatch" | "unavailable" }[];
-  printed_totals: ReviewValues;
-  checks: { label: string; title: string; detail: string | null; secondary: string | null; difference: string | null; status: "passed" | "failed" | "unavailable" }[];
-  issues: { target: string; code: string; title: string; message: string; status: string; can_confirm: boolean; action_label: string | null }[];
-  source: { url: string | null; name: string; pages: number[]; images: string[] } | null;
-  states: { label: string; value: string }[];
-  queue: { id: string; number: string; status: "needs_review" | "ready" }[];
-  can_edit: boolean;
-  lock_reason: string | null;
-  editable_fields: { facts: string[]; line: string[]; totals: string[] };
-};
-export type ReviewChange = { section: "facts" | "line" | "totals"; values: ReviewValues; line_index?: number };
+import type { components } from "./generated/sales-workspace";
+
+export type ReviewValues = components["schemas"]["ReviewValues"];
+export type SalesInvoiceReviewData = components["schemas"]["SalesInvoiceReviewData"];
+export type ReviewChange = components["schemas"]["ReviewChange"];
 
 export class ReviewApiError extends ApiError {
   constructor(status: number, message: string, public fields: Record<string, string[]> = {}) {
@@ -49,5 +35,5 @@ export function updateSalesInvoice(client: string, period: string, invoice: stri
   return request(reviewPath(client, period, invoice), signal, "PATCH", changes);
 }
 export function confirmSalesInvoiceIssue(client: string, period: string, invoice: string, target: string, signal: AbortSignal) {
-  return request(`${reviewPath(client, period, invoice)}/confirm`, signal, "POST", { target });
+  return request(`${reviewPath(client, period, invoice)}/confirm`, signal, "POST", { target } satisfies components["schemas"]["ConfirmInvoiceIssue"]);
 }

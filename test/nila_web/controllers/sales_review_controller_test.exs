@@ -1,4 +1,5 @@
 defmodule NilaWeb.SalesReviewControllerTest do
+  import NilaWeb.SalesApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
   import Ecto.Query
@@ -61,7 +62,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
     dump: dump
   } do
     response = get(conn, path)
-    body = json_response(response, 200)
+    body = contract_response(response, 200)
     assert body["invoice"]["id"] == invoice["id"]
     assert body["can_edit"]
     assert body["source"]["name"] == "sales.pdf"
@@ -92,7 +93,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
     month |> Ecto.Changeset.change(invoices: replace.(month.invoices)) |> Repo.update!()
     dump |> Ecto.Changeset.change(invoices: replace.(dump.invoices)) |> Repo.update!()
 
-    body = conn |> get(path) |> json_response(200)
+    body = conn |> get(path) |> contract_response(200)
     assert body["invoice"]["place_of_supply"] == "Tamil Nadu (33)"
     assert body["facts"]["place_of_supply"] == ""
   end
@@ -110,21 +111,21 @@ defmodule NilaWeb.SalesReviewControllerTest do
     changed =
       conn
       |> patch(path, %{section: "facts", values: %{buyer_name: "Corrected buyer"}})
-      |> json_response(200)
+      |> contract_response(200)
 
     assert changed["facts"]["buyer_name"] == "Corrected buyer"
 
     line =
       conn
       |> patch(path, %{section: "line", line_index: 0, values: %{description: "Corrected item"}})
-      |> json_response(200)
+      |> contract_response(200)
 
     assert hd(line["lines"])["values"]["description"] == "Corrected item"
 
     totals =
       conn
       |> patch(path, %{section: "totals", values: %{printed_grand_total: "999.50"}})
-      |> json_response(200)
+      |> contract_response(200)
 
     assert totals["printed_totals"]["printed_grand_total"] == "999.5"
     corrections = Corrections.list(org.id, client.id, invoice["id"])
@@ -148,7 +149,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
           %{section: "line", line_index: 0, values: %{taxable_value: "-1"}},
           %{section: "totals", values: %{printed_grand_total: %{nested: "bad"}}}
         ] do
-      assert conn |> patch(path, payload) |> json_response(422)
+      assert conn |> patch(path, payload) |> contract_response(422)
     end
 
     assert Corrections.list(org.id, client.id, invoice["id"]) == []
@@ -160,10 +161,12 @@ defmodule NilaWeb.SalesReviewControllerTest do
     month: month,
     user: user
   } do
-    body = conn |> get(path) |> json_response(200)
+    body = conn |> get(path) |> contract_response(200)
     issue = Enum.find(body["issues"], & &1["can_confirm"])
     assert issue
-    confirmed = conn |> post(path <> "/confirm", %{target: issue["target"]}) |> json_response(200)
+
+    confirmed =
+      conn |> post(path <> "/confirm", %{target: issue["target"]}) |> contract_response(200)
 
     refute Enum.any?(
              confirmed["issues"],
@@ -175,8 +178,8 @@ defmodule NilaWeb.SalesReviewControllerTest do
              &(&1.target == issue["target"] and &1.decided_by_id == user.id)
            )
 
-    assert conn |> post(path <> "/confirm", %{target: "made-up|target"}) |> json_response(422)
-    assert conn |> post(path <> "/confirm", %{target: issue["target"]}) |> json_response(422)
+    assert conn |> post(path <> "/confirm", %{target: "made-up|target"}) |> contract_response(422)
+    assert conn |> post(path <> "/confirm", %{target: issue["target"]}) |> contract_response(422)
   end
 
   test "filed month shows its snapshot and rejects edits and confirmations", %{
@@ -185,41 +188,41 @@ defmodule NilaWeb.SalesReviewControllerTest do
     month: month
   } do
     month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
-    body = conn |> get(path) |> json_response(200)
+    body = conn |> get(path) |> contract_response(200)
     refute body["can_edit"]
     assert body["lock_reason"] =~ "filed"
 
     assert conn
            |> patch(path, %{section: "facts", values: %{buyer_name: "No"}})
-           |> json_response(409)
+           |> contract_response(409)
 
-    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> json_response(409)
+    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> contract_response(409)
   end
 
   test "missing and foreign invoices never fall back to another invoice, viewers cannot mutate",
        %{conn: conn, path: path, client: client, org: org, user: user} do
-    assert build_conn() |> get(path) |> json_response(401)
+    assert build_conn() |> get(path) |> contract_response(401)
     %{user: other} = user_with_org_fixture()
-    assert build_conn() |> log_in_user(other) |> get(path) |> json_response(404)
+    assert build_conn() |> log_in_user(other) |> get(path) |> contract_response(404)
 
     assert conn
            |> get("/api/workspace/sales/#{client.id}/2025-10/invoices/missing")
-           |> json_response(404)
+           |> contract_response(404)
 
-    assert conn |> get(String.replace(path, "2025-10", "2025-09")) |> json_response(404)
+    assert conn |> get(String.replace(path, "2025-10", "2025-09")) |> contract_response(404)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id and m.org_id == ^org.id),
       set: [role: "viewer"]
     )
 
-    body = conn |> get(path) |> json_response(200)
+    body = conn |> get(path) |> contract_response(200)
     refute body["can_edit"]
 
     assert conn
            |> patch(path, %{section: "facts", values: %{buyer_name: "No"}})
-           |> json_response(403)
+           |> contract_response(403)
 
-    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> json_response(403)
+    assert conn |> post(path <> "/confirm", %{target: "anything"}) |> contract_response(403)
   end
 end

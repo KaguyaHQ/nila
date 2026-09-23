@@ -1,4 +1,5 @@
 defmodule NilaWeb.SalesMonthChecksControllerTest do
+  import NilaWeb.SalesApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
   import Ecto.Query
@@ -58,7 +59,7 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     client: client,
     dump: dump
   } do
-    body = conn |> get(path) |> json_response(200)
+    body = conn |> get(path) |> contract_response(200)
     assert body["can_edit"]
     assert Enum.any?(body["checks"], &(&1["code"] == "pages_unaccounted"))
     assert Enum.any?(body["checks"], &(&1["code"] == "evidence_unavailable"))
@@ -70,28 +71,40 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     assert conn |> get(json_path) |> response(422)
 
     for check <- body["checks"] do
-      assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(200)
+      assert conn
+             |> post(path <> "/decision", decision(check, "confirm"))
+             |> contract_response(200)
     end
 
     assert conn |> get(json_path) |> json_response(200)
-    assert conn |> post(path <> "/decision", decision(pages, "confirm")) |> json_response(409)
+    assert conn |> post(path <> "/decision", decision(pages, "confirm")) |> contract_response(409)
 
     resolved =
       conn
       |> get(path)
-      |> json_response(200)
+      |> contract_response(200)
       |> Map.fetch!("checks")
       |> Enum.find(&(&1["target"] == pages["target"]))
 
     reopened =
-      conn |> post(path <> "/decision", decision(resolved, "reopen")) |> json_response(200)
+      conn |> post(path <> "/decision", decision(resolved, "reopen")) |> contract_response(200)
 
     assert conn |> get(json_path) |> response(422)
-    assert conn |> post(path <> "/decision", decision(resolved, "reopen")) |> json_response(409)
-    assert conn |> post(path <> "/decision", decision(pages, "confirm")) |> json_response(409)
+
+    assert conn
+           |> post(path <> "/decision", decision(resolved, "reopen"))
+           |> contract_response(409)
+
+    assert conn |> post(path <> "/decision", decision(pages, "confirm")) |> contract_response(409)
     current = Enum.find(reopened["checks"], &(&1["target"] == pages["target"]))
-    assert conn |> post(path <> "/decision", decision(current, "confirm")) |> json_response(200)
-    assert conn |> post(path <> "/decision", decision(resolved, "reopen")) |> json_response(409)
+
+    assert conn
+           |> post(path <> "/decision", decision(current, "confirm"))
+           |> contract_response(200)
+
+    assert conn
+           |> post(path <> "/decision", decision(resolved, "reopen"))
+           |> contract_response(409)
   end
 
   test "changed pages and another same-name source invalidate saved confirmation and stale request",
@@ -99,11 +112,11 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     check =
       conn
       |> get(path)
-      |> json_response(200)
+      |> contract_response(200)
       |> Map.fetch!("checks")
       |> Enum.find(&(&1["code"] == "pages_unaccounted"))
 
-    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(200)
+    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> contract_response(200)
 
     dump =
       dump
@@ -115,14 +128,17 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     changed =
       conn
       |> get(path)
-      |> json_response(200)
+      |> contract_response(200)
       |> Map.fetch!("checks")
       |> Enum.find(&(&1["code"] == "pages_unaccounted"))
 
     assert changed["status"] == "open"
     refute changed["basis"] == check["basis"]
-    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(409)
-    assert conn |> post(path <> "/decision", decision(changed, "confirm")) |> json_response(200)
+    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> contract_response(409)
+
+    assert conn
+           |> post(path <> "/decision", decision(changed, "confirm"))
+           |> contract_response(200)
 
     {:ok, other} =
       Dumps.record(%{org_id: org.id, client_id: client.id}, %{
@@ -139,7 +155,7 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     rows =
       conn
       |> get(path)
-      |> json_response(200)
+      |> contract_response(200)
       |> Map.fetch!("checks")
       |> Enum.filter(&(&1["code"] == "pages_unaccounted"))
 
@@ -174,7 +190,7 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
                basis: issue["basis"],
                action: "confirm"
              })
-             |> json_response(422)
+             |> contract_response(422)
     end
 
     assert conn
@@ -183,7 +199,7 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
              basis: issue["basis"],
              action: "delete"
            })
-           |> json_response(422)
+           |> contract_response(422)
   end
 
   test "tenant, viewer and filed protections apply to monthly decisions", %{
@@ -193,18 +209,18 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     user: user,
     org: org
   } do
-    check = hd((conn |> get(path) |> json_response(200))["checks"])
+    check = hd((conn |> get(path) |> contract_response(200))["checks"])
     %{user: foreign} = user_with_org_fixture()
-    assert build_conn() |> log_in_user(foreign) |> get(path) |> json_response(404)
-    assert build_conn() |> get(path) |> json_response(401)
+    assert build_conn() |> log_in_user(foreign) |> get(path) |> contract_response(404)
+    assert build_conn() |> get(path) |> contract_response(401)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id and m.org_id == ^org.id),
       set: [role: "viewer"]
     )
 
-    refute (conn |> get(path) |> json_response(200))["can_edit"]
-    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(403)
+    refute (conn |> get(path) |> contract_response(200))["can_edit"]
+    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> contract_response(403)
 
     Repo.update_all(
       from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id and m.org_id == ^org.id),
@@ -212,8 +228,8 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     )
 
     month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
-    refute (conn |> get(path) |> json_response(200))["can_edit"]
-    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(409)
+    refute (conn |> get(path) |> contract_response(200))["can_edit"]
+    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> contract_response(409)
   end
 
   test "blocking packet issue is never exposed as a confirmable check", %{
@@ -224,7 +240,7 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     check =
       conn
       |> get(path)
-      |> json_response(200)
+      |> contract_response(200)
       |> Map.fetch!("checks")
       |> Enum.find(&(&1["code"] == "pages_unaccounted"))
 
@@ -240,11 +256,11 @@ defmodule NilaWeb.SalesMonthChecksControllerTest do
     |> Repo.update!()
 
     refute Enum.any?(
-             (conn |> get(path) |> json_response(200))["checks"],
+             (conn |> get(path) |> contract_response(200))["checks"],
              &(&1["code"] == "pages_unaccounted")
            )
 
-    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> json_response(422)
+    assert conn |> post(path <> "/decision", decision(check, "confirm")) |> contract_response(422)
   end
 
   defp decision(check, action),

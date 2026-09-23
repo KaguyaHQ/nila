@@ -1,4 +1,5 @@
 defmodule NilaWeb.SalesWorkspaceControllerTest do
+  import NilaWeb.SalesApiContract, only: [contract_response: 2]
   use NilaWeb.ConnCase, async: true
   import Nila.GstFixtures
 
@@ -29,7 +30,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
   } do
     {:ok, month} = Months.get_by_period(org.id, client.id, "2025-10")
     working = Resolutions.effective_workings(month)
-    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> json_response(200)
+    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> contract_response(200)
     assert body["client"]["id"] == client.id
     assert body["taxable"] == Helpers.rupees(Values.filed_totals(working.derived).taxable)
     assert body["tax"] == Helpers.rupees(Values.filed_totals(working.derived).tax)
@@ -54,7 +55,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
 
   test "an empty month is valid without fixture invoices", %{conn: conn, client: client} do
     response = get(conn, "/api/workspace/sales/#{client.id}/2026-01")
-    body = json_response(response, 200)
+    body = contract_response(response, 200)
     assert body["rows"] == []
     assert body["invoice_count"] == 0
     assert body["taxable"] == "—"
@@ -75,7 +76,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     |> Ecto.Changeset.change(invoices: month.invoices ++ [excluded], filed_at: DateTime.utc_now())
     |> Nila.Repo.update!()
 
-    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> json_response(200)
+    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> contract_response(200)
     assert body["tax"] == Helpers.rupees(Values.filed_totals(month.derived_gstr1).tax)
     row = Enum.find(body["rows"], &(&1["id"] == "excluded-copy"))
     assert row["status"] == "excluded"
@@ -88,12 +89,12 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     response =
       conn |> recycle() |> log_in_user(other) |> get("/api/workspace/sales/#{client.id}/2025-10")
 
-    assert json_response(response, 404) == %{"error" => "This client is not available."}
+    assert contract_response(response, 404) == %{"error" => "This client is not available."}
   end
 
   test "signed-out requests receive JSON, not login HTML", %{client: client} do
     response = build_conn() |> get("/api/workspace/sales/#{client.id}/2025-10")
-    assert json_response(response, 401) == %{"error" => "Sign in to continue."}
+    assert contract_response(response, 401) == %{"error" => "Sign in to continue."}
   end
 
   test "invalid client identifiers and periods do not reach Ecto", %{conn: conn, client: client} do
@@ -102,7 +103,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
           "/api/workspace/sales/#{client.id}/2025-13",
           "/api/workspace/sales/#{client.id}/bad"
         ] do
-      assert conn |> get(url) |> json_response(400) == %{
+      assert conn |> get(url) |> contract_response(400) == %{
                "error" => "Choose a valid client and month."
              }
     end
@@ -117,7 +118,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
 
   test "detail tables expose formatted section rows, HSN contributors and source document series",
        %{conn: conn, client: client} do
-    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> json_response(200)
+    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> contract_response(200)
     assert Enum.sort(Map.keys(body["details"])) == ~w(b2b b2cl b2cs cdnr documents exp hsn sez)
     rows = get_in(body, ["details", "b2b", "groups"]) |> hd() |> Map.fetch!("rows")
     assert rows != []
@@ -176,7 +177,7 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     |> Ecto.Changeset.change(filed_at: DateTime.utc_now(), derived_gstr1: snapshot)
     |> Nila.Repo.update!()
 
-    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> json_response(200)
+    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> contract_response(200)
     [row] = body["details"]["b2b"]["groups"] |> hd() |> Map.fetch!("rows")
     assert row["cells"]["taxable"] == Helpers.rupees(4321.0)
     assert row["cells"]["tax"] == Helpers.rupees(777.78)
@@ -184,5 +185,21 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     assert hsn["cells"]["taxable"] == Helpers.rupees(4321.0)
     assert hsn["cells"]["tax"] == Helpers.rupees(777.78)
     refute Map.has_key?(hsn, "children")
+  end
+
+  test "sales contract rejects missing fields and wrong count types", %{
+    conn: conn,
+    client: client
+  } do
+    body = conn |> get("/api/workspace/sales/#{client.id}/2026-01") |> contract_response(200)
+
+    assert {:error, _} =
+             NilaWeb.SalesApiContract.validate("SalesWorkspace", Map.delete(body, "exports"))
+
+    assert {:error, _} =
+             NilaWeb.SalesApiContract.validate(
+               "SalesWorkspace",
+               Map.put(body, "invoice_count", "0")
+             )
   end
 end

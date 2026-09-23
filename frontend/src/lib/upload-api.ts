@@ -1,28 +1,12 @@
 import { ApiError } from "./sales-api";
 
-export type UploadHistory = {
-  batches: {
-    id: string;
-    created_at: string;
-    review_url: string;
-    invoice_ids?: string[];
-    files: {
-      id: string | number;
-      name: string;
-      state: string;
-      label: string;
-      invoice_count: number;
-      error: string | null;
-      original_url: string | null;
-    }[];
-  }[];
-  processing: boolean;
-};
+import type { components } from "./generated/sales-workspace";
 
-export type PreparedUpload = {
-  token: string;
-  files: { name: string; url: string }[];
-};
+export type UploadHistory = components["schemas"]["UploadHistory"];
+export type PreparedUpload = components["schemas"]["PreparedUpload"];
+export type PrepareUpload = components["schemas"]["PrepareUpload"];
+export type UploadToken = components["schemas"]["UploadToken"];
+export type CommittedUpload = components["schemas"]["CommittedUpload"];
 
 function uploadPath(client: number, period: string) {
   return `/api/workspace/sales/${encodeURIComponent(client)}/${encodeURIComponent(period)}/uploads`;
@@ -55,15 +39,15 @@ export function fetchUploads(client: number, period: string, signal: AbortSignal
 export function prepareUpload(client: number, period: string, files: File[], signal: AbortSignal) {
   return request<PreparedUpload>(`${uploadPath(client, period)}/prepare`, signal, {
     files: files.map(({ name, size }) => ({ name, size })),
-  });
+  } satisfies PrepareUpload);
 }
 
 export function commitUpload(client: number, period: string, token: string, signal: AbortSignal) {
-  return request<unknown>(uploadPath(client, period), signal, { token });
+  return request<CommittedUpload>(uploadPath(client, period), signal, { token } satisfies UploadToken);
 }
 
 export function refreshUpload(client: number, period: string, token: string, signal: AbortSignal) {
-  return request<PreparedUpload>(`${uploadPath(client, period)}/prepare`, signal, { token });
+  return request<PreparedUpload>(`${uploadPath(client, period)}/prepare`, signal, { token } satisfies UploadToken);
 }
 
 export function uploadPdf(url: string, file: File, signal: AbortSignal, onProgress: (percent: number) => void): Promise<void> {

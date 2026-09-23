@@ -1,79 +1,9 @@
-export type SalesSectionRow = {
-  id: string;
-  cells: Record<string, string>;
-  invoice_path: string | null;
-  children?: SalesSectionRow[];
-};
+import type { components, paths } from "./generated/sales-workspace";
 
-export type SalesSectionDetail = {
-  title: string;
-  description: string;
-  note: string | null;
-  groups: {
-    id: string;
-    label: string | null;
-    columns: { key: string; label: string; align: "left" | "right" }[];
-    rows: SalesSectionRow[];
-  }[];
-};
-
-export type SalesExportItem = {
-  id: "workings" | "json";
-  label: string;
-  format: "XLSX" | "JSON";
-  url: string;
-  enabled: boolean;
-  reason: string | null;
-};
-
-export type SalesWorkspace = {
-  client: { id: number; name: string };
-  clients: { id: number; name: string }[];
-  user: { name: string; org: string };
-  period: string;
-  month_label: string;
-  can_upload: boolean;
-  deadline: string;
-  invoice_count: number;
-  review_count: number;
-  month_issue_count: number;
-  taxable: string | null;
-  tax: string | null;
-  uploads: { files: number; unfinished: boolean };
-  rows: {
-    id: string;
-    number: string;
-    date: string | null;
-    customer: string;
-    gstin: string | null;
-    status: "ready" | "needs_review" | "excluded";
-    taxable: string | null;
-    tax: string | null;
-    reason: string | null;
-    path: string | null;
-  }[];
-  sections: {
-    id: string;
-    label: string;
-    count: string;
-    value: string | null;
-    status: string;
-    variant: string;
-    path: string | null;
-  }[];
-  details?: Record<string, SalesSectionDetail>;
-  exports?: {
-    items: SalesExportItem[];
-    blockers: { id: string; message: string; path: string | null; external: boolean }[];
-    status: string;
-  };
-  links: {
-    upload: string;
-    uploads: string;
-    working: string;
-    purchases: string;
-  };
-};
+export type SalesSectionRow = components["schemas"]["SalesSectionRow"];
+export type SalesSectionDetail = components["schemas"]["SalesSectionDetail"];
+export type SalesExportItem = components["schemas"]["SalesExportItem"];
+export type SalesWorkspace = paths["/api/workspace/sales/{client_id}/{period}"]["get"]["responses"][200]["content"]["application/json"];
 
 export class ApiError extends Error {
   constructor(

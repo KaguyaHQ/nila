@@ -3,12 +3,13 @@ import type { SalesWorkspace } from "../src/lib/sales-api";
 
 function workspace(client = 1): SalesWorkspace {
   return {
+    details: {}, exports: { items: [], blockers: [], status: "No exports available." },
     client: { id: client, name: client === 1 ? "Breeze Tech" : "Second client" },
     clients: [{ id: 1, name: "Breeze Tech" }, { id: 2, name: "Second client" }],
     user: { name: "Accountant", org: "Test firm" },
     period: "2026-06", month_label: "June 2026", deadline: "2026-07-11",
     invoice_count: 0, review_count: 0, month_issue_count: 0, can_upload: true,
-    taxable: null, tax: null, uploads: { files: 0, unfinished: false }, rows: [], sections: [],
+    taxable: "—", tax: "—", uploads: { files: 0, unfinished: false }, rows: [], sections: [],
     links: { upload: "/gst/1/2026-06/sales/upload", uploads: "/gst/1/2026-06/sales/uploads", working: "/gst/1/2026-06/sales", purchases: "/gst/1/2026-06/purchases" },
   };
 }

@@ -1,30 +1,15 @@
 import { ApiError } from "./sales-api";
 
-export type MonthlySalesCheck = {
-  target: string;
-  code: string;
-  title: string;
-  message: string;
-  status: "open" | "resolved";
-  basis: string | null;
-  confirm_label: string;
-  confirmation_text: string;
-  sources: { id: number; name: string; url: string }[];
-  action_paths: { label: string; path: string }[];
-};
+import type { components } from "./generated/sales-workspace";
 
-export type MonthlySalesChecks = {
-  client: { id: number; name: string; gstin: string | null };
-  period: string;
-  can_edit: boolean;
-  lock_reason: string | null;
-  checks: MonthlySalesCheck[];
-};
+export type MonthlySalesCheck = components["schemas"]["MonthlySalesCheck"];
+export type MonthlySalesChecks = components["schemas"]["MonthlySalesChecks"];
+export type MonthlySalesDecision = components["schemas"]["MonthlySalesDecision"];
 
 function checksPath(client: string, period: string) {
   return `/api/workspace/sales/${encodeURIComponent(client)}/${encodeURIComponent(period)}/checks`;
 }
-async function request(url: string, signal: AbortSignal, decision?: { target: string; basis: string; action: "confirm" | "reopen" }): Promise<MonthlySalesChecks> {
+async function request(url: string, signal: AbortSignal, decision?: MonthlySalesDecision): Promise<MonthlySalesChecks> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (decision) {
     headers["Content-Type"] = "application/json";
@@ -43,6 +28,6 @@ async function request(url: string, signal: AbortSignal, decision?: { target: st
 export function fetchSalesChecks(client: string, period: string, signal: AbortSignal) {
   return request(checksPath(client, period), signal);
 }
-export function decideSalesCheck(client: string, period: string, decision: { target: string; basis: string; action: "confirm" | "reopen" }, signal: AbortSignal) {
+export function decideSalesCheck(client: string, period: string, decision: MonthlySalesDecision, signal: AbortSignal) {
   return request(`${checksPath(client, period)}/decision`, signal, decision);
 }

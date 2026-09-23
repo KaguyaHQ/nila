@@ -4,6 +4,7 @@ import type { SalesWorkspace } from "../src/lib/sales-api";
 
 function workspace(): SalesWorkspace {
   return {
+    details: {}, exports: { items: [], blockers: [], status: "No exports available." },
     client: { id: 1, name: "Breeze Tech" }, clients: [{ id: 1, name: "Breeze Tech" }], user: { name: "Accountant", org: "Test firm" }, period: "2026-06", month_label: "June 2026", can_upload: true, deadline: "2026-07-11", invoice_count: 1, review_count: 0, month_issue_count: 3,
     taxable: "₹1,000.00", tax: "₹180.00", uploads: { files: 1, unfinished: false }, rows: [], sections: [],
     links: { upload: "/gst/1/2026-06/sales/upload", uploads: "/gst/1/2026-06/sales/uploads", working: "/gst/1/2026-06/sales", purchases: "/gst/1/2026-06/purchases" },

@@ -7,14 +7,15 @@ const client = { id: 2, name: "Harbour Services" };
 const user = { name: "Accountant", org: "Test firm" };
 function sales(period: string): SalesWorkspace {
   const base = `/gst/2/${period}/sales`;
-  return { client, clients: [client], user, period, month_label: period, can_upload: true, deadline: "2026-07-11", invoice_count: 0, review_count: 0, month_issue_count: 0, taxable: "₹0.00", tax: "₹0.00", uploads: { files: 0, unfinished: false }, rows: [], sections: [], links: { upload: `${base}/upload`, uploads: `${base}/uploads`, working: base, purchases: `/gst/2/${period}/purchases` } };
+  return {
+    details: {}, exports: { items: [], blockers: [], status: "No exports available." }, client, clients: [client], user, period, month_label: period, can_upload: true, deadline: "2026-07-11", invoice_count: 0, review_count: 0, month_issue_count: 0, taxable: "₹0.00", tax: "₹0.00", uploads: { files: 0, unfinished: false }, rows: [], sections: [], links: { upload: `${base}/upload`, uploads: `${base}/uploads`, working: base, purchases: `/gst/2/${period}/purchases` } };
 }
 function purchases(period: string, q: string): PurchasesWorkspace {
   const base = `/gst/2/${period}/purchases`;
   return { client: { ...client, gstin: null }, clients: [client], user, period, month_label: period, can_edit: true, signed_off: false, lock_reason: null, processing: false, inputs: { books: { present: false, count: 0, tax: "₹0.00" }, portal: { present: false, count: 0, tax: "₹0.00", fetching: false, needs_import: false } }, overview: { complete: false, comparison_available: false, remaining: 0, buckets: [], itc: { recorded: false, claim: "₹0.00", later: "₹0.00", excluded: "₹0.00", pending: "₹0.00", carried_count: 0, stale_count: 0 } }, filters: [], filter: "register", q, rows: [], carried: [], working: { enabled: false, url: `${base}/workings.xlsx`, status: "Draft working", reason: "No sources yet" }, links: { import_excel: `${base}/import-excel`, uploads: `${base}/uploads`, portal: base, review: `${base}/review`, treatment: `${base}/review?filter=treatment`, carried: `${base}/review?filter=carried` }, notice: "" };
 }
 function invoice(id: string): SalesInvoiceReviewData {
-  return { client, period: "2026-06", invoice: { id, number: id, date: "2026-06-10", buyer_name: "Customer", buyer_gstin: null, place_of_supply: null }, facts: {}, lines: [], totals: [], printed_totals: {}, checks: [], issues: [], source: null, states: [], queue: [{ id: "one", number: "one", status: "needs_review" }, { id: "two", number: "two", status: "needs_review" }], can_edit: true, lock_reason: null, editable_fields: { facts: [], line: [], totals: [] } };
+  return { client, period: "2026-06", invoice: { id, number: id, date: "2026-06-10", buyer_name: "Customer", buyer_gstin: "", place_of_supply: "Not determined" }, facts: {}, lines: [], totals: [], printed_totals: {}, checks: [], issues: [], source: null, states: [], queue: [{ id: "one", number: "one", status: "needs_review" }, { id: "two", number: "two", status: "needs_review" }], can_edit: true, lock_reason: null, editable_fields: { facts: [], line: [], totals: [] } };
 }
 async function setup(page: Page) {
   await page.route("**/api/workspace/sales/2/**", route => {

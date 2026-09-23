@@ -3,6 +3,7 @@ import type { SalesWorkspace } from "../src/lib/sales-api";
 
 function month(client = 1, period = "2026-06"): SalesWorkspace {
   return {
+    details: {}, exports: { items: [], blockers: [], status: "No exports available." },
     client: {
       id: client,
       name: client === 1 ? "Breeze Tech" : "Second client",

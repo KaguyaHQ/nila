@@ -4,7 +4,7 @@ import type { SalesInvoiceReviewData } from "../src/lib/sales-review-api";
 function invoice(id: string): SalesInvoiceReviewData {
   return {
     client: { id: 1, name: "Breeze Tech" }, period: "2026-06",
-    invoice: { id, number: id === "one" ? "INV-001" : "INV-002", date: null, buyer_name: "Customer A", buyer_gstin: null, place_of_supply: null },
+    invoice: { id, number: id === "one" ? "INV-001" : "INV-002", date: "", buyer_name: "Customer A", buyer_gstin: "", place_of_supply: "Not determined" },
     facts: { invoice_number: "INV-001" }, lines: [], totals: [], printed_totals: {}, checks: [], issues: [], source: null, states: [],
     queue: [{ id: "one", number: "INV-001", status: "needs_review" }, { id: "two", number: "INV-002", status: "ready" }],
     can_edit: true, lock_reason: null, editable_fields: { facts: ["invoice_number"], line: [], totals: [] },

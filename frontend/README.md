@@ -111,3 +111,22 @@ and the remaining deliberate LiveView handoffs.
 References: [shadcn](https://ui.shadcn.com/docs/installation/vite),
 [React Router](https://reactrouter.com/start/declarative/installation),
 [Vite backend integration](https://vite.dev/guide/backend-integration).
+
+## Sales API contract
+
+`priv/openapi/sales-workspace.json` is the Phoenix-owned OpenAPI 3.1 contract for
+the sales workspace, invoice review/corrections, monthly checks, and PDF upload
+preparation, renewal, commit and history. It is explicitly maintained alongside the
+controllers, not inferred from Elixir maps. Purchases and clients are not migrated yet.
+
+After changing the contract, run `pnpm run api:generate` in `frontend/` and commit
+both the contract and `src/lib/generated/sales-workspace.ts`. Do not edit the generated
+file. `pnpm run check` and the production build reject stale generated types.
+
+The four sales controller test suites validate real success/error responses and
+accepted request bodies against this contract with JSV. Run the sales workspace,
+review, month-checks and upload controller tests after changing the contract.
+PDF bytes sent directly to storage and statutory/export downloads are not JSON
+workspace endpoints and retain their existing checks. Native fetch, session cookies,
+error handling and TanStack Query remain unchanged; generated types do not validate
+network responses at runtime.
