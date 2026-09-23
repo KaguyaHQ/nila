@@ -163,6 +163,9 @@ function PeriodControl() {
 export function LivePurchasesSummary() {
   const data = usePurchases();
   const { overview, inputs } = data;
+  const draft = !data.signed_off && !overview.complete;
+  const canReview =
+    inputs.books.count > 0 || inputs.portal.count > 0 || overview.itc.carried_count > 0;
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -170,7 +173,14 @@ export function LivePurchasesSummary() {
           <PeriodControl />
           <h1 className="text-3xl font-semibold tracking-tight">Purchases & ITC</h1>
         </div>
-        {data.signed_off && <Badge variant="outline">Signed off</Badge>}
+        <div className="flex items-center gap-3">
+          {data.signed_off && <Badge variant="outline">Signed off</Badge>}
+          {canReview && (
+            <Button nativeButton={false} role="link" render={<Link to={data.links.treatment} />}>
+              Review purchases <ArrowRight />
+            </Button>
+          )}
+        </div>
       </header>
       {data.lock_reason && <p className="text-sm text-muted-foreground">{data.lock_reason}</p>}
       {data.notice && (
@@ -188,12 +198,14 @@ export function LivePurchasesSummary() {
           <div key={key} className="rounded-lg border bg-white p-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-medium">{title}</h2>
-              <Link
-                to={`${basePath(data)}/register?source=${key}`}
-                className="text-sm underline underline-offset-4"
-              >
-                View register
-              </Link>
+              {input.present && (
+                <Link
+                  to={`${basePath(data)}/register?source=${key}`}
+                  className="text-sm underline underline-offset-4"
+                >
+                  View register
+                </Link>
+              )}
             </div>
             <p className="mt-4 text-2xl font-semibold tabular-nums">
               {input.present ? input.tax : "Not imported"}
@@ -240,12 +252,22 @@ export function LivePurchasesSummary() {
                   ? overview.remaining === 0
                     ? "No reconciliation items await review."
                     : `${overview.remaining} ${overview.remaining === 1 ? "item needs" : "items need"} review.`
-                  : "Add both sources to compare purchase books with GSTR-2B."}
+                  : !inputs.books.present
+                    ? "Import purchases to compare with GSTR-2B."
+                    : "Fetch GSTR-2B to compare with purchase books."}
               </p>
             </div>
-            <ReviewAction href={data.links.review}>
-              Open reconciliation <ArrowRight />
-            </ReviewAction>
+            {overview.comparison_available ? (
+              <ReviewAction href={data.links.review}>
+                Open reconciliation <ArrowRight />
+              </ReviewAction>
+            ) : (
+              !inputs.books.present && (
+                <LegacyAction href={data.links.import_excel} disabled={!data.can_edit}>
+                  Import purchase Excel
+                </LegacyAction>
+              )
+            )}
           </div>
           {overview.comparison_available && (
             <Table>
@@ -293,9 +315,6 @@ export function LivePurchasesSummary() {
                     "Review GSTR-2B to record ITC decisions."}
                 </p>
               </div>
-              <ReviewAction href={data.links.treatment}>
-                Open ITC treatment <ArrowRight />
-              </ReviewAction>
             </div>
             {overview.itc.recorded && (
               <dl className="mt-5 grid gap-3">
@@ -334,9 +353,17 @@ export function LivePurchasesSummary() {
               {data.working.reason && (
                 <p className="mt-1 text-sm text-muted-foreground">{data.working.reason}</p>
               )}
+              {draft && !data.working.reason && !overview.comparison_available && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {!inputs.books.present
+                    ? "Purchase register not imported."
+                    : "GSTR-2B not imported."}{" "}
+                  Reconciliation is pending.
+                </p>
+              )}
             </div>
             <LegacyAction href={data.working.url} disabled={!data.working.enabled}>
-              Download working
+              {draft ? "Download draft working" : "Download working"}
             </LegacyAction>
           </section>
         </aside>

@@ -186,11 +186,11 @@ test("purchase overview separates comparison, ITC and working with real legacy h
   await page.goto("/app/gst/1/2026-06/purchases");
   await expect(page.getByRole("heading", { name: "Purchases & ITC", exact: true })).toBeVisible();
   await expect(page.getByText("₹20.00 tax awaiting treatment.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open ITC treatment" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Review purchases" })).toHaveAttribute(
     "href",
     "/app/gst/1/2026-06/purchases/review?filter=treatment",
   );
-  await expect(page.getByRole("link", { name: "Download working" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Download draft working" })).toHaveAttribute(
     "href",
     "/gst/1/2026-06/purchases/workings.xlsx",
   );
@@ -311,19 +311,54 @@ test("register does not claim unmatched invoices when books are missing", async 
   await expect(page.getByText("Import both sources", { exact: false })).toBeVisible();
 });
 
-test("GSTR-2B treatment stays available without purchase books", async ({ page }) => {
+test("GSTR-2B treatment stays available without purchase books", async ({ page }, testInfo) => {
   const data = workspace();
   data.inputs.books = { present: false, count: 0, tax: "₹0.00" };
   data.overview.comparison_available = false;
   data.overview.itc.recorded = false;
+  data.working.status = "Draft working";
   await setup(page, data);
   await page.goto("/app/gst/1/2026-06/purchases");
   await expect(
     page.getByText("Review GSTR-2B to record ITC decisions.", { exact: false }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open ITC treatment" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review purchases" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open reconciliation" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Import purchase Excel" })).toHaveAttribute(
+    "href",
+    data.links.import_excel,
+  );
+  await expect(page.getByRole("link", { name: "View register" })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "View register" })).toHaveAttribute(
+    "href",
+    "/app/gst/1/2026-06/purchases/register?source=gstr2b",
+  );
+  await expect(page.getByRole("link", { name: "Download draft working" })).toBeVisible();
+  await expect(
+    page.getByText("Purchase register not imported. Reconciliation is pending."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Sources" }).getByText("GST", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Books tax" })).toHaveCount(0);
   await expect(page.getByText("Claim", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("portal-only-overview.png"), fullPage: true });
+  await page.getByRole("link", { name: "Review purchases" }).click();
+  await expect(page).toHaveURL("/app/gst/1/2026-06/purchases/review?filter=treatment");
+});
+
+test("empty overview offers imports without empty review or register links", async ({ page }) => {
+  const data = workspace();
+  data.inputs.books = { present: false, count: 0, tax: "₹0.00" };
+  data.inputs.portal = { ...data.inputs.portal, present: false, count: 0 };
+  data.overview.comparison_available = false;
+  data.overview.itc.carried_count = 0;
+  await setup(page, data);
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await expect(page.getByRole("heading", { name: "Purchases & ITC", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review purchases" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "View register" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open reconciliation" })).toHaveCount(0);
 });
 
 test("month controls preserve source and search", async ({ page }) => {
