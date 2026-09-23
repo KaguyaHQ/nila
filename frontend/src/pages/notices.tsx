@@ -1,5 +1,5 @@
 import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -49,7 +49,7 @@ import {
   type NoticeClient,
 } from "@/lib/notices-api";
 
-const SourcePdf = lazy(() => import("@/components/source-pdf"));
+import { NoticePdf } from "@/components/notice-pdf";
 const queryKey = ["notices"];
 const labels: Record<NoticeClient["state"], string> = {
   missing_gstin: "GSTIN missing",
@@ -195,6 +195,13 @@ export default function NoticesPage() {
           params={params}
           setDocument={(index) => setParams({ document: String(index) }, { replace: true })}
           connect={(id) => openChecks(false, id)}
+          reconnect={(id) => {
+            const client = data?.clients.find((client) => client.id === id);
+            if (client && data?.permissions.connect) {
+              connectionOpener.current = document.activeElement as HTMLElement;
+              setConnecting(client);
+            } else openChecks(false, id);
+          }}
         />
       ) : (
         <div className="space-y-6">
@@ -516,6 +523,7 @@ function NoticeReader({
   params,
   setDocument,
   connect,
+  reconnect,
 }: {
   pdfRevision: number;
   notice?: Notice;
@@ -525,8 +533,8 @@ function NoticeReader({
   params: URLSearchParams;
   setDocument: (index: number) => void;
   connect: (id: number) => void;
+  reconnect: (id: number) => void;
 }) {
-  const [reload, setReload] = useState(0);
   const selected = Number(params.get("document"));
   const defaultIndex = Math.max(
     0,
@@ -540,6 +548,24 @@ function NoticeReader({
       ? selected
       : defaultIndex;
   const document = notice?.documents[index];
+  const selector =
+    document && notice ? (
+      <div className="flex items-center gap-3">
+        <Label htmlFor="notice-document">Document</Label>
+        <NativeSelect
+          id="notice-document"
+          className="w-80"
+          value={index}
+          onChange={(e) => setDocument(Number(e.target.value))}
+        >
+          {notice.documents.map((d, i) => (
+            <option key={d.url} value={i}>
+              {d.name}
+            </option>
+          ))}
+        </NativeSelect>
+      </div>
+    ) : null;
   return (
     <div className="space-y-6">
       <Link
@@ -589,66 +615,22 @@ function NoticeReader({
             status.
           </p>
           {document ? (
-            <>
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <Label htmlFor="notice-document">Document</Label>
-                  <NativeSelect
-                    id="notice-document"
-                    className="w-80"
-                    value={index}
-                    onChange={(e) => setDocument(Number(e.target.value))}
-                  >
-                    {notice.documents.map((d, i) => (
-                      <option key={i} value={i}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                {document.type === "application/pdf" && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setReload((value) => value + 1)}
-                    >
-                      <RefreshCw />
-                      Reload document
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      nativeButton={false}
-                      role="link"
-                      render={<a href={document.url} target="_blank" rel="noopener noreferrer" />}
-                    >
-                      Open original
-                      <ArrowUpRight />
-                    </Button>
-                  </div>
-                )}
-              </div>
-              {document.type === "application/pdf" ? (
-                <section
-                  aria-label="Original notice PDF"
-                  className="h-[calc(100vh-25rem)] min-h-[480px] overflow-hidden rounded-xl border"
-                >
-                  <Suspense fallback={<Skeleton className="h-full" />}>
-                    <SourcePdf
-                      key={`${pdfRevision}:${reload}`}
-                      url={document.url}
-                      pages={[]}
-                      label="Notice"
-                    />
-                  </Suspense>
-                </section>
-              ) : (
+            document.type === "application/pdf" ? (
+              <NoticePdf
+                key={`${document.url}:${pdfRevision}`}
+                url={document.url}
+                reconnect={() => reconnect(notice.client_id)}
+              >
+                {selector}
+              </NoticePdf>
+            ) : (
+              <>
+                {selector}
                 <p className="py-10 text-sm text-muted-foreground">
                   Preview unavailable for this file type. View this attachment on the GST portal.
                 </p>
-              )}
-            </>
+              </>
+            )
           ) : (
             <p className="py-10 text-sm text-muted-foreground">
               No documents are available for this notice.

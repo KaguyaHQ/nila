@@ -25,7 +25,7 @@ defmodule NilaWeb.NoticeDocumentController do
       {:error, _} ->
         conn
         |> put_status(:bad_gateway)
-        |> text("Could not load the PDF. Reconnect the client's GST account or try again.")
+        |> text("Could not download this document from GST. Try again.")
 
       _ ->
         conn |> put_status(:not_found) |> text("Not found")

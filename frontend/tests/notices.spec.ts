@@ -256,11 +256,11 @@ test("reader handles PDF failure, document switching and back without legacy nav
   await page.getByRole("row").filter({ hasText: "ZD33092600123" }).getByRole("cell").nth(1).click();
   await expect(page).toHaveURL(/\/app\/notices\/10$/);
   await expect(page.getByRole("heading", { name: "Reminder", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute(
-    "href",
-    "/notices/10/documents/0",
-  );
-  await expect(page.locator("[data-pdf-status]")).not.toContainText("Loading PDF");
+  await expect(page.getByRole("alert")).toContainText("GST login expired");
+  await expect(page.getByRole("link", { name: "Open original" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Reconnect GST", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Connect GST", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByText("Reply and closure status are not supplied.", { exact: false }),
   ).toBeVisible();
@@ -270,7 +270,7 @@ test("reader handles PDF failure, document switching and back without legacy nav
       body: previewPdf("GST notice reference ZD33092600123"),
     }),
   );
-  await page.getByRole("button", { name: "Reload document" }).click();
+  await page.reload();
   await expect(page.locator("[data-pdf-status]")).toBeHidden();
   await expect(page.locator("canvas").first()).toBeVisible();
   await page.screenshot({ path: info.outputPath("notice-pdf.png"), fullPage: true });
@@ -328,4 +328,67 @@ test("empty notices retain failed coverage and a running check shows progress", 
   await expect(page.getByText("1 of 2 clients checked")).toBeVisible();
   await page.getByRole("button", { name: "View clients", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Client checks" })).toBeVisible();
+});
+
+for (const status of [502, 503, 504]) {
+  test(`notice download retries once after ${status} and recovers`, async ({ page }) => {
+    await setup(page);
+    let requests = 0;
+    await page.route("**/notices/10/documents/0", (route) => {
+      requests++;
+      return requests === 1
+        ? route.fulfill({ status, body: "Provider unavailable" })
+        : route.fulfill({ contentType: "application/pdf", body: previewPdf("Recovered notice") });
+    });
+    await page.goto("/app/notices/10");
+    await expect(page.locator("[data-rendered-page]")).toBeVisible();
+    expect(requests).toBe(2);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute(
+      "href",
+      /^blob:/,
+    );
+  });
+}
+
+test("failed notice download stops retrying and manual retry recovers", async ({ page }, info) => {
+  await setup(page);
+  let requests = 0;
+  await page.route("**/notices/10/documents/0", (route) => {
+    requests++;
+    return route.fulfill({ status: 502, body: "Provider unavailable" });
+  });
+  await page.goto("/app/notices/10");
+  await expect(page.getByRole("alert")).toContainText(
+    "Couldn’t download this document from GST. Try again.",
+  );
+  expect(requests).toBe(2);
+  await expect(page.getByRole("link", { name: "Open original" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download source PDF" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reconnect GST", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("notice-download-error.png"), fullPage: true });
+  await page.route("**/notices/10/documents/0", (route) =>
+    route.fulfill({
+      contentType: "application/pdf",
+      body: previewPdf("Recovered notice"),
+    }),
+  );
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.locator("[data-rendered-page]")).toBeVisible();
+});
+
+test("switching documents cancels a pending retry", async ({ page }) => {
+  await setup(page);
+  let requests = 0;
+  await page.route("**/notices/10/documents/0", (route) => {
+    requests++;
+    return route.fulfill({ status: 502 });
+  });
+  await page.goto("/app/notices/10");
+  await expect.poll(() => requests).toBe(1);
+  await page.getByLabel("Document", { exact: true }).selectOption("1");
+  await expect(page.getByText("Preview unavailable", { exact: false })).toBeVisible();
+  await page.waitForTimeout(1100);
+  expect(requests).toBe(1);
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
