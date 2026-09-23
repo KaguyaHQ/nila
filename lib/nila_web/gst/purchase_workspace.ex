@@ -181,7 +181,8 @@ defmodule NilaWeb.Gst.PurchaseWorkspace do
       excluded_tax: position["excluded_paise"] || 0,
       pending_tax: position["pending_paise"] || 0,
       treatment_recorded?:
-        workings != nil and Enum.any?(workings.case_lines, &(&1.explicit_treatment? or &1.treatment == "later")),
+        workings != nil and
+          Enum.any?(workings.case_lines, &(&1.explicit_treatment? or &1.treatment == "later")),
       carried_count: length(carried_cases(workings)),
       stale_count:
         if(workings, do: Enum.count(workings.case_lines, & &1.treatment_stale?), else: 0)
@@ -192,14 +193,24 @@ defmodule NilaWeb.Gst.PurchaseWorkspace do
   def label(item), do: item.outcome || elem(List.keyfind(@filters, item.bucket, 0), 1)
   def money(value), do: Nila.Formatters.format_money_with_paise(value || 0)
 
-  def list_path(client_id, period, filter, q),
-    do:
-      "/gst/#{client_id}/#{period}/purchases/register?" <>
-        URI.encode_query(%{filter: normalize_filter(filter), q: q || ""})
+  def list_path(client_id, period, filter, q) do
+    base = "/app/gst/#{client_id}/#{period}/purchases"
+
+    if filter in ~w(register gstr2b) do
+      base <>
+        "/register?" <>
+        URI.encode_query(%{
+          source: if(filter == "gstr2b", do: "gstr2b", else: "purchases"),
+          q: q || ""
+        })
+    else
+      base <> "/review?" <> URI.encode_query(%{filter: normalize_filter(filter), q: q || ""})
+    end
+  end
 
   def review_path(client_id, period, item_id, filter, q),
     do:
-      "/gst/#{client_id}/#{period}/purchases/invoices/#{URI.encode_www_form(item_id)}?" <>
+      "/app/gst/#{client_id}/#{period}/purchases/review/#{URI.encode_www_form(item_id)}?" <>
         URI.encode_query(%{filter: normalize_filter(filter), q: q || ""})
 
   defp selected?(_, "all"), do: true

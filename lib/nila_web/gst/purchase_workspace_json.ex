@@ -148,7 +148,7 @@ defmodule NilaWeb.Gst.PurchaseWorkspaceJson do
       links: %{
         import_excel: base <> "/import-excel",
         uploads: base <> "/uploads",
-        portal: base,
+        portal: "/app" <> base,
         review: review_list_path(client.id, period, "needs_review", ""),
         treatment: review_list_path(client.id, period, "treatment", ""),
         carried: review_list_path(client.id, period, "carried", "")

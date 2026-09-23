@@ -10,15 +10,15 @@ The email-change token endpoint is a controller returning to React settings.
 - Clients list/new/edit, notices list/detail, settings profile/security/workspace/users.
 - Purchases overview/register/invoice review; GSTR-2B connection/fetching.
 
-Old URLs redirect through `LegacyWorkspaceController` to React. Purchase source
-filters are translated to React's source selector; review filters keep their queue.
-Retained screens link directly to React for client and account management.
+Retired URLs are removed. There is no bookmark compatibility layer.
+Retained screens link directly to React.
 API, export, download and evidence controllers remain.
 
 ## Shared sales code still to separate
 
-- Sales summary/register/checks and month review live in `MonthLive`, which also
-  owns retained GSTR-3B. Separate those actions before deleting the sales UI.
+- Sales summary/register/checks and month review still live in `MonthLive`.
+  The old GSTR-3B route, screen and UI sign-off handlers are now removed.
+  Backend calculations and sign-off rules remain unchanged.
 - The batch viewer and invoice viewer include Tally/accounting work. Audit those
   entry paths with the deferred Tally scope before removing their modules.
 
@@ -26,14 +26,14 @@ API, export, download and evidence controllers remain.
 
 - Excel import screens and purchase upload history: preserve existing React handoffs.
 - Generic `/gst/upload` intake: inspect its remaining callers and supported formats.
-- `/gst/:client_id/:period/gstr3b`: no React replacement; previously deferred.
+- GSTR-3B UI: retired with no replacement. The former URL is no longer routed.
 - Banking and Tally connector/pairing: shelved, removal is a separate decision.
 - Marketing/contact/legal pages: server-rendered controllers, not LiveView.
 - Development LiveDashboard/design reference: not product migration blockers.
 
 ## Cleanup order
 
-1. Separate GSTR-3B from replaced `MonthLive` actions and remove the old sales routes.
+1. Remove the remaining old sales routes and their `MonthLive` UI.
 2. Resolve the remaining batch/invoice viewer dependency on Tally work.
 3. Decide and migrate remaining import flows.
 4. Audit banking/Tally jobs, data and shared dependencies before removing shelved code.

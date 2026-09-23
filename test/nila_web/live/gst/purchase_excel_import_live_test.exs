@@ -53,7 +53,7 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLiveTest do
     assert has_element?(view, "#purchase-excel-totals", "4,000.00")
     refute has_element?(view, "#purchase-excel-save[disabled]")
     view |> element("#purchase-excel-save") |> render_click()
-    assert_redirect(view, ~p"/gst/#{client.id}/2026-08/purchases")
+    assert_redirect(view, ~p"/app/gst/#{client.id}/2026-08/purchases")
     [dump] = Dumps.list(org.id, client.id, "2026-08")
     assert :ok = DumpWorker.perform(%Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1})
 

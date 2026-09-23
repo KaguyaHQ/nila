@@ -31,11 +31,11 @@ defmodule NilaWeb.BusinessInvitationControllerTest do
 
     business_conn = build_conn() |> log_in_user(business_user)
     assert business_conn |> get("/api/workspace/clients") |> contract_response(403)
-    assert business_conn |> get("/clients") |> redirected_to() == "/app/business/invoices"
+    assert business_conn |> get("/app/clients") |> redirected_to() == "/app/business/invoices"
 
     login =
       build_conn()
-      |> init_test_session(%{user_return_to: "/clients"})
+      |> init_test_session(%{user_return_to: "/app/clients"})
       |> NilaWeb.UserAuth.log_in_user(business_user)
 
     assert redirected_to(login) == "/app/business/invoices"

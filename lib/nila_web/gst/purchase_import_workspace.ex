@@ -162,7 +162,7 @@ defmodule NilaWeb.Gst.PurchaseImportWorkspace do
          upload_id: dump.id,
          state: dump.status,
          uploads_path: base(client, period) <> "/uploads?upload=#{dump.id}",
-         register_path: base(client, period) <> "/register"
+         register_path: "/app" <> base(client, period) <> "/register"
        }}
     else
       {:error, message} when is_binary(message) -> {:error, message}
@@ -227,7 +227,7 @@ defmodule NilaWeb.Gst.PurchaseImportWorkspace do
                  ),
                resolve_url:
                  if(dump.status in ~w(failed held after_filing needs_confirmation),
-                   do: base(client, period)
+                   do: "/app" <> base(client, period)
                  )
              }
            end),
@@ -240,7 +240,7 @@ defmodule NilaWeb.Gst.PurchaseImportWorkspace do
                invoices: Enum.map(selected.invoices, &Map.put(invoice(&1), :id, &1["id"]))
              }
            ),
-         register_path: base(client, period) <> "/register",
+         register_path: "/app" <> base(client, period) <> "/register",
          import_path: base(client, period) <> "/import-excel"
        }}
     end

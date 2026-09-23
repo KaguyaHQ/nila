@@ -43,7 +43,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
 
   @impl true
   def handle_event("done", _params, socket),
-    do: {:noreply, push_patch(socket, to: month_path(socket))}
+    do: {:noreply, push_navigate(socket, to: month_path(socket))}
 
   def handle_event("scope", %{"scope" => scope}, socket) when scope in ~w(needs_you all) do
     item = Review.lookup(socket.assigns.review.all, socket.assigns.selected_id)
@@ -376,7 +376,7 @@ defmodule NilaWeb.Components.Gst.Review.PurchaseLive do
     do: "Month is signed off — a senior must reopen it from the month page."
 
   defp month_path(socket),
-    do: "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/gstr3b"
+    do: "/app/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/purchases"
 
   defp review_path(socket, item, scope) do
     base = "/gst/#{socket.assigns.month.client_id}/#{socket.assigns.month.period}/review/purchase"

@@ -13,7 +13,7 @@ defmodule NilaWeb.ErrorHTMLTest do
       assert html =~ "Not found in the books."
       assert html =~ "Missing in 2B"
       assert html =~ "ITC on this page cannot be claimed."
-      assert html =~ ~s(href="/clients")
+      assert html =~ ~s(href="/app/clients")
     end
 
     test "reflects the requested path, capped", %{conn: conn} do

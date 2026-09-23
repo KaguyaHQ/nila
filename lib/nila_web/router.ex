@@ -277,27 +277,6 @@ defmodule NilaWeb.Router do
   scope "/", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
 
-    get "/clients", LegacyWorkspaceController, :show
-    get "/clients/new", LegacyWorkspaceController, :show
-    get "/clients/:id/edit", LegacyWorkspaceController, :show
-    get "/notices", LegacyWorkspaceController, :show
-    get "/notices/:id", LegacyWorkspaceController, :show
-    get "/settings/profile", LegacyWorkspaceController, :show
-    get "/settings/security", LegacyWorkspaceController, :show
-    get "/settings/workspace", LegacyWorkspaceController, :show
-    get "/settings/users", LegacyWorkspaceController, :show
-    get "/gst/:client_id/:period/purchases", LegacyWorkspaceController, :show
-
-    get "/gst/:client_id/:period/purchases/register",
-        LegacyWorkspaceController,
-        :purchase_register
-
-    get "/gst/2b", LegacyWorkspaceController, :gstr2b
-
-    get "/gst/:client_id/:period/purchases/invoices/:item_id",
-        LegacyWorkspaceController,
-        :purchase_review
-
     live_session :require_verified,
       on_mount: [
         {NilaWeb.UserAuth, :require_verified},
@@ -316,7 +295,6 @@ defmodule NilaWeb.Router do
       live "/gst/:client_id/:period/purchases/import-excel", Gst.PurchaseExcelImportLive, :new
 
       live "/gst/:client_id/:period", Gst.MonthLive, :index
-      live "/gst/:client_id/:period/gstr3b", Gst.MonthLive, :gstr3b
 
       live "/gst/:client_id/:period/sales", Gst.MonthLive, :sales_workspace
       live "/gst/:client_id/:period/sales/invoices/:source_id", Gst.InvoiceReviewLive, :show

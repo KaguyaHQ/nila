@@ -585,7 +585,7 @@ defmodule NilaWeb.Gst.UploadLive do
     kinds = socket.assigns.jobs |> Map.values() |> Enum.map(& &1.kind)
 
     if Enum.any?(kinds, &(&1 in ~w(purchase gstr2b))) do
-      ~p"/gst/#{client_id}/#{period}/purchases"
+      ~p"/app/gst/#{client_id}/#{period}/purchases"
     else
       ~p"/gst/#{client_id}/#{period}/sales"
     end
@@ -593,7 +593,7 @@ defmodule NilaWeb.Gst.UploadLive do
 
   defp job_work_path(%{client_id: client_id, period: period, kind: kind})
        when kind in ~w(purchase gstr2b),
-       do: ~p"/gst/#{client_id}/#{period}/purchases"
+       do: ~p"/app/gst/#{client_id}/#{period}/purchases"
 
   defp job_work_path(%{client_id: client_id, period: period}),
     do: ~p"/gst/#{client_id}/#{period}/sales/uploads"

@@ -5,8 +5,7 @@ defmodule NilaWeb.Gst.MonthLivePurchaseEvidenceTest do
   import Nila.AccountsFixtures
 
   alias Nila.Clients
-  alias Nila.Gst.Filing.Calendar
-  alias Nila.Gst.Intake.Dumps
+
   alias Nila.Gst.Purchase.Months
   alias Nila.Storage
 
@@ -71,53 +70,4 @@ defmodule NilaWeb.Gst.MonthLivePurchaseEvidenceTest do
     assert response(conn, 404)
   end
 
-  test "a dump after filing points to the open month and cannot be released", %{
-    conn: conn,
-    user: user,
-    org: org,
-    client: client
-  } do
-    {:ok, dump} =
-      Dumps.record(
-        %{org_id: org.id, client_id: client.id, brought_in_by_id: user.id},
-        %{period: @period, kind: "purchase", file_keys: ["late/purchase.pdf"]}
-      )
-
-    dump = Dumps.mark_after_filing(dump)
-    open_period = Calendar.closeable_period(Date.utc_today())
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    assert has_element?(view, "#month-headline", "Documents arrived after this month was filed")
-
-    assert has_element?(
-             view,
-             "#month-door-after-filing[href='/gst/upload?client_id=#{client.id}&period=#{open_period}']"
-           )
-
-    assert doors(view) == ["month-door-after-filing"]
-
-    assert has_element?(
-             view,
-             "#month-purchase-sources #month-dump-#{dump.id}",
-             "Added after filing"
-           )
-
-    assert has_element?(view, "#month-dump-#{dump.id}", "Move it to an open month")
-    refute has_element?(view, "#month-dump-release-#{dump.id}")
-    refute has_element?(view, "#month-dump-#{dump.id}", "reopen")
-  end
-
-  test "redirects logged-out visitors to log in", %{client: client} do
-    assert {:error, {:redirect, %{to: "/users/log_in"}}} =
-             live(Phoenix.ConnTest.build_conn(), "/gst/#{client.id}/#{@period}/gstr3b")
-  end
-
-  defp doors(view) do
-    view
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.query("[id^='month-door-']")
-    |> LazyHTML.attribute("id")
-  end
 end

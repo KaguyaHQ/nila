@@ -48,7 +48,7 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
     assert length(Resolutions.list(month.id)) == 0
 
     view |> element("#purchase-review button[phx-click='done']") |> render_click()
-    assert_patch(view, "/gst/#{context.client.id}/#{@period}/gstr3b")
+    assert_redirect(view, "/app/gst/#{context.client.id}/#{@period}/purchases")
   end
 
   test "confirm_pair records the evidence and alternatives shown", context do

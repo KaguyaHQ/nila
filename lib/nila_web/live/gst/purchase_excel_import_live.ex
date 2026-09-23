@@ -151,7 +151,7 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLive do
         {:noreply,
          socket
          |> put_flash(:info, "Excel imported. Preparing the purchase reconciliation.")
-         |> push_navigate(to: ~p"/gst/#{a.client.id}/#{a.period}/purchases")}
+         |> push_navigate(to: ~p"/app/gst/#{a.client.id}/#{a.period}/purchases")}
 
       {:error, reason} ->
         {:noreply, assign(socket, :error, error_text(reason))}
@@ -296,7 +296,7 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLive do
               href={~p"/gst/purchases-template.xlsx"}
               id="purchase-excel-template"
             >Download template</.button>
-            <.button variant="ghost" navigate={~p"/gst/#{@client.id}/#{@period}/purchases"}>Back to purchases</.button>
+            <.button variant="ghost" navigate={~p"/app/gst/#{@client.id}/#{@period}/purchases"}>Back to purchases</.button>
           </:actions>
           Import ordinary taxable purchase invoices. Credit notes, imports, exempt purchases and reverse charge need a separate path.
         </.page_header>

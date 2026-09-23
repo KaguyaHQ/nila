@@ -37,20 +37,6 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
     %{conn: log_in_user(conn, user), client: client}
   end
 
-  test "the direct GSTR-3B route links to sales and purchases", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    assert has_element?(view, "#gstr3b-open-sales[href='/gst/#{client.id}/#{@period}/sales']")
-
-    assert has_element?(
-             view,
-             "#gstr3b-open-purchases-header[href='/gst/#{client.id}/#{@period}/purchases']"
-           )
-
-    refute has_element?(view, "#month-workpaper-tab-purchases")
-    refute has_element?(view, "#month-workpaper-tab-gstr3b")
-  end
-
   test "a bare month URL enters sales and purchase workflow has its own route", %{
     conn: conn,
     client: client
@@ -60,7 +46,7 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
 
     assert target == "/gst/#{client.id}/#{@period}/sales"
 
-    assert conn |> get("/gst/#{client.id}/#{@period}/purchases") |> redirected_to() ==
-             "/app/gst/#{client.id}/#{@period}/purchases"
+    assert conn |> get("/app/gst/#{client.id}/#{@period}/purchases") |> html_response(200) =~
+             "id=\"root\""
   end
 end

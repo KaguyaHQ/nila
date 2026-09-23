@@ -28,15 +28,12 @@ defmodule NilaWeb.Gst.MonthLive do
     Evidence,
     Filing,
     Helpers,
-    Precondition,
     Verdict,
     SalesWorkspace,
-    HsnSummary,
-    Workpaper
+    HsnSummary
   }
 
   alias NilaWeb.Components.Gst.Review.{PurchaseLive, SalesLive}
-  alias NilaWeb.Components.Gst.PeriodHeader
   alias NilaWeb.Gst.PeriodOptions
 
   @unsupported_sales_codes ~w(
@@ -82,7 +79,7 @@ defmodule NilaWeb.Gst.MonthLive do
     dumps = Dumps.list(org_id, client.id, period)
 
     if purchase || sales || dumps != [] ||
-         socket.assigns.live_action in [:sales_workspace, :gstr3b] do
+         socket.assigns.live_action == :sales_workspace do
       socket
       |> assign(:client, client)
       |> assign(
@@ -221,10 +218,6 @@ defmodule NilaWeb.Gst.MonthLive do
     {:noreply, push_patch(socket, to: sales_review_path(socket, route), replace: true)}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :gstr3b}} = socket) do
-    {:noreply, assign(socket, purchase_review_route: nil, sales_review_route: nil)}
-  end
-
   def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
     {:noreply,
      push_navigate(socket,
@@ -300,7 +293,6 @@ defmodule NilaWeb.Gst.MonthLive do
     |> assign_sales(sales)
     |> assign_review_projections()
     |> assign_gstr1_readiness()
-    |> assign_gstr3b_readiness()
     |> assign_verdict(purchase, sales)
     |> assign_global_verdict()
     |> assign_register_views()
@@ -308,10 +300,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp assign_gstr1_readiness(socket) do
     assign(socket, :gstr1_readiness, Filing.gstr1_readiness(socket.assigns))
-  end
-
-  defp assign_gstr3b_readiness(socket) do
-    assign(socket, :gstr3b_readiness, Filing.gstr3b_readiness(socket.assigns))
   end
 
   defp assign_dumps(socket) do
@@ -754,7 +742,6 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign_purchase(month, workings)
       |> assign_review_projections()
       |> assign_verdict(month, socket.assigns.sales_month)
-      |> assign_gstr3b_readiness()
       |> assign_global_verdict()
       |> assign_register_views()
 
@@ -779,7 +766,6 @@ defmodule NilaWeb.Gst.MonthLive do
       |> assign_review_projections()
       |> assign_gstr1_readiness()
       |> assign_verdict(socket.assigns.purchase_month, month)
-      |> assign_gstr3b_readiness()
       |> assign_global_verdict()
       |> assign_register_views()
       |> assign(
@@ -939,92 +925,6 @@ defmodule NilaWeb.Gst.MonthLive do
 
   def handle_event("accept_difference", %{"target" => target}, socket),
     do: record(socket, %{"verb" => "accept_difference", "target" => target})
-
-  def handle_event("3b-sign-off", _params, socket) do
-    case Signoffs.sign_off(socket.assigns.purchase_month, socket.assigns.current_scope) do
-      {:ok, _} ->
-        {:noreply, socket |> reload() |> put_flash(:info, "Month signed off.")}
-
-      {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to sign off this month.")}
-
-      {:error, :already_signed} ->
-        {:noreply, put_flash(socket, :error, "This month is already signed off.")}
-
-      {:error, :sales_not_reviewed} ->
-        {:noreply,
-         put_flash(socket, :error, "Resolve the open sales checks before signing the GSTR-3B.")}
-
-      {:error, :not_reviewed} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(
-           :error,
-           "The register still has unsettled rows — work the decisions and collect the missing bills first."
-         )}
-
-      {:error, :itc_treatment_changed} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(
-           :error,
-           "Tax amounts changed after an ITC decision. Review the treatment before signing."
-         )}
-
-      {:error, :cess_review_required} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(
-           :error,
-           "Compensation cess needs separate review. Nila cannot sign off a cess claim or deferral."
-         )}
-
-      {:error, :itc_treatment_required} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(:error, "Set ITC treatment for the remaining invoices before signing.")}
-
-      {:error, :documents_unattested} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(
-           :error,
-           "Confirm whether the client holds tax invoices for the supplies with no bill on file — the credit cannot be claimed unanswered."
-         )}
-
-      {:error, {:ambiguous_itc_cases, _case_ids}} ->
-        {:noreply,
-         put_flash(socket, :error, "Resolve the ambiguous invoice identities before signing.")}
-
-      {:error, {:itc_already_allocated, _case_ids}} ->
-        {:noreply,
-         put_flash(socket, :error, "This ITC was already reserved or claimed in another period.")}
-
-      {:error, :unresolved_sales_intake} ->
-        {:noreply, put_flash(socket, :error, "A supplied sales packet is still unresolved.")}
-    end
-  end
-
-  def handle_event("3b-reopen-signoff", _params, socket) do
-    case Signoffs.reopen(socket.assigns.gstr3b_signoff, socket.assigns.current_scope) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> reload()
-         |> put_flash(:info, "Signature reopened — the month can be worked again.")}
-
-      {:error, :not_allowed} ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to reopen.")}
-
-      {:error, :already_revoked} ->
-        {:noreply, reload(socket)}
-    end
-  end
 
   def handle_event("precondition-choose", %{"answer" => answer}, socket)
       when answer in ~w(move keep discard),
@@ -1272,14 +1172,14 @@ defmodule NilaWeb.Gst.MonthLive do
 
   defp moved_work_path(%{kind: kind, client_id: client_id, period: period})
        when kind in ~w(purchase gstr2b),
-       do: ~p"/gst/#{client_id}/#{period}/purchases"
+       do: ~p"/app/gst/#{client_id}/#{period}/purchases"
 
   defp moved_work_path(%{client_id: client_id, period: period}),
     do: ~p"/gst/#{client_id}/#{period}/sales/uploads"
 
   defp track_path(socket, :sales), do: month_base_path(socket) <> "/sales"
 
-  defp track_path(socket, :purchases), do: month_base_path(socket) <> "/purchases"
+  defp track_path(socket, :purchases), do: "/app" <> month_base_path(socket) <> "/purchases"
 
   defp purchase_review_path(socket, route) do
     params = %{"item" => route.item, "scope" => to_string(route.scope)}
@@ -1430,146 +1330,6 @@ defmodule NilaWeb.Gst.MonthLive do
           >Reset demo</.button>
         </:footer>
       </.modal>
-
-      <div
-        :if={@live_action == :gstr3b or not is_nil(@purchase_review_route)}
-        id="month-page"
-        class="space-y-block mx-auto w-full max-w-[1400px]"
-      >
-        <PeriodHeader.period_header
-          client={@client}
-          period={@period}
-          picker_year={@filing_picker_year}
-          section="GSTR-3B"
-          path_for_period={fn period -> ~p"/gst/#{@client.id}/#{period}/gstr3b" end}
-        >
-          <.text_link id="gstr3b-open-sales" navigate={~p"/gst/#{@client.id}/#{@period}/sales"}>Sales &amp; GSTR-1</.text_link>
-          <.text_link
-            id="gstr3b-open-purchases-header"
-            navigate={~p"/gst/#{@client.id}/#{@period}/purchases"}
-          >Purchases &amp; ITC</.text_link>
-        </PeriodHeader.period_header>
-
-        <Verdict.verdict
-          verdict={@global_verdict}
-          period={@period}
-        />
-        <Precondition.question
-          :if={@verdict[:question]}
-          dump={@verdict.question.dump}
-          finding={@verdict.question.finding}
-          period={@period}
-          choice={@precondition_choice}
-          period_options={@move_options || []}
-        /> <Arrivals.chase_history_link asks={@asks} />
-        <div
-          :if={@sales_dumps != [] or @purchase_dumps != []}
-          class="space-y-block"
-        >
-          <Arrivals.source_record
-            :if={@sales_dumps != []}
-            can_sign_off={@can_sign_off}
-            id="month-sales-sources"
-            dumps={@sales_dumps}
-            superseded_2b_ids={@superseded_2b_ids}
-            client={@client}
-            period={@period}
-            open_period={@open_period}
-            gstr3b_signoff={@gstr3b_signoff}
-          />
-          <Arrivals.source_record
-            :if={@purchase_dumps != []}
-            can_sign_off={@can_sign_off}
-            id="month-purchase-sources"
-            dumps={@purchase_dumps}
-            superseded_2b_ids={@superseded_2b_ids}
-            client={@client}
-            period={@period}
-            open_period={@open_period}
-            gstr3b_signoff={@gstr3b_signoff}
-          />
-        </div>
-
-        <main id="month-evidence" class="space-y-canvas min-w-0">
-          <%= if @purchase_month do %>
-            <section id="month-gstr3b-workpaper" class="space-y-section">
-              <Filing.gstr3b_evidence
-                gstr3b={@gstr3b}
-                itc={@itc}
-                stats={@stats}
-                signed={@gstr3b_signoff != nil}
-              >
-                <:primary_action>
-                  <Filing.gstr3b_primary_action
-                    sales_reviewable={@reviewable}
-                    purchase_month={@purchase_month}
-                    sales_month={@sales_month}
-                    stats={@stats}
-                    gstr3b_signoff={@gstr3b_signoff}
-                    can_sign_off={@can_sign_off}
-                    sales_intake_open={@sales_intake_open}
-                    itc={@itc}
-                    gstr3b={@gstr3b}
-                  />
-                </:primary_action>
-              </Filing.gstr3b_evidence>
-
-              <Filing.gstr3b_blocker_list
-                sales_reviewable={@reviewable}
-                purchase_month={@purchase_month}
-                sales_month={@sales_month}
-                stats={@stats}
-                gstr3b_signoff={@gstr3b_signoff}
-                can_sign_off={@can_sign_off}
-                sales_intake_open={@sales_intake_open}
-                itc={@itc}
-                gstr3b={@gstr3b}
-              />
-              <Workpaper.section_nav links={
-                [
-                  %{id: "month-3b", label: "Return position"},
-                  @gstr3b_readiness.state == :blocked &&
-                    %{id: "gstr3b-blockers", label: "Blockers"},
-                  %{id: "gstr3b-controls", label: "Controls"},
-                  %{id: "gstr3b-source-references", label: "Sources"},
-                  @gstr3b_readiness.state != :blocked &&
-                    %{id: "month-exit-gstr3b", label: "Sign-off"}
-                ]
-                |> Enum.filter(&is_map/1)
-              } />
-              <Filing.gstr3b_controls
-                gstr3b={@gstr3b}
-                itc={@itc}
-                stats={@stats}
-                signed={@gstr3b_signoff != nil}
-                open_folds={@open_folds}
-                gstr3b_signoff={@gstr3b_signoff}
-                client_id={@client.id}
-                period={@period}
-              />
-              <Filing.gstr3b_actions
-                sales_reviewable={@reviewable}
-                purchase_month={@purchase_month}
-                sales_month={@sales_month}
-                stats={@stats}
-                gstr3b_signoff={@gstr3b_signoff}
-                can_sign_off={@can_sign_off}
-                sales_intake_open={@sales_intake_open}
-                itc={@itc}
-                gstr3b={@gstr3b}
-              />
-            </section>
-          <% else %>
-            <Workpaper.empty_state
-              track={:gstr3b}
-              client={@client}
-              period={@period}
-              purchase_present={false}
-              show_action={is_nil(@verdict[:question])}
-            />
-          <% end %>
-        </main>
-      </div>
 
       <.live_component
         :if={(@live_action == :review and @purchase_review_route) && @purchase_month}

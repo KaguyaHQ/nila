@@ -135,38 +135,6 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   # The month page shows every arrival
   # ---------------------------------------------------------------------------
 
-  test "a processed dump renders in the Arrived list with a download link", %{
-    conn: conn,
-    org: org,
-    client: client,
-    user: user
-  } do
-    dump = seed_dump(org, client, "purchase", user_id: user.id, source: "whatsapp")
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    assert has_element?(view, "#month-arrived-#{dump.id}", "Purchase bills")
-    assert has_element?(view, "#month-arrived-#{dump.id}", "1 file")
-    assert has_element?(view, "#month-arrived-#{dump.id}", "brought in by Test User")
-    assert has_element?(view, "#month-arrived-#{dump.id}", "via WhatsApp")
-    assert has_element?(view, "#month-page #month-purchase-sources")
-    refute has_element?(view, "#month-support")
-    refute render(view) =~ "arrival retained"
-    refute render(view) =~ "Source arrivals"
-
-    # `download` keeps the click a file fetch. As a bare `href` it was a
-    # top-level navigation, which tore down the LiveView socket on the way out
-    # — the disconnect banner and a full remount, for a file the page already
-    # serves as an attachment.
-    assert has_element?(
-             view,
-             "#month-arrived-file-#{dump.id}-0[href='/gst/#{client.id}/#{@period}/original/#{dump.id}/0'][download]",
-             "Download original"
-           )
-
-    refute has_element?(view, "#month-dump-#{dump.id}")
-  end
-
   test "sales uploads show filenames and reopen all files from the same upload", %{
     conn: conn,
     org: org,
@@ -200,77 +168,9 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
     end
   end
 
-  test "a replaced 2B renders both dumps, the old one marked", %{
-    conn: conn,
-    org: org,
-    client: client
-  } do
-    old = seed_dump(org, client, "gstr2b", ext: ".json")
-    new = seed_dump(org, client, "gstr2b", ext: ".json")
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    assert has_element?(view, "#month-arrived-#{old.id}", "Replaced")
-    assert has_element?(view, "#month-arrived-#{old.id} .line-through")
-    assert has_element?(view, "#month-arrived-#{new.id}")
-    refute has_element?(view, "#month-arrived-#{new.id}", "Replaced")
-  end
-
-  test "a month with no dumps renders no Arrived shell", %{conn: conn, client: client} do
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    refute has_element?(view, "#month-arrived")
-  end
-
   # ---------------------------------------------------------------------------
   # Chase history modal
   # ---------------------------------------------------------------------------
-
-  test "the month page links the chase history only when asks exist", %{
-    conn: conn,
-    org: org,
-    client: client,
-    user: user
-  } do
-    seed_dump(org, client, "purchase")
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-    refute has_element?(view, "#month-chase-history-link")
-
-    {:ok, manual} =
-      Chase.record_ask(
-        %{org_id: org.id, client_id: client.id, sent_by_id: user.id},
-        %{kind: "month_open", period: @period, body: "Hi Breeze Tech,\n\nplease send the bills."}
-      )
-
-    {:ok, auto} =
-      Chase.record_ask(
-        %{org_id: org.id, client_id: client.id},
-        %{
-          kind: "missing_bills",
-          period: @period,
-          body: "Sharma Steels — invoice INV-042, ₹11,800.00",
-          channel: "whatsapp"
-        }
-      )
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-    assert has_element?(view, "#month-chase-history-link", "Requests sent: 2 · view history")
-
-    view |> element("#month-chase-history-link") |> render_click()
-
-    assert has_element?(view, "#month-chase-history-modal")
-    assert has_element?(view, "#chase-ask-#{manual.id}", "Manual")
-    assert has_element?(view, "#chase-ask-#{manual.id}", "Month open")
-    assert has_element?(view, "#chase-ask-#{manual.id}", "sent by Test User")
-    assert has_element?(view, "#chase-ask-#{auto.id}", "WhatsApp")
-    assert has_element?(view, "#chase-ask-#{auto.id}", "Missing bills")
-    assert has_element?(view, "#chase-ask-#{auto.id}", "sent by Nila")
-
-    body = view |> element("#chase-ask-#{manual.id} pre") |> render()
-    assert body =~ "Hi Breeze Tech,\n\nplease send the bills."
-    assert render(view) =~ "Sharma Steels — invoice INV-042, ₹11,800.00"
-  end
 
   test "Today's ask label opens the same chase history", %{
     conn: conn,
@@ -296,33 +196,4 @@ defmodule NilaWeb.Gst.MonthPaperTrailTest do
   # ---------------------------------------------------------------------------
   # Tenancy
   # ---------------------------------------------------------------------------
-
-  test "another org's dumps and asks never render on this org's month", %{
-    conn: conn,
-    org: org,
-    client: client,
-    user: user
-  } do
-    %{org: other_org, user: other_user} = user_with_org_fixture()
-
-    {:ok, other_client} =
-      Clients.create_client(%{org_id: other_org.id, name: "Rival Corp", type: "company"})
-
-    foreign_dump = seed_dump(other_org, other_client, "purchase", user_id: other_user.id)
-
-    {:ok, _} =
-      Chase.record_ask(
-        %{org_id: other_org.id, client_id: other_client.id, sent_by_id: other_user.id},
-        %{kind: "month_open", period: @period, body: "Rival secret ask body."}
-      )
-
-    own_dump = seed_dump(org, client, "purchase", user_id: user.id)
-
-    {:ok, view, _html} = live(conn, "/gst/#{client.id}/#{@period}/gstr3b")
-
-    assert has_element?(view, "#month-arrived-#{own_dump.id}")
-    refute has_element?(view, "#month-arrived-#{foreign_dump.id}")
-    refute has_element?(view, "#month-chase-history-link")
-    refute render(view) =~ "Rival secret ask body."
-  end
 end

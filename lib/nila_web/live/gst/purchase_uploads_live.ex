@@ -130,7 +130,7 @@ defmodule NilaWeb.Gst.PurchaseUploadsLive do
           section="Purchases & ITC"
           path_for_period={fn period -> ~p"/gst/#{@client.id}/#{period}/purchases/uploads" end}
         />
-        <.text_link id="purchase-uploads-back" navigate={~p"/gst/#{@client.id}/#{@period}/purchases"}>← Purchases &amp; ITC overview</.text_link>
+        <.text_link id="purchase-uploads-back" navigate={~p"/app/gst/#{@client.id}/#{@period}/purchases"}>← Purchases &amp; ITC overview</.text_link>
         <.text_link
           :if={@selected}
           id="purchase-upload-back"
@@ -199,7 +199,7 @@ defmodule NilaWeb.Gst.PurchaseUploadsLive do
 
             <.text_link
               :if={dump.status in ~w(held after_filing needs_confirmation)}
-              navigate={~p"/gst/#{@client.id}/#{@period}/purchases"}
+              navigate={~p"/app/gst/#{@client.id}/#{@period}/purchases"}
             >Resolve on overview</.text_link>
           </:col>
 

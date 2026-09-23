@@ -83,7 +83,7 @@ const root = createRootRoute({
     ) : (
       <main className="p-10">
         <h1 className="text-2xl font-semibold">Page not found</h1>
-        <a href="/clients" className="mt-4 inline-block underline">
+        <a href="/app/clients" className="mt-4 inline-block underline">
           Back to clients
         </a>
       </main>
