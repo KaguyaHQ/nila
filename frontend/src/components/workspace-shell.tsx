@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   Building2,
@@ -39,7 +39,9 @@ const titles: Record<string, string> = {
 export function Shell({
   live,
   firm,
+  children,
 }: {
+  children?: ReactNode;
   firm?: { name: string; org: string };
   live?: {
     client: { id: number; name: string };
@@ -279,7 +281,7 @@ export function Shell({
           tabIndex={-1}
           className="mx-auto w-full max-w-7xl px-6 py-9 outline-none lg:px-10 lg:py-11"
         >
-          <Outlet />
+          {children ?? <Outlet />}
         </main>
       </div>
     </div>

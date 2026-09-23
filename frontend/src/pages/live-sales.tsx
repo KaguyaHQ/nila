@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { ApiError, fetchSales, type SalesWorkspace } from "@/lib/sales-api";
 import { SalesExports } from "@/components/sales-exports";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Workspace = createContext<SalesWorkspace | null>(null);
 export function useSales() {
@@ -42,16 +43,20 @@ export function useSales() {
   if (!data) throw new Error("Sales workspace is missing");
   return data;
 }
-export function basePath(data: SalesWorkspace) {
+export function basePath(data: Pick<SalesWorkspace, "client" | "period">) {
   return `/gst/${data.client.id}/${data.period}/sales`;
 }
 const money = (value: string | null) => value ?? "—";
 
 export function LiveSalesLayout() {
   const { clientId = "", period = "" } = useParams();
+  const { pathname } = useLocation();
   const query = useQuery({
     queryKey: ["sales", clientId, period],
     queryFn: ({ signal }) => fetchSales(clientId, period, signal),
+    // Retain same-client navigation metadata only. Never render its old figures.
+    placeholderData: (previous) =>
+      previous?.client.id === Number(clientId) ? previous : undefined,
     staleTime: 0,
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
     refetchInterval: (query) => (query.state.data?.uploads.unfinished ? 5000 : false),
@@ -60,9 +65,7 @@ export function LiveSalesLayout() {
   if (query.isPending)
     return (
       <main className="mx-auto max-w-7xl px-10 py-16" aria-busy="true">
-        <p role="status" className="text-muted-foreground">
-          Loading sales…
-        </p>
+        <SalesLoading />
       </main>
     );
   // Never leave another client's cached figures on screen after authorization fails.
@@ -86,21 +89,90 @@ export function LiveSalesLayout() {
       </main>
     );
 
+  const loading = query.isPlaceholderData;
+  const base = `/gst/${clientId}/${period}/sales`;
   return (
-    <Workspace.Provider value={query.data}>
+    <Workspace.Provider value={loading ? null : query.data}>
       <Shell
         live={{
           ...query.data,
-          base: basePath(query.data),
-          purchases: query.data.links.purchases,
+          base,
+          purchases: `/gst/${clientId}/${period}/purchases`,
         }}
-      />
+      >
+        {loading ? (
+          <>
+            <PeriodHeading
+              register={pathname.endsWith("/register")}
+              loading
+              data={{
+                client: query.data.client,
+                period,
+                invoice_count: 0,
+                month_label: new Intl.DateTimeFormat("en-IN", {
+                  month: "long",
+                  year: "numeric",
+                  timeZone: "UTC",
+                }).format(new Date(`${period}-01T12:00:00Z`)),
+              }}
+            />
+            <SalesLoading register={pathname.endsWith("/register")} />
+          </>
+        ) : undefined}
+      </Shell>
     </Workspace.Provider>
   );
 }
 
-function PeriodHeading({ register = false }: { register?: boolean }) {
-  const data = useSales();
+function SalesLoading({ register = false }: { register?: boolean }) {
+  return (
+    <div role="status" aria-label="Loading sales" aria-busy="true" className="space-y-6">
+      <span className="sr-only">Loading sales…</span>
+      <div aria-hidden="true" className="space-y-6">
+        <Card className="p-6 shadow-none">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-72" />
+          <div className="flex gap-8">
+            <Skeleton className="h-6 w-36" />
+            <Skeleton className="h-6 w-36" />
+            <Skeleton className="h-6 w-36" />
+          </div>
+        </Card>
+        <div className={register ? "" : "grid grid-cols-[minmax(0,1fr)_280px] gap-6"}>
+          <Card className="p-6 shadow-none">
+            <Skeleton className="h-5 w-40" />
+            {Array.from({ length: 7 }, (_, i) => (
+              <div key={i} className="flex justify-between border-t py-3">
+                <Skeleton className="h-4 w-52" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ))}
+          </Card>
+          {!register && (
+            <Card className="h-fit p-6 shadow-none">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PeriodHeading({
+  register = false,
+  loading = false,
+  data: supplied,
+}: {
+  register?: boolean;
+  loading?: boolean;
+  data?: Pick<SalesWorkspace, "client" | "period" | "month_label" | "invoice_count">;
+}) {
+  const workspace = useContext(Workspace);
+  const data = supplied ?? workspace!;
   const navigate = useNavigate();
   const [pickerOpen, setPickerOpen] = useState(false);
   const { search } = useLocation();
@@ -173,14 +245,18 @@ function PeriodHeading({ register = false }: { register?: boolean }) {
           </Button>
         </div>
       </div>
-      <Button
-        variant={data.invoice_count ? "outline" : "default"}
-        nativeButton={false}
-        role="link"
-        render={<Link to={`${basePath(data)}/upload`} />}
-      >
-        <Plus /> Add invoices
-      </Button>
+      {loading ? (
+        <Skeleton aria-hidden="true" className="h-9 w-32" />
+      ) : (
+        <Button
+          variant={data.invoice_count ? "outline" : "default"}
+          nativeButton={false}
+          role="link"
+          render={<Link to={`${basePath(data)}/upload`} />}
+        >
+          <Plus /> Add invoices
+        </Button>
+      )}
     </div>
   );
 }

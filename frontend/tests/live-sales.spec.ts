@@ -127,6 +127,51 @@ test("loading, forbidden and expired session never masquerade as an empty regist
   );
 });
 
+test("month changes retain the shell and controls, hide old figures, and reuse cached months", async ({
+  page,
+}, testInfo) => {
+  let releaseJuly!: () => void;
+  const july = new Promise<void>((resolve) => {
+    releaseJuly = resolve;
+  });
+  let holdJune = false;
+  let releaseJune!: () => void;
+  const june = new Promise<void>((resolve) => {
+    releaseJune = resolve;
+  });
+  await page.route("**/api/workspace/sales/*/*", async (route) => {
+    const period = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    if (period === "2026-07") await july;
+    if (period === "2026-06" && holdJune) await june;
+    return route.fulfill({ json: month(1, period) });
+  });
+  await page.goto("/app/gst/1/2026-06/sales");
+  await expect(page.getByRole("heading", { name: "June 2026", exact: true })).toBeVisible();
+  await page
+    .getByRole("complementary", { name: "Workspace navigation" })
+    .evaluate((node) => node.setAttribute("data-retained", "yes"));
+  await page.getByRole("button", { name: "Next month", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "July 2026", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading sales" })).toBeVisible();
+  await expect(page.locator('[data-slot="skeleton"]').first()).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveAttribute(
+    "data-retained",
+    "yes",
+  );
+  await expect(page.getByRole("button", { name: "Previous month", exact: true })).toBeEnabled();
+  await expect(page.getByText("₹1,000.00", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Add invoices", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("sales-month-loading.png"), fullPage: true });
+  releaseJuly();
+  await expect(page.getByRole("status", { name: "Loading sales" })).toHaveCount(0);
+  holdJune = true;
+  await page.getByRole("button", { name: "Previous month", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "June 2026", exact: true })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading sales" })).toHaveCount(0);
+  await expect(page.getByText("₹1,000.00", { exact: true }).first()).toBeVisible();
+  releaseJune();
+});
+
 test("failed requests can be retried and replace the error screen", async ({ page }) => {
   let fails = true;
   await page.route("**/api/workspace/sales/*/*", (route) =>
