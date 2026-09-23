@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Download, MoreHorizontal, RefreshCw } from "lucide-react";
 
@@ -36,9 +36,9 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
   const opener = useRef<HTMLButtonElement>(null);
 
-  const [pending, setPending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
 
@@ -53,6 +53,43 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
     refetchInterval: query => query.state.data?.fetching || preparing(query.state.data) ? 2000 : false });
 
   const state = query.data;
+
+  const connect = () => { setUsername(state?.connection.username ?? ""); setChallenge(null); setOtp(""); setDownloadError(null); mutation.reset(); setOpen(true); };
+
+  type SourceWrite = { action: "fetch" | "otp" | "verify" | "import"; body: unknown; controller: AbortController };
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: async ({ action, body, controller }: SourceWrite) => {
+      if (action !== "otp") await cache.cancelQueries({ queryKey: key, exact: true });
+      controller.signal.throwIfAborted();
+      return gstr2bRequest<Gstr2bState | Gstr2bChallenge>(client, period, controller.signal, action, body);
+    },
+    onSuccess: async (result, { action, controller }) => {
+      if (controller.signal.aborted) return;
+      if (action === "otp") { setChallenge(result as Gstr2bChallenge); setOtp(""); }
+      else {
+        // Discard any status read started before this action finished.
+        await cache.cancelQueries({ queryKey: key, exact: true });
+        if (controller.signal.aborted) return;
+        cache.setQueryData(key, result);
+        if (action === "verify") { setOpen(false); setChallenge(null); setOtp(""); }
+        void cache.invalidateQueries({ queryKey: key, exact: true });
+      }
+    },
+    onError: (problem, { action, controller }) => {
+      if (controller.signal.aborted) return;
+      if (action === "fetch" || action === "verify") awaitingFetch.current = null;
+      if (problem instanceof Gstr2bError && problem.code === "invalid_challenge") { setChallenge(null); setOtp(""); }
+      if (problem instanceof Gstr2bError && problem.code === "connection_required") connect();
+    },
+    onSettled: (_result, _problem, { controller }) => {
+      if (request.current === controller) request.current = null;
+    },
+  });
+  const pending = mutation.isPending || downloading;
+  const error = downloadError || (mutation.error instanceof Gstr2bError && mutation.error.code === "connection_required" ? null : mutation.error?.message);
+  const busy = pending || !!state?.fetching || preparing(state);
 
   useEffect(() => () => request.current?.abort(), []);
 
@@ -80,56 +117,12 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
   }, [state, pending]);
 
-  const busy = pending || !!state?.fetching || preparing(state);
-
-  const connect = () => { setUsername(state?.connection.username ?? ""); setChallenge(null); setOtp(""); setError(null); setOpen(true); };
-
-  async function act(action: "fetch" | "otp" | "verify" | "import", body: unknown = {}) {
-
-    if (pending) return;
-
-    request.current?.abort();
-
+  function act(action: SourceWrite["action"], body: unknown = {}) {
+    if (pending || request.current) return;
     const controller = new AbortController(); request.current = controller;
-
-    setPending(true); setError(null);
-
+    setDownloadError(null);
     if (action === "fetch" || action === "verify") awaitingFetch.current = { fetchedAt: state?.statement?.fetched_at ?? null };
-
-    try {
-
-      if (action !== "otp") await cache.cancelQueries({ queryKey: key, exact: true });
-      if (controller.signal.aborted) return;
-
-      const result = await gstr2bRequest<Gstr2bState | Gstr2bChallenge>(client, period, controller.signal, action, body);
-
-      if (controller.signal.aborted) return;
-
-      if (action === "otp") { setChallenge(result as Gstr2bChallenge); setOtp(""); }
-
-      else {
-        // Discard any status read started before this action finished.
-        await cache.cancelQueries({ queryKey: key, exact: true });
-        if (controller.signal.aborted) return;
-        cache.setQueryData(key, result);
-        if (action === "verify") { setOpen(false); setChallenge(null); setOtp(""); }
-        void cache.invalidateQueries({ queryKey: key, exact: true });
-      }
-
-    } catch (problem) {
-
-      if (controller.signal.aborted) return;
-
-      if (action === "fetch" || action === "verify") awaitingFetch.current = null;
-
-      if (problem instanceof Gstr2bError && problem.code === "invalid_challenge") { setChallenge(null); setOtp(""); }
-
-      if (problem instanceof Gstr2bError && problem.code === "connection_required") connect();
-
-      else setError(problem instanceof Error ? problem.message : "Please try again.");
-
-    } finally { if (!controller.signal.aborted) setPending(false); }
-
+    mutation.mutate({ action, body, controller });
   }
 
   async function download() {
@@ -140,7 +133,7 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
 
-    setError(null); setPending(true);
+    setDownloadError(null); mutation.reset(); setDownloading(true);
 
     try {
 
@@ -154,9 +147,9 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
       link.href = address; link.download = `GSTR-2B-${period}.json`; link.click(); URL.revokeObjectURL(address);
 
-    } catch (problem) { if (!controller.signal.aborted) setError(problem instanceof Error ? problem.message : "Download failed."); }
+    } catch (problem) { if (!controller.signal.aborted) setDownloadError(problem instanceof Error ? problem.message : "Download failed."); }
 
-    finally { if (!controller.signal.aborted) setPending(false); }
+    finally { if (request.current === controller) request.current = null; if (!controller.signal.aborted) setDownloading(false); }
 
   }
 
@@ -196,7 +189,7 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
     {!open && (error || storedError) && <p role="alert" className="text-sm text-destructive">{error || storedError}</p>}
 
-    <Dialog open={open} onOpenChange={value => { setOpen(value); if (!value) { request.current?.abort(); setPending(false); setChallenge(null); setOtp(""); setError(null); } }}>
+    <Dialog open={open} onOpenChange={value => { setOpen(value); if (!value) { request.current?.abort(); request.current = null; awaitingFetch.current = null; setDownloading(false); setChallenge(null); setOtp(""); setDownloadError(null); mutation.reset(); } }}>
 
       <DialogContent finalFocus={opener} className="sm:max-w-sm"><DialogHeader><DialogTitle>{challenge ? "Enter GST verification code" : "Connect GST"}</DialogTitle><DialogDescription>{challenge ? "Enter the six-digit OTP sent to the mobile number and email registered with GST." : "Use this client’s GST portal username. We’ll send an OTP to verify the connection."}</DialogDescription></DialogHeader>
 
@@ -208,7 +201,7 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
 
           <Button type="submit" className="w-full" disabled={pending || (challenge ? otp.length !== 6 : !username.trim())}>{pending ? "Please wait…" : challenge ? "Verify and fetch GSTR-2B" : "Send OTP"}</Button>
 
-          {challenge && <Button type="button" variant="ghost" className="w-full" disabled={pending} onClick={() => { setChallenge(null); setOtp(""); setError(null); }}>Use another username or resend OTP</Button>}
+          {challenge && <Button type="button" variant="ghost" className="w-full" disabled={pending} onClick={() => { setChallenge(null); setOtp(""); setDownloadError(null); mutation.reset(); }}>Use another username or resend OTP</Button>}
 
         </form>
 

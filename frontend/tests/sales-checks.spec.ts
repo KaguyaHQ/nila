@@ -76,6 +76,39 @@ test("confirmation and undo post the opaque basis and render only saved results"
   expect(decisions).toEqual([{ target: "sequence_gaps", basis: "sequence-v1", action: "confirm" }, { target: "sequence_gaps", basis: "sequence-confirmed", action: "reopen" }]);
 });
 
+test("monthly confirmation cannot submit twice or close while the decision is pending", async ({ page }) => {
+  let current = checks();
+  await setup(page, () => current);
+  let decisions = 0;
+  let release!: () => void;
+  const response = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/checks/decision", async route => {
+    decisions++;
+    await response;
+    current = { ...current, checks: current.checks.map(check => check.target === "sequence_gaps" ? { ...check, status: "resolved" } : check) };
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/checks");
+  await page.getByRole("button", { name: "These invoice numbers were cancelled", exact: true }).click();
+  await page.getByRole("dialog").locator("form").evaluate(form => {
+    (form as HTMLFormElement).requestSubmit();
+    (form as HTMLFormElement).requestSubmit();
+  });
+  try {
+    await expect.poll(() => decisions).toBe(1);
+    await expect(page.getByRole("dialog").getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Undo confirmation", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Undo confirmation", exact: true })).toBeVisible();
+  expect(decisions).toBe(1);
+});
+
 test("stale basis refreshes the check and requires another inspection before confirmation", async ({ page }) => {
   let current = checks();
   await setup(page, () => current);

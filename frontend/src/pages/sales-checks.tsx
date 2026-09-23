@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/sales-api";
-import { decideSalesCheck, fetchSalesChecks, type MonthlySalesCheck, type MonthlySalesChecks } from "@/lib/sales-checks-api";
+import { decideSalesCheck, fetchSalesChecks, type MonthlySalesCheck, type MonthlySalesChecks, type MonthlySalesDecision } from "@/lib/sales-checks-api";
 import { basePath, useSales } from "./live-sales";
 
 const supportedChecks = new Set(["sequence_gaps", "pages_unaccounted", "evidence_unavailable"]);
@@ -32,12 +32,40 @@ function ChecksList({ data, refreshing, reload }: { data: MonthlySalesChecks; re
   const cache = useQueryClient();
   const [selected, setSelected] = useState<MonthlySalesCheck | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ target: string; message: string } | null>(null);
+  const [changedCheck, setChangedCheck] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [mustReview, setMustReview] = useState(false);
   const opener = useRef<HTMLButtonElement | null>(null);
   const operation = useRef<AbortController | null>(null);
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: ({ decision, controller }: { decision: MonthlySalesDecision; controller: AbortController }) =>
+      decideSalesCheck(String(data.client.id), data.period, decision, controller.signal),
+    onSuccess: async (result, { decision, controller }) => {
+      if (controller.signal.aborted) return;
+      await cache.cancelQueries({ queryKey: ["sales-checks", String(data.client.id), data.period] });
+      if (controller.signal.aborted) return;
+      cache.setQueryData(["sales-checks", String(data.client.id), data.period], result);
+      void cache.invalidateQueries({ queryKey: ["sales"] });
+      void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
+      setNotice(decision.action === "confirm" ? "Confirmation saved." : "Confirmation removed.");
+      setDialogOpen(false);
+    },
+    onError: (failure, { controller }) => {
+      if (!controller.signal.aborted && failure instanceof ApiError && [403, 409, 422].includes(failure.status)) {
+        setMustReview(true);
+        reload();
+      }
+    },
+    onSettled: (_result, _failure, { controller }) => {
+      if (operation.current === controller) operation.current = null;
+    },
+  });
+  const busy = mutation.isPending ? mutation.variables.decision.target : null;
+  const error = changedCheck
+    ? { target: changedCheck, message: changedMessage }
+    : mutation.error ? { target: mutation.variables.decision.target, message: mutation.error.message } : null;
   const pending = selected && data.checks.find(check => check.target === selected.target);
   const selectionCurrent = Boolean(selected?.basis && pending?.basis === selected.basis && pending?.status === "open");
   useEffect(() => () => operation.current?.abort(), []);
@@ -45,46 +73,25 @@ function ChecksList({ data, refreshing, reload }: { data: MonthlySalesChecks; re
   function openConfirmation(check: MonthlySalesCheck, button: HTMLButtonElement) {
     opener.current = button;
     setSelected(check);
-    setError(null);
+    mutation.reset();
+    setChangedCheck(null);
     setMustReview(false);
     setDialogOpen(true);
   }
-  async function decide(check: MonthlySalesCheck, action: "confirm" | "reopen") {
+  function decide(check: MonthlySalesCheck, action: "confirm" | "reopen") {
     if (operation.current || !data.can_edit || !check.basis || !supportedChecks.has(check.code)) return;
     const current = data.checks.find(item => item.target === check.target);
     if (!current || current.basis !== check.basis || current.status !== (action === "confirm" ? "open" : "resolved")) {
-      setError({ target: check.target, message: changedMessage });
+      setChangedCheck(check.target);
       setMustReview(true);
       reload();
       return;
     }
     const controller = new AbortController();
     operation.current = controller;
-    setBusy(check.target);
-    setError(null);
+    setChangedCheck(null);
     setNotice("");
-    try {
-      const result = await decideSalesCheck(String(data.client.id), data.period, { target: check.target, basis: check.basis, action }, controller.signal);
-      if (controller.signal.aborted) return;
-      await cache.cancelQueries({ queryKey: ["sales-checks", String(data.client.id), data.period] });
-      if (controller.signal.aborted) return;
-      cache.setQueryData(["sales-checks", String(data.client.id), data.period], result);
-      void cache.invalidateQueries({ queryKey: ["sales"] });
-      void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
-      setNotice(action === "confirm" ? "Confirmation saved." : "Confirmation removed.");
-      setDialogOpen(false);
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        setError({ target: check.target, message: failure instanceof Error ? failure.message : "This decision could not be saved. Please try again." });
-        if (failure instanceof ApiError && [403, 409, 422].includes(failure.status)) {
-          setMustReview(true);
-          reload();
-        }
-      }
-    } finally {
-      operation.current = null;
-      if (!controller.signal.aborted) setBusy(null);
-    }
+    mutation.mutate({ decision: { target: check.target, basis: check.basis, action }, controller });
   }
   function submit(event: FormEvent) {
     event.preventDefault();

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Pencil } from "lucide-react";
 import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
@@ -49,11 +49,35 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
   const [values, setValues] = useState<ReviewValues>({});
   const initialValues = useRef<ReviewValues>({});
   const [confirmation, setConfirmation] = useState<SalesInvoiceReviewData["issues"][number] | null>(null);
-  const [error, setError] = useState<Error | null>(null);
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
   const opener = useRef<HTMLButtonElement | null>(null);
   const operation = useRef<AbortController | null>(null);
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: ({ change, target, controller }: { controller: AbortController } & ({ change: ReviewChange; target?: never } | { change?: never; target: string })) => change
+      ? updateSalesInvoice(clientId, period, invoiceId, change, controller.signal)
+      : confirmSalesInvoiceIssue(clientId, period, invoiceId, target, controller.signal),
+    onSuccess: async (saved, { change, controller }) => {
+      if (controller.signal.aborted) return;
+      await cache.cancelQueries({ queryKey: ["sales-review", clientId, period, invoiceId] });
+      if (controller.signal.aborted) return;
+      cache.setQueryData(["sales-review", clientId, period, invoiceId], saved);
+      void cache.invalidateQueries({ queryKey: ["sales"] });
+      void cache.invalidateQueries({ queryKey: ["sales-uploads"] });
+      void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
+      setNotice(change ? "Changes saved." : "Decision saved.");
+      setDialogOpen(false);
+    },
+    onError: (failure, { controller }) => {
+      if (!controller.signal.aborted && failure instanceof ApiError && [403, 409].includes(failure.status)) refresh();
+    },
+    onSettled: (_saved, _failure, { controller }) => {
+      if (operation.current === controller) operation.current = null;
+    },
+  });
+  const busy = mutation.isPending;
+  const error = mutation.error;
   const requestedFilter = params.get("filter");
   const filter = requestedFilter === "ready" || requestedFilter === "needs_review" ? requestedFilter : "all";
   const visible = data.queue.filter(item => filter === "all" || item.status === filter);
@@ -110,12 +134,12 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
     const openingValues = Object.fromEntries(data.editable_fields[section].map(field => [field, source[field] ?? ""]));
     initialValues.current = openingValues;
     setValues(openingValues);
-    setError(null);
+    mutation.reset();
     setConfirmation(null);
     setEdit({ section, index });
     setDialogOpen(true);
   }
-  async function save(event: FormEvent) {
+  function save(event: FormEvent) {
     event.preventDefault();
     if (!canEdit || !dialogOpen || operation.current || (!edit && !confirmation)) return;
     const changes = Object.fromEntries(Object.entries(values).filter(([field, value]) => value !== initialValues.current[field]));
@@ -125,28 +149,9 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
     }
     const controller = new AbortController();
     operation.current = controller;
-    setBusy(true);
-    setError(null);
-    try {
-      const saved = edit
-        ? await updateSalesInvoice(clientId, period, invoiceId, { section: edit.section, values: changes, ...(edit.index === undefined ? {} : { line_index: edit.index }) }, controller.signal)
-        : await confirmSalesInvoiceIssue(clientId, period, invoiceId, confirmation!.target, controller.signal);
-      if (controller.signal.aborted) return;
-      cache.setQueryData(["sales-review", clientId, period, invoiceId], saved);
-      void cache.invalidateQueries({ queryKey: ["sales"] });
-      void cache.invalidateQueries({ queryKey: ["sales-uploads"] });
-      void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
-      setNotice(edit ? "Changes saved." : "Decision saved.");
-      setDialogOpen(false);
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        setError(failure instanceof Error ? failure : new Error("This change could not be saved. Please try again."));
-        if (failure instanceof ApiError && [403, 409].includes(failure.status)) refresh();
-      }
-    } finally {
-      operation.current = null;
-      if (!controller.signal.aborted) setBusy(false);
-    }
+    mutation.mutate(edit
+      ? { change: { section: edit.section, values: changes, ...(edit.index === undefined ? {} : { line_index: edit.index }) }, controller }
+      : { target: confirmation!.target, controller });
   }
 
   return <main className="flex min-h-dvh flex-col bg-background md:h-dvh md:min-h-0">
@@ -166,7 +171,7 @@ function InvoiceReview({ data, refreshing, refresh }: { data: SalesInvoiceReview
           <div className="border-b pb-6"><p className="text-sm font-semibold">{data.invoice.buyer_name || "Customer not provided"}</p><p className="mt-1.5 text-sm text-muted-foreground">GSTIN {data.invoice.buyer_gstin || "not provided"}</p><p className="mt-1.5 text-sm text-muted-foreground">Place of supply: {data.invoice.place_of_supply || "Not determined"}</p>{data.facts.narration && <p className="mt-2 text-sm text-muted-foreground">{data.facts.narration}</p>}</div>
           <section aria-labelledby="invoice-lines"><div className="mb-3 flex items-center justify-between"><h2 id="invoice-lines" className="text-sm font-semibold">Invoice lines</h2><span className="text-xs text-muted-foreground">{data.lines.length} {data.lines.length === 1 ? "line" : "lines"}</span></div><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/30"><TableHead className="pl-4">Description</TableHead><TableHead className="text-right">Taxable</TableHead><TableHead className="text-right">GST</TableHead><TableHead className="w-10"><span className="sr-only">Edit</span></TableHead></TableRow></TableHeader><TableBody>{data.lines.map(line => <TableRow key={line.index}><TableCell className="py-3 pl-4"><p className="max-w-72 font-medium whitespace-normal">{line.values.description || line.values.item_name || `Line ${line.index + 1}`}</p><p className="mt-1 text-xs text-muted-foreground">HSN {line.display.hsn_sac || "—"}</p><p className="mt-1 text-xs text-muted-foreground">{line.display.quantity || "—"} {line.display.uom} × {line.display.printed_unit_price || "—"}</p></TableCell><TableCell className="text-right align-top pt-3 tabular-nums">{line.display.taxable_value || "—"}</TableCell><TableCell className="text-right text-xs leading-6 tabular-nums text-muted-foreground">{["cgst", "sgst", "igst"].filter(head => line.values[`${head}_rate`] || line.values[`${head}_amount`]).map(head => <p key={head} className="whitespace-nowrap">{head.toUpperCase()} {line.display[`${head}_rate`] || "—"}% · {line.display[`${head}_amount`] || "—"}</p>)}</TableCell><TableCell><Button variant="ghost" size="icon-xs" aria-label={`Edit line ${line.index + 1}`} disabled={!canEdit} onClick={event => openEditor("line", event.currentTarget, line.index)}><Pencil /></Button></TableCell></TableRow>)}{data.lines.length === 0 && <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No invoice lines were extracted.</TableCell></TableRow>}</TableBody></Table></div></section>
           <section aria-labelledby="invoice-totals"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 id="invoice-totals" className="text-sm font-semibold">Invoice totals</h2><Button variant="ghost" size="sm" disabled={!canEdit} onClick={event => openEditor("totals", event.currentTarget)}><Pencil /> Edit printed totals</Button></div><div className="overflow-hidden rounded-lg border"><Table><TableHeader><TableRow className="bg-muted/30"><TableHead className="pl-4">Total</TableHead><TableHead className="text-right">From lines</TableHead><TableHead className="text-right">Printed on bill</TableHead><TableHead>Comparison</TableHead></TableRow></TableHeader><TableBody>{data.totals.map(total => <TableRow key={total.field}><TableCell className="pl-4">{total.label}</TableCell><TableCell className="text-right tabular-nums">{total.calculated}</TableCell><TableCell className="text-right tabular-nums">{total.printed}</TableCell><TableCell><span className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}>{total.status === "matches" ? "Matches" : total.status === "mismatch" ? `${total.difference ?? "—"} difference` : "Not compared"}</span></TableCell></TableRow>)}</TableBody></Table></div></section>
-          {openIssues.length > 0 && <section aria-labelledby="invoice-issues" className="space-y-3"><h2 id="invoice-issues" className="text-sm font-semibold">Needs your review</h2>{openIssues.map(issue => <div key={issue.target} className="rounded-lg border px-4 py-3"><p className="text-sm font-medium">{issue.title}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{issue.message}</p>{issue.can_confirm && <Button variant="outline" size="sm" className="mt-3" disabled={!canEdit} onClick={event => { opener.current = event.currentTarget; setConfirmation(issue); setEdit(null); setError(null); setDialogOpen(true); }}>{issue.action_label || "Confirm"}</Button>}</div>)}</section>}
+          {openIssues.length > 0 && <section aria-labelledby="invoice-issues" className="space-y-3"><h2 id="invoice-issues" className="text-sm font-semibold">Needs your review</h2>{openIssues.map(issue => <div key={issue.target} className="rounded-lg border px-4 py-3"><p className="text-sm font-medium">{issue.title}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{issue.message}</p>{issue.can_confirm && <Button variant="outline" size="sm" className="mt-3" disabled={!canEdit} onClick={event => { opener.current = event.currentTarget; setConfirmation(issue); setEdit(null); mutation.reset(); setDialogOpen(true); }}>{issue.action_label || "Confirm"}</Button>}</div>)}</section>}
         </div>
         <Collapsible render={<footer />} className="shrink-0 border-t bg-background px-6 py-4 lg:px-8">
           <CollapsibleContent id="invoice-checks" className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4">{data.checks.map((check, index) => <div key={`${check.label}-${index}`} className="text-sm"><div className="flex items-start justify-between gap-3"><p className="font-medium">{check.title || check.label}</p><span className={`shrink-0 text-xs ${check.status === "passed" ? "text-emerald-700" : check.status === "failed" ? "text-amber-700" : "text-muted-foreground"}`}>{check.status === "passed" ? "Passed" : check.status === "failed" ? "Needs review" : "Not checked"}</span></div>{check.detail && <p className="mt-1 text-muted-foreground">{check.detail}</p>}{check.secondary && <p className="mt-1 text-muted-foreground">{check.secondary}</p>}{check.difference && <p className="mt-1 text-muted-foreground">{check.difference}</p>}</div>)}{data.checks.length === 0 && <p className="text-sm text-muted-foreground">No check results are available.</p>}</CollapsibleContent>

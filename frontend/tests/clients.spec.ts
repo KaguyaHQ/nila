@@ -153,3 +153,26 @@ test("view-only role cannot add or import and permission failures never look emp
   await expect(page.getByRole("alert")).toHaveText("You cannot access these clients.");
   await expect(page.getByText("No clients yet", { exact: true })).toHaveCount(0);
 });
+
+
+test("choosing another workbook clears a failed preview before retrying", async ({ page }) => {
+  await setup(page);
+  let previews = 0;
+  await page.route("**/api/workspace/clients/import/preview", route => {
+    previews++;
+    return route.fulfill(previews === 1
+      ? { status: 422, json: { error: "Cannot read this workbook." } }
+      : { json: { rows: [], token: "replacement-token", ready_count: 0 } });
+  });
+  await page.goto("/app/clients/import?period=2026-06");
+  const picker = page.getByLabel("Client list (.xlsx)");
+  await picker.setInputFiles({ name: "broken.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("broken") });
+  await page.getByRole("button", { name: "Preview clients", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Cannot read this workbook.");
+  await expect(picker).toBeEnabled();
+  await picker.setInputFiles({ name: "replacement.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from("replacement") });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview clients", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Preview", exact: true })).toBeVisible();
+  expect(previews).toBe(2);
+});

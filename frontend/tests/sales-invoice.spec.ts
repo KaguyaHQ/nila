@@ -98,6 +98,41 @@ test("facts keep field errors and save only server-authorized raw fields", async
   await expect(opener).toBeFocused();
 });
 
+test("invoice saves once while pending and shows the saved result only after the response", async ({ page }) => {
+  await setup(page);
+  let writes = 0;
+  let release!: () => void;
+  const response = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", async route => {
+    if (route.request().method() === "GET") return route.fulfill({ json: invoice() });
+    writes++;
+    await response;
+    const saved = invoice(); saved.invoice.number = "SAVED-001"; saved.facts.invoice_number = "SAVED-001";
+    return route.fulfill({ json: saved });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await page.getByRole("button", { name: "Edit invoice details", exact: true }).click();
+  await page.getByLabel("Invoice number", { exact: true }).fill("SAVED-001");
+  await page.getByRole("dialog").locator("form").evaluate(form => {
+    (form as HTMLFormElement).requestSubmit();
+    (form as HTMLFormElement).requestSubmit();
+  });
+  try {
+    await expect.poll(() => writes).toBe(1);
+    await expect(page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+    // The modal makes the unchanged page heading inaccessible until it closes.
+    await expect(page.locator("h1")).toHaveText("Invoice INV-001");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeVisible();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Invoice SAVED-001", exact: true })).toBeVisible();
+  expect(writes).toBe(1);
+});
+
 test("line and printed-total edits use server comparisons without browser tax calculation", async ({ page }) => {
   await setup(page);
   let current = invoice();

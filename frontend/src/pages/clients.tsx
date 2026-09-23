@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
 import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/sales-api";
-import { ClientApiError, fetchClient, fetchClients, importClients, previewClients, saveClient, type ClientIdentity, type ClientsDirectory, type ImportPreview, type ImportResult } from "@/lib/clients-api";
+import { ClientApiError, fetchClient, fetchClients, importClients, previewClients, saveClient, type ClientIdentity, type ClientsDirectory } from "@/lib/clients-api";
 
 const Directory = createContext<ClientsDirectory | null>(null);
 function useClients() {
@@ -76,31 +76,36 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
   const cache = useQueryClient();
   const [name, setName] = useState(client?.name ?? "");
   const [gstin, setGstin] = useState(client?.gstin ?? "");
-  const [error, setError] = useState<ClientApiError | Error | null>(null);
-  const [busy, setBusy] = useState(false);
   const operation = useRef<AbortController | null>(null);
-  const fieldErrors = error instanceof ClientApiError ? error.fields : {};
   useEffect(() => () => operation.current?.abort(), []);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!canEdit || operation.current) return;
-    const controller = new AbortController();
-    operation.current = controller;
-    setBusy(true);
-    setError(null);
-    try {
-      const saved = await saveClient(client?.id, { name, gstin }, controller.signal);
+  const save = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: ({ controller, name, gstin }: { controller: AbortController; name: string; gstin: string }) =>
+      saveClient(client?.id, { name, gstin }, controller.signal),
+    onSuccess: async (saved, { controller }) => {
+      if (controller.signal.aborted) return;
+      await cache.cancelQueries({ queryKey: ["client", String(saved.client.id)] });
       if (controller.signal.aborted) return;
       cache.setQueryData(["client", String(saved.client.id)], saved);
       await cache.invalidateQueries({ queryKey: ["clients"] });
       void cache.invalidateQueries({ queryKey: ["sales"] });
+      void cache.invalidateQueries({ queryKey: ["purchases"] });
       if (!controller.signal.aborted) navigate(pathFor(data.period));
-    } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure : new Error("Couldn't save this client. Please try again."));
-    } finally {
-      operation.current = null;
-      if (!controller.signal.aborted) setBusy(false);
-    }
+    },
+    onSettled: (_saved, _error, { controller }) => {
+      if (operation.current === controller) operation.current = null;
+    },
+  });
+  const busy = save.isPending;
+  const error = save.error;
+  const fieldErrors = error instanceof ClientApiError ? error.fields : {};
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!canEdit || operation.current || save.isPending) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    save.mutate({ controller, name, gstin });
   }
   return <div className="mx-auto max-w-xl space-y-6">
     <div><Link to={pathFor(data.period)} className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Clients</Link><h1 className="text-2xl font-semibold tracking-tight">{client ? "Edit client" : "Add client"}</h1></div>
@@ -119,46 +124,57 @@ export function ClientsImport() {
   const data = useClients();
   const cache = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [validationError, setValidationError] = useState("");
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
+  const previewMutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: ({ file, controller }: { file: File; controller: AbortController }) => previewClients(file, controller.signal),
+    onSettled: (_data, _error, { controller }) => {
+      if (operation.current === controller) operation.current = null;
+    },
+  });
+  const importMutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: ({ token, controller }: { token: string; controller: AbortController }) => importClients(token, controller.signal),
+    onSuccess: (_saved, { controller }) => {
+      if (controller.signal.aborted) return;
+      void cache.invalidateQueries({ queryKey: ["clients"] });
+      void cache.invalidateQueries({ queryKey: ["sales"] });
+      void cache.invalidateQueries({ queryKey: ["purchases"] });
+    },
+    onSettled: (_data, _error, { controller }) => {
+      if (operation.current === controller) operation.current = null;
+    },
+  });
+  const preview = previewMutation.data;
+  const result = importMutation.data;
+  const busy = previewMutation.isPending || importMutation.isPending;
+  const error = validationError || importMutation.error?.message || previewMutation.error?.message;
   const rows = result?.rows ?? preview?.rows ?? [];
   const hasUsername = rows.some(row => row.gst_username);
   function selectFile(selected: File | undefined) {
-    setPreview(null);
-    setResult(null);
+    if (operation.current) return;
+    previewMutation.reset();
+    importMutation.reset();
     setFile(null);
-    setError("");
+    setValidationError("");
     if (!selected) return;
-    if (!/\.xlsx$/i.test(selected.name)) { setError("Choose an Excel workbook (.xlsx)."); return; }
-    if (!selected.size || selected.size > 2_000_000) { setError("Choose a non-empty Excel file up to 2 MB."); return; }
+    if (!/\.xlsx$/i.test(selected.name)) { setValidationError("Choose an Excel workbook (.xlsx)."); return; }
+    if (!selected.size || selected.size > 2_000_000) { setValidationError("Choose a non-empty Excel file up to 2 MB."); return; }
     setFile(selected);
   }
-  async function run(save: boolean) {
-    if (!data.can_edit || operation.current || (save ? !preview || Boolean(result) : !file)) return;
+  function run(save: boolean) {
+    if (!data.can_edit || operation.current || busy || (save ? !preview || Boolean(result) : !file)) return;
     const controller = new AbortController();
     operation.current = controller;
-    setBusy(true);
-    setError("");
-    try {
-      if (save) {
-        const saved = await importClients(preview!.token, controller.signal);
-        if (controller.signal.aborted) return;
-        setResult(saved);
-        void cache.invalidateQueries({ queryKey: ["clients"] });
-        void cache.invalidateQueries({ queryKey: ["sales"] });
-      } else {
-        const checked = await previewClients(file!, controller.signal);
-        if (!controller.signal.aborted) { setPreview(checked); setResult(null); }
-      }
-    } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Couldn't complete the import. Please try again.");
-    } finally {
-      operation.current = null;
-      if (!controller.signal.aborted) setBusy(false);
+    setValidationError("");
+    if (save) importMutation.mutate({ token: preview!.token, controller });
+    else {
+      importMutation.reset();
+      previewMutation.mutate({ file: file!, controller });
     }
   }
   return <div className="mx-auto max-w-5xl space-y-6">

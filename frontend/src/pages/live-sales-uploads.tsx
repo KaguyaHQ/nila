@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, FileText, Plus, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -61,7 +61,7 @@ function UploadForm() {
   const locked = prepared.current !== null;
   const [errors, setErrors] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [busy, setBusy] = useState(false);
+
 
   function setFiles(next: File[] | ((previous: File[]) => File[])) {
     draft.files = typeof next === "function" ? next(draft.files) : next;
@@ -96,61 +96,72 @@ function UploadForm() {
       else if (selected.length >= 50) rejected.push("Choose up to 50 PDFs at a time.");
       else selected.push(file);
     }
+    upload.reset();
     setFiles(selected);
     setErrors([...new Set(rejected)]);
   }
 
-  async function submit() {
-    if (controller.current || !files.length || !data.can_upload) return;
-    const current = new AbortController();
-    controller.current = current;
-    setBusy(true);
-    setErrors([]);
-    try {
-      if (!prepared.current) {
-        setStage("Preparing upload…");
-        const result = await prepareUpload(data.client.id, data.period, files, current.signal);
-        if (result.files.length !== files.length || result.files.some((file, index) => file.name !== files[index].name)) throw new Error("The upload couldn't be prepared. Please try again.");
-        prepared.current = result;
-      }
-      let ticket = prepared.current;
-      for (let index = 0; index < files.length; index++) {
-        if (completed.current.has(index)) continue;
-        setStage(`Uploading file ${index + 1} of ${files.length}…`);
-        const sendFile = () => uploadPdf(ticket.files[index].url, files[index], current.signal, percent => setProgress(values => ({ ...values, [index]: percent })));
-        try {
-          await sendFile();
-        } catch (error) {
-          if (!(error instanceof ApiError && error.status === 403)) throw error;
-          ticket = await refreshUpload(data.client.id, data.period, ticket.token, current.signal);
-          prepared.current = ticket;
-          await sendFile();
+  const upload = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: async (current: AbortController) => {
+      try {
+        if (!prepared.current) {
+          setStage("Preparing upload…");
+          const result = await prepareUpload(data.client.id, data.period, files, current.signal);
+          if (result.files.length !== files.length || result.files.some((file, index) => file.name !== files[index].name)) throw new Error("The upload couldn't be prepared. Please try again.");
+          prepared.current = result;
         }
-        completed.current.add(index);
+        let ticket = prepared.current;
+        for (let index = 0; index < files.length; index++) {
+          if (completed.current.has(index)) continue;
+          setStage(`Uploading file ${index + 1} of ${files.length}…`);
+          const sendFile = () => uploadPdf(ticket.files[index].url, files[index], current.signal, percent => setProgress(values => ({ ...values, [index]: percent })));
+          try {
+            await sendFile();
+          } catch (error) {
+            if (!(error instanceof ApiError && error.status === 403)) throw error;
+            ticket = await refreshUpload(data.client.id, data.period, ticket.token, current.signal);
+            prepared.current = ticket;
+            await sendFile();
+          }
+          completed.current.add(index);
+        }
+        if (current.signal.aborted) return;
+        setStage("Saving upload…");
+        await commitUpload(data.client.id, data.period, ticket.token, current.signal);
+        if (current.signal.aborted) return;
+
+      } catch (error) {
+        if (!current.signal.aborted) {
+          if (error instanceof ApiError && error.status === 422 && prepared.current) {
+            prepared.current = null;
+            completed.current.clear();
+            setProgress({});
+            setStage("This upload could not be saved. Remove or replace any rejected PDF, then upload again.");
+          } else setStage(completed.current.size === files.length ? "Your PDFs were sent. Retry to confirm the saved upload." : "Upload stopped. Retry to continue with the remaining files.");
+        }
+        throw error;
+      } finally {
+        controller.current = null;
       }
-      if (current.signal.aborted) return;
-      setStage("Saving upload…");
-      await commitUpload(data.client.id, data.period, ticket.token, current.signal);
+    },
+    onSuccess: (_result, current) => {
       if (current.signal.aborted) return;
       drafts.delete(draftKey);
       void queryClient.invalidateQueries({ queryKey: ["sales", String(data.client.id), data.period] });
       void queryClient.invalidateQueries({ queryKey: ["sales-uploads", data.client.id, data.period] });
       navigate(`${base}/uploads`);
-    } catch (error) {
-      if (!current.signal.aborted) {
-        const message = error instanceof Error ? error.message : "Upload failed. Please try again.";
-        setErrors([message]);
-        if (error instanceof ApiError && error.status === 422 && prepared.current) {
-          prepared.current = null;
-          completed.current.clear();
-          setProgress({});
-          setStage("This upload could not be saved. Remove or replace any rejected PDF, then upload again.");
-        } else setStage(completed.current.size === files.length ? "Your PDFs were sent. Retry to confirm the saved upload." : "Upload stopped. Retry to continue with the remaining files.");
-      }
-    } finally {
-      controller.current = null;
-      if (!current.signal.aborted) setBusy(false);
-    }
+    },
+  });
+  const busy = upload.isPending;
+  const displayedErrors = upload.error ? [...errors, upload.error.message] : errors;
+  function submit() {
+    if (controller.current || busy || !files.length || !data.can_upload) return;
+    const current = new AbortController();
+    controller.current = current;
+    setErrors([]);
+    upload.mutate(current);
   }
 
   return <div className="mx-auto max-w-3xl space-y-6">
@@ -173,7 +184,7 @@ function UploadForm() {
       </div>
       <p className="border-t bg-muted/40 px-6 py-4 text-sm text-muted-foreground">Up to 50 PDFs, 50 MB each. Nila reads the bills after upload.</p>
     </Card>
-    {errors.length > 0 && <div role="alert" className="space-y-1 rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive">{errors.map(error => <p key={error}>{error}</p>)}</div>}
+    {displayedErrors.length > 0 && <div role="alert" className="space-y-1 rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive">{displayedErrors.map(error => <p key={error}>{error}</p>)}</div>}
     {files.length > 0 && <section aria-labelledby="selected-pdfs" className="space-y-3">
       <h2 id="selected-pdfs" className="text-sm font-semibold">{files.length} {files.length === 1 ? "file" : "files"} selected</h2>
       <ul className="divide-y rounded-lg border bg-card">{files.map((file, index) => <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center gap-3 px-4 py-3">

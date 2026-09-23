@@ -131,3 +131,34 @@ test("failed refresh keeps saved JSON and never imports the retained snapshot", 
   await page.getByRole("button", { name: "GSTR-2B source actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Download source JSON" })).toBeVisible();
 });
+
+
+test("closing a pending OTP request cannot replace a reopened connection dialog", async ({ page }) => {
+  await setup(page);
+  await page.route(`**${path}`, route => route.fulfill({ json: { ...state(), connection: { state: "not_connected", username: null } } }));
+  let attempts = 0;
+  let oldRequestFinished = false;
+  let releaseOld!: () => void;
+  const held = new Promise<void>(resolve => { releaseOld = resolve; });
+  await page.route(`**${path}/otp`, async route => {
+    attempts++;
+    if (attempts === 1) await held;
+    await route.fulfill({ json: { challenge: "old-challenge", username: "first-user", expires_in: 900 } }).catch(() => {});
+    oldRequestFinished = true;
+  });
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await page.getByRole("button", { name: "Connect GST", exact: true }).click();
+  await page.getByLabel("GST username").fill("first-user");
+  await page.getByRole("button", { name: "Send OTP", exact: true }).click();
+  await expect.poll(() => attempts).toBe(1);
+  await expect(page.getByRole("button", { name: "Please wait…", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Connect GST", exact: true }).click();
+  await page.getByLabel("GST username").fill("second-user");
+  releaseOld();
+  await expect.poll(() => oldRequestFinished).toBe(true);
+  await expect(page.getByLabel("GST username")).toHaveValue("second-user");
+  await expect(page.getByRole("button", { name: "Send OTP", exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Verification code", { exact: true })).toHaveCount(0);
+  expect(attempts).toBe(1);
+});

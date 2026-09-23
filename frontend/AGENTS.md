@@ -16,6 +16,7 @@ LiveView frontend, not this separately built React entry point.
 - Nila is a desktop application. Do not expand migration work into mobile navigation or mobile-specific layouts unless requested.
 - Use React Router within migrated screens. Use normal same-origin links for screens still owned by LiveView.
 - Do not claim an upload, review, export, or accounting decision was saved when it was not.
+- Use TanStack `useMutation` for server writes: derive pending/errors from the mutation, update caches only from confirmed responses, and invalidate affected queries. Keep `retry: false` and `networkMode: "always"` so failed/offline saves require an explicit retry. Preserve request cancellation and synchronous duplicate-submit guards; local validation, upload progress and downloads may keep local state.
 - Keep fixture facts in `src/data/sales.ts`, temporary PDF selections in the existing
   upload provider, and all business truth in Phoenix.
 - Run `pnpm run build` and `pnpm test`; inspect rendered screens at desktop widths.

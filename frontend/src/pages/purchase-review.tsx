@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
@@ -35,8 +35,6 @@ function Review({ data, queryKey, refreshing, refresh }: { data: PurchaseReviewD
   const [params] = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [values, setValues] = useState<TreatmentValues>(blankValues);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState("");
   const opener = useRef<HTMLButtonElement | null>(null);
   const operation = useRef<AbortController | null>(null);
@@ -49,7 +47,6 @@ function Review({ data, queryKey, refreshing, refresh }: { data: PurchaseReviewD
   const ids = item?.case_ids ?? data.queue[position]?.case_ids ?? [];
   const cases = data.cases.filter(entry => ids.includes(entry.id));
   const blocked = !data.can_edit || item?.pairing_pending || cases.length === 0 || cases.some(entry => !entry.available);
-  const canEdit = !blocked && !busy && !refreshing;
   function go(id: string | undefined) {
     if (!id || busy || dialogOpen) return;
     navigate(`${base}/review/${encodeURIComponent(id)}?${params}`);
@@ -74,44 +71,58 @@ function Review({ data, queryKey, refreshing, refresh }: { data: PurchaseReviewD
     opener.current = button;
     openingCases.current = structuredClone(cases);
     setValues(cases.length === 1 ? structuredClone(cases[0].values) : blankValues());
-    setError(null); setSaved(""); setDialogOpen(true);
+    mutation.reset(); setSaved(""); setDialogOpen(true);
   }
-  async function save(andNext: boolean) {
-    if (!item || !canEdit || !values.choice || choiceBlocked(values.choice as TreatmentChoice) || operation.current) return;
-    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(null);
-    try {
-      const fresh = await savePurchaseTreatment(String(data.client.id), data.period, item.id, data.filter, data.q, { case_ids: openingCases.current.map(entry => entry.id), basis: Object.fromEntries(openingCases.current.map(entry => [entry.id, entry.basis])), values }, controller.signal);
-      if (controller.signal.aborted) return;
+  type ReviewWrite = { controller: AbortController; itemId: string; case_ids: number[]; basis: Record<string, string> } & ({ kind: "treatment"; values: TreatmentValues; andNext: boolean } | { kind: "document" });
+  const mutation = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: (write: ReviewWrite) => write.kind === "treatment"
+      ? savePurchaseTreatment(String(data.client.id), data.period, write.itemId, data.filter, data.q, { case_ids: write.case_ids, basis: write.basis, values: write.values }, write.controller.signal)
+      : recordPurchaseDocument(String(data.client.id), data.period, write.itemId, data.filter, data.q, { case_ids: write.case_ids, basis: write.basis }, write.controller.signal),
+    onSuccess: async (fresh, write) => {
+      if (write.controller.signal.aborted) return;
       await cache.cancelQueries({ queryKey });
+      if (write.controller.signal.aborted) return;
+      void cache.invalidateQueries({ queryKey: ["purchase-review", String(data.client.id), data.period], refetchType: "none" });
       cache.setQueryData(queryKey, fresh);
       void cache.invalidateQueries({ queryKey: ["purchases"], refetchType: "none" });
+      if (write.kind === "document") {
+        setSaved("Invoice possession recorded. Review the available ITC choices.");
+        return;
+      }
       setDialogOpen(false); setSaved("ITC treatment saved.");
-      if (andNext) {
-        const target = fresh.queue.find(row => row.id === next?.id) ?? fresh.queue.find(row => row.id !== item.id);
+      if (write.andNext) {
+        const target = fresh.queue.find(row => row.id === next?.id) ?? fresh.queue.find(row => row.id !== write.itemId);
         if (target) navigate(`${base}/review/${encodeURIComponent(target.id)}?${params}`);
         else setSaved("ITC treatment saved. No more items in this queue.");
       }
-    } catch (failure) {
-      if (controller.signal.aborted) return;
-      setError(failure instanceof Error ? failure.message : "Treatment could not be saved.");
-      if (failure instanceof PurchaseReviewError && [403, 404, 409].includes(failure.status)) { setDialogOpen(false); await refresh(); }
-    } finally { operation.current = null; if (!controller.signal.aborted) setBusy(false); }
+    },
+    onError: async (failure, write) => {
+      if (write.controller.signal.aborted) return;
+      if (failure instanceof PurchaseReviewError && [403, 404, 409].includes(failure.status)) {
+        if (write.kind === "treatment") setDialogOpen(false);
+        await refresh();
+      }
+    },
+    onSettled: (_result, _failure, write) => {
+      if (operation.current === write.controller) operation.current = null;
+    },
+  });
+  const busy = mutation.isPending;
+  const canEdit = !blocked && !busy && !refreshing;
+  const error = mutation.error?.message ?? null;
+
+  function save(andNext: boolean) {
+    if (!item || !canEdit || !values.choice || choiceBlocked(values.choice as TreatmentChoice) || operation.current) return;
+    const controller = new AbortController(); operation.current = controller; setSaved("");
+    mutation.mutate({ kind: "treatment", controller, itemId: item.id, case_ids: openingCases.current.map(entry => entry.id), basis: Object.fromEntries(openingCases.current.map(entry => [entry.id, entry.basis])), values: structuredClone(values), andNext });
   }
 
-  async function recordDocument(entry: PurchaseReviewData["cases"][number]) {
+  function recordDocument(entry: PurchaseReviewData["cases"][number]) {
     if (!item || busy || refreshing || !data.can_edit || !entry.can_record_document || operation.current) return;
-    const controller = new AbortController(); operation.current = controller; setBusy(true); setError(null); setSaved("");
-    try {
-      const fresh = await recordPurchaseDocument(String(data.client.id), data.period, item.id, data.filter, data.q, { case_ids: [entry.id], basis: { [entry.id]: entry.basis } }, controller.signal);
-      if (controller.signal.aborted) return;
-      await cache.cancelQueries({ queryKey }); cache.setQueryData(queryKey, fresh);
-      void cache.invalidateQueries({ queryKey: ["purchases"], refetchType: "none" });
-      setSaved("Invoice possession recorded. Review the available ITC choices.");
-    } catch (failure) {
-      if (controller.signal.aborted) return;
-      setError(failure instanceof Error ? failure.message : "Invoice possession could not be saved.");
-      if (failure instanceof PurchaseReviewError && [403, 404, 409].includes(failure.status)) await refresh();
-    } finally { operation.current = null; if (!controller.signal.aborted) setBusy(false); }
+    const controller = new AbortController(); operation.current = controller; setSaved("");
+    mutation.mutate({ kind: "document", controller, itemId: item.id, case_ids: [entry.id], basis: { [entry.id]: entry.basis } });
   }
 
   return <main className="min-h-screen bg-neutral-50/70">
