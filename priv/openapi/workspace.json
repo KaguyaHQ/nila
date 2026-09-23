@@ -7863,6 +7863,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "lookup_details": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -7953,6 +7956,12 @@
                     "needs_review",
                     "ready"
                   ]
+                },
+                "customer": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "string"
                 }
               },
               "required": [

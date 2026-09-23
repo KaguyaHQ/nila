@@ -113,6 +113,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
             can_confirm: can_edit and confirmable?(issue),
             action_label: confirm_label(issue, context)
           }
+          |> Map.merge(issue_copy(issue, invoice))
         end),
       source: evidence(context),
       queue:
@@ -120,6 +121,8 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
           %{
             id: item.source_id,
             number: text(item.invoice["invoice_number"]),
+            customer: text(item.invoice["buyer_name"]),
+            amount: SalesBillReview.rupees(Validation.comparison_totals(item.invoice).total),
             status: if(item.open_actionable_targets == [], do: "ready", else: "needs_review")
           }
         end),
@@ -132,6 +135,33 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         end)
     }
   end
+
+  defp issue_copy(%{"code" => "buyer_gst_name_review"} = issue, invoice) do
+    facts = get_in(invoice, ["taxpayer_checks", "buyer"])
+
+    if is_map(facts) do
+      names =
+        [facts["legal_name"], facts["trade_name"]]
+        |> Enum.reject(&(&1 in [nil, ""]))
+        |> Enum.uniq()
+        |> Enum.join(" / ")
+
+      outcome = Enum.find(TaxpayerChecks.outcomes(invoice), &(&1.id == issue["code"]))
+
+      if names != "" and outcome do
+        %{
+          message: "The bill says “#{invoice["buyer_name"]}”. GST records say “#{names}”.",
+          lookup_details: outcome.detail
+        }
+      else
+        %{}
+      end
+    else
+      %{}
+    end
+  end
+
+  defp issue_copy(_issue, _invoice), do: %{}
 
   def update(context, params) do
     with :ok <- writable(context),

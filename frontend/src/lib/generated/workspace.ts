@@ -1263,6 +1263,7 @@ export interface components {
                 status: string | null;
                 can_confirm: boolean;
                 action_label: string | null;
+                lookup_details?: string;
             }[];
             source: {
                 url: string | null;
@@ -1279,6 +1280,8 @@ export interface components {
                 number: string;
                 /** @enum {string} */
                 status: "needs_review" | "ready";
+                customer?: string;
+                amount?: string;
             }[];
             can_edit: boolean;
             lock_reason: string | null;

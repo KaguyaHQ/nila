@@ -1,22 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Pencil,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, FileText, Pencil } from "lucide-react";
 import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import type { Layout } from "react-resizable-panels";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { InvoiceQueue } from "@/components/invoice-queue";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
@@ -100,6 +93,8 @@ const decimalFields = new Set([
 export default function SalesInvoiceReview() {
   const { clientId = "", period = "", invoiceId = "" } = useParams();
   const [params] = useSearchParams();
+  const layout = useRef<Layout>({ source: 45, details: 55 });
+  const pdfZoom = useRef(1);
   const key = ["sales-review", clientId, period, invoiceId];
   const query = useQuery({
     queryKey: key,
@@ -145,6 +140,8 @@ export default function SalesInvoiceReview() {
     <InvoiceReview
       key={`${clientId}/${period}/${invoiceId}`}
       data={query.data}
+      layout={layout}
+      pdfZoom={pdfZoom}
       refreshing={query.isFetching}
       refresh={() => query.refetch()}
     />
@@ -153,10 +150,14 @@ export default function SalesInvoiceReview() {
 
 function InvoiceReview({
   data,
+  layout,
+  pdfZoom,
   refreshing,
   refresh,
 }: {
   data: SalesInvoiceReviewData;
+  layout: React.RefObject<Layout>;
+  pdfZoom: React.RefObject<number>;
   refreshing: boolean;
   refresh: () => unknown;
 }) {
@@ -220,8 +221,19 @@ function InvoiceReview({
     requestedFilter === "ready" || requestedFilter === "needs_review" ? requestedFilter : "all";
   const visible = data.queue.filter((item) => filter === "all" || item.status === filter);
   const position = visible.findIndex((item) => item.id === data.invoice.id);
-  const previous = position > 0 ? visible[position - 1] : undefined;
-  const next = visible[position + 1];
+  // Keep the current invoice on screen if a save removes it from the filter.
+  // Neighbours still follow its position in the full, server-ordered queue.
+  const currentIndex = data.queue.findIndex((item) => item.id === data.invoice.id);
+  const matchesFilter = (item: SalesInvoiceReviewData["queue"][number]) =>
+    filter === "all" || item.status === filter;
+  const previous = data.queue.slice(0, currentIndex).filter(matchesFilter).at(-1);
+  const next = data.queue.slice(currentIndex + 1).find(matchesFilter);
+  const positionLabel =
+    position >= 0
+      ? `${position + 1} of ${visible.length} ${filter === "needs_review" ? "needing review" : filter === "ready" ? "ready invoices" : "invoices"}`
+      : filter === "needs_review" && visible.length === 0
+        ? "No invoices need review"
+        : `${visible.length} ${filter === "needs_review" ? "still need review" : "in this view"}`;
   const base = `/gst/${clientId}/${period}/sales`;
   const registerParams = new URLSearchParams();
   if (filter !== "all") registerParams.set("filter", filter);
@@ -328,7 +340,7 @@ function InvoiceReview({
   }
 
   return (
-    <main className="flex min-h-dvh flex-col bg-background md:h-dvh md:min-h-0">
+    <main className="flex h-dvh min-h-0 flex-col bg-background">
       <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
         <div className="flex flex-wrap items-center gap-4">
           <Button
@@ -381,57 +393,21 @@ function InvoiceReview({
               onSelect={go}
               disabled={busy || dialogOpen}
             />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Previous invoice"
-              title="Previous invoice (Alt+Left)"
-              disabled={!previous || busy}
-              onClick={() => go(previous?.id)}
-            >
-              <ChevronLeft />
-            </Button>
-            <span className="min-w-12 text-center text-xs text-muted-foreground">
-              {position >= 0
-                ? `${position + 1} of ${visible.length}`
-                : `${visible.length} in filter`}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Next invoice"
-              title="Next invoice (Alt+Right)"
-              disabled={!next || busy}
-              onClick={() => go(next?.id)}
-            >
-              <ChevronRight />
-            </Button>
           </div>
         </div>
       </header>
-      {visible.length === 0 ? (
-        <div className="mx-auto space-y-4 px-6 py-20 text-center">
-          {notice && (
-            <p role="status" className="text-sm">
-              {notice}
-            </p>
-          )}
-          <h1 className="text-xl font-semibold">
-            {filter === "needs_review"
-              ? "No invoices need review"
-              : filter === "ready"
-                ? "No ready invoices"
-                : "No invoices in this month"}
-          </h1>
-          <Button variant="outline" onClick={() => changeFilter("all")}>
-            Show all invoices
-          </Button>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="min-h-0 flex-1"
+        defaultLayout={layout.current}
+        onLayoutChanged={(value) => {
+          layout.current = value;
+        }}
+      >
+        <ResizablePanel id="source" minSize="25%">
           <section
             aria-label="Source document"
-            className="flex h-[55vh] shrink-0 flex-col border-b bg-muted/40 md:h-auto md:w-[45%] md:border-r md:border-b-0"
+            className="flex h-full min-w-0 flex-col bg-muted/40"
           >
             <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-4 py-3">
               <FileText className="size-4 shrink-0 text-muted-foreground" />
@@ -452,6 +428,7 @@ function InvoiceReview({
                     url={data.source.url}
                     pages={data.source.pages}
                     images={data.source.images}
+                    zoom={pdfZoom}
                   />
                 </Suspense>
               ) : data.source?.images.length ? (
@@ -472,8 +449,11 @@ function InvoiceReview({
               )}
             </div>
           </section>
-          <section aria-label="Invoice details" className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-7 px-6 py-7 md:overflow-y-auto lg:px-8">
+        </ResizablePanel>
+        <ResizableHandle withHandle aria-label="Resize source document" />
+        <ResizablePanel id="details" minSize="35%">
+          <section aria-label="Invoice details" className="flex h-full min-h-0 min-w-0 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               {!data.can_edit && (
                 <p id="invoice-lock" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
                   {data.lock_reason || "Your role allows viewing, not editing this invoice."}
@@ -492,7 +472,7 @@ function InvoiceReview({
                   <h1 className="text-2xl font-semibold tracking-tight">
                     Invoice {data.invoice.number || "Number not provided"}
                   </h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {data.invoice.date || "Date not provided"}
                   </p>
                 </div>
@@ -507,29 +487,21 @@ function InvoiceReview({
                   <Pencil />
                 </Button>
               </div>
-              <div className="border-b pb-6">
+              <div className="border-b pb-4">
                 <p className="text-sm font-semibold">
                   {data.invoice.buyer_name || "Customer not provided"}
                 </p>
-                <p className="mt-1.5 text-sm text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   GSTIN {data.invoice.buyer_gstin || "not provided"}
                 </p>
-                <p className="mt-1.5 text-sm text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Place of supply: {data.invoice.place_of_supply || "Not determined"}
                 </p>
                 {data.facts.narration && (
                   <p className="mt-2 text-sm text-muted-foreground">{data.facts.narration}</p>
                 )}
               </div>
-              <section aria-labelledby="invoice-lines">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 id="invoice-lines" className="text-sm font-semibold">
-                    Invoice lines
-                  </h2>
-                  <span className="text-xs text-muted-foreground">
-                    {data.lines.length} {data.lines.length === 1 ? "line" : "lines"}
-                  </span>
-                </div>
+              <section aria-label="Invoice lines">
                 <div className="overflow-hidden rounded-lg border">
                   <Table>
                     <TableHeader>
@@ -545,24 +517,24 @@ function InvoiceReview({
                     <TableBody>
                       {data.lines.map((line) => (
                         <TableRow key={line.index}>
-                          <TableCell className="py-3 pl-4">
+                          <TableCell className="py-2 pl-4">
                             <p className="max-w-72 font-medium whitespace-normal">
                               {line.values.description ||
                                 line.values.item_name ||
                                 `Line ${line.index + 1}`}
                             </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              HSN {line.display.hsn_sac || "—"}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {line.display.quantity || "—"} {line.display.uom} ×{" "}
-                              {line.display.printed_unit_price || "—"}
+                            <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                              <span>HSN {line.display.hsn_sac || "—"}</span>
+                              <span>
+                                {line.display.quantity || "—"} {line.display.uom} ×{" "}
+                                {line.display.printed_unit_price || "—"}
+                              </span>
                             </p>
                           </TableCell>
-                          <TableCell className="text-right align-top pt-3 tabular-nums">
+                          <TableCell className="text-right align-top pt-2 tabular-nums">
                             {line.display.taxable_value || "—"}
                           </TableCell>
-                          <TableCell className="text-right text-xs leading-6 tabular-nums text-muted-foreground">
+                          <TableCell className="text-right align-top pt-2 leading-5 tabular-nums">
                             {["cgst", "sgst", "igst"]
                               .filter(
                                 (head) =>
@@ -570,7 +542,9 @@ function InvoiceReview({
                               )
                               .map((head) => (
                                 <p key={head} className="whitespace-nowrap">
-                                  {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}% ·{" "}
+                                  <span className="mr-2 text-xs text-muted-foreground">
+                                    {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}%
+                                  </span>
                                   {line.display[`${head}_amount`] || "—"}
                                 </p>
                               ))}
@@ -601,10 +575,13 @@ function InvoiceReview({
                   </Table>
                 </div>
               </section>
-              <section aria-labelledby="invoice-totals">
+              <Collapsible
+                render={<section aria-labelledby="invoice-totals" />}
+                defaultOpen={data.totals.some((total) => total.status !== "matches")}
+              >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 id="invoice-totals" className="text-sm font-semibold">
-                    Invoice totals
+                    Calculated totals
                   </h2>
                   <Button
                     variant="ghost"
@@ -615,52 +592,82 @@ function InvoiceReview({
                     <Pencil /> Edit printed totals
                   </Button>
                 </div>
-                <div className="overflow-hidden rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="pl-4">Total</TableHead>
-                        <TableHead className="text-right">From lines</TableHead>
-                        <TableHead className="text-right">Printed on bill</TableHead>
-                        <TableHead>Comparison</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.totals.map((total) => (
-                        <TableRow key={total.field}>
-                          <TableCell className="pl-4">{total.label}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {total.calculated}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">{total.printed}</TableCell>
-                          <TableCell>
-                            <span
-                              className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
-                            >
-                              {total.status === "matches"
-                                ? "Matches"
-                                : total.status === "mismatch"
-                                  ? `${total.difference ?? "—"} difference`
-                                  : "Not compared"}
-                            </span>
-                          </TableCell>
+                <dl className="mb-2 grid grid-cols-3 gap-3 py-2">
+                  {data.totals.map((total) => (
+                    <div key={total.field}>
+                      <dt className="text-xs text-muted-foreground">{total.label}</dt>
+                      <dd className="mt-1 text-sm font-semibold tabular-nums">
+                        {total.calculated}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <CollapsibleTrigger
+                  render={<Button variant="ghost" size="sm" className="group mb-2" />}
+                >
+                  Compare with printed totals{" "}
+                  <ChevronDown className="group-data-panel-open:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="overflow-hidden rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead className="pl-4">Total</TableHead>
+                          <TableHead className="text-right">From lines</TableHead>
+                          <TableHead className="text-right">Printed on bill</TableHead>
+                          <TableHead>Comparison</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </section>
+                      </TableHeader>
+                      <TableBody>
+                        {data.totals.map((total) => (
+                          <TableRow key={total.field}>
+                            <TableCell className="pl-4">{total.label}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {total.calculated}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {total.printed}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
+                              >
+                                {total.status === "matches"
+                                  ? "Matches"
+                                  : total.status === "mismatch"
+                                    ? `${total.difference ?? "—"} difference`
+                                    : "Not compared"}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
               {openIssues.length > 0 && (
-                <section aria-labelledby="invoice-issues" className="space-y-3">
-                  <h2 id="invoice-issues" className="text-sm font-semibold">
-                    Needs your review
-                  </h2>
+                <section aria-label="Needs your review" className="space-y-3">
                   {openIssues.map((issue) => (
                     <div key={issue.target} className="rounded-lg border px-4 py-3">
                       <p className="text-sm font-medium">{issue.title}</p>
                       <p className="mt-1 text-sm leading-6 text-muted-foreground">
                         {issue.message}
                       </p>
+                      {issue.lookup_details && (
+                        <Collapsible className="mt-2">
+                          <CollapsibleTrigger
+                            render={<Button variant="ghost" size="sm" className="group px-0" />}
+                          >
+                            GST lookup details{" "}
+                            <ChevronDown className="group-data-panel-open:rotate-180" />
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="pt-1 text-sm leading-6 text-muted-foreground">
+                            {issue.lookup_details}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
                       {issue.can_confirm && (
                         <Button
                           variant="outline"
@@ -683,10 +690,7 @@ function InvoiceReview({
                 </section>
               )}
             </div>
-            <Collapsible
-              render={<footer />}
-              className="shrink-0 border-t bg-background px-6 py-4 lg:px-8"
-            >
+            <Collapsible render={<footer />} className="shrink-0 border-t bg-background px-5 py-3">
               <CollapsibleContent
                 id="invoice-checks"
                 className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4"
@@ -740,15 +744,31 @@ function InvoiceReview({
                   </span>
                   <ChevronDown className="group-data-panel-open:rotate-180" />
                 </CollapsibleTrigger>
-                <Button disabled={!next || busy} onClick={() => go(next?.id)}>
-                  Next invoice <ArrowRight />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    aria-label="Previous invoice"
+                    title="Previous invoice (Alt+Left)"
+                    disabled={!previous || busy || dialogOpen}
+                    onClick={() => go(previous?.id)}
+                  >
+                    <ArrowLeft /> Previous
+                  </Button>
+                  <Button
+                    aria-label="Next invoice"
+                    title="Next invoice (Alt+Right)"
+                    disabled={!next || busy || dialogOpen}
+                    onClick={() => go(next?.id)}
+                  >
+                    Next <ArrowRight />
+                  </Button>
+                </div>
+                <p className="w-full text-right text-xs text-muted-foreground">{positionLabel}</p>
               </div>
             </Collapsible>
           </section>
-        </div>
-      )}
-
+        </ResizablePanel>
+      </ResizablePanelGroup>
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {

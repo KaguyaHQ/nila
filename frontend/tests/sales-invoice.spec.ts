@@ -127,8 +127,20 @@ function invoice(id = "one"): SalesInvoiceReviewData {
       { label: "Karnataka (29)", value: "29" },
     ],
     queue: [
-      { id: "one", number: "INV-001", status: "needs_review" },
-      { id: "two", number: "INV-002", status: "ready" },
+      {
+        id: "one",
+        number: "INV-001",
+        customer: "Customer A",
+        amount: "₹1,180.00",
+        status: "needs_review",
+      },
+      {
+        id: "two",
+        number: "INV-002",
+        customer: "Customer B",
+        amount: "₹2,360.00",
+        status: "ready",
+      },
     ],
     can_edit: true,
     lock_reason: null,
@@ -417,10 +429,11 @@ test("checks show reasons and only server-permitted confirmation is offered", as
     .getByRole("dialog")
     .getByRole("button", { name: "Use extracted lines", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "No invoices need review", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("No invoices need review", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText("Decision saved.");
+  await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/filter=needs_review/);
+  await expect(page.getByRole("button", { name: "Next invoice", exact: true })).toBeDisabled();
 });
 
 test("filed conflict keeps edits visible but disables further writes after refreshing permission", async ({
@@ -503,4 +516,144 @@ test("checks use a keyboard disclosure and the editor saves with Control Enter",
     "/app/gst/1/2026-06/sales/register?q=Customer",
   );
   await page.screenshot({ path: testInfo.outputPath("review-controls.png"), fullPage: true });
+});
+
+function previewPdf(text = "Draft invoice") {
+  const stream = `BT /F1 18 Tf 48 760 Td (${text.replace(/[()\\]/g, " ")}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const start = pdf.length;
+  pdf += `xref\n0 6\n0000000000 65535 f \n${offsets
+    .slice(1)
+    .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
+    .join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
+  return Buffer.from(pdf);
+}
+
+test("four-line review keeps totals visible and preserves split and zoom between invoices", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const data = invoice(id);
+    data.lines = Array.from({ length: 4 }, (_, index) => ({ ...data.lines[0], index }));
+    data.source = { name: `${id}.pdf`, url: `/review-fixture/${id}.pdf`, pages: [1], images: [] };
+    return route.fulfill({ json: data });
+  });
+  await page.route("**/review-fixture/*.pdf", (route) =>
+    route.fulfill({
+      contentType: "application/pdf",
+      body: previewPdf(
+        route.request().url().includes("one.pdf") ? "Invoice INV-001" : "Invoice INV-002",
+      ),
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  const source = page.getByRole("region", { name: "Source document" });
+  const canvas = source.locator("canvas");
+  await expect
+    .poll(() => canvas.evaluate((el: HTMLCanvasElement) => el.width))
+    .toBeGreaterThan(100);
+  await expect(page.getByRole("definition").first()).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("four-lines-desktop.png") });
+  const separator = page.getByRole("separator", { name: "Resize source document" });
+  const before = (await source.boundingBox())!.width;
+  const handle = (await separator.boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 100, handle.y + handle.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await source.boundingBox())!.width).toBeGreaterThan(before + 70);
+  await separator.focus();
+  await page.keyboard.press("ArrowLeft");
+  const resized = (await source.boundingBox())!.width;
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect
+    .poll(() => canvas.evaluate((el) => el.getBoundingClientRect().width))
+    .toBeGreaterThan(resized);
+  const zoomed = await canvas.evaluate((el) => el.getBoundingClientRect().width);
+  await source.locator("[data-pdf-surface]").evaluate((el) => {
+    el.scrollTop = 150;
+  });
+  await page.getByRole("button", { name: "Next invoice", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Invoice INV-002", exact: true })).toBeVisible();
+  await expect
+    .poll(async () => Math.abs((await source.boundingBox())!.width - resized))
+    .toBeLessThan(2);
+  await expect
+    .poll(() =>
+      canvas.evaluate(
+        (el, expected) => Math.abs(el.getBoundingClientRect().width - expected),
+        zoomed,
+      ),
+    )
+    .toBeLessThan(2);
+  await expect(source.locator("[data-pdf-surface]")).toHaveJSProperty("scrollTop", 0);
+  await expect(source.getByRole("link", { name: "Download source PDF" })).toHaveAttribute(
+    "href",
+    "/review-fixture/two.pdf",
+  );
+  await page.getByRole("button", { name: "Previous invoice", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Invoice list", exact: true }).click();
+  await expect(page.getByRole("option").first()).toHaveAttribute("aria-current", "true");
+  await page.screenshot({
+    path: testInfo.outputPath("invoice-drawer-desktop.png"),
+    animations: "disabled",
+  });
+});
+
+test("review trims repeated labels and keeps GST lookup evidence expandable", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  const message =
+    "The bill says “Philips India Ltd C/o. UPS SCS (India) Pvt Ltd”. GST records say “PHILIPS INDIA LIMITED”.";
+  const details =
+    "GST portal: PHILIPS INDIA LIMITED; Active. Checked 18 Sep 2026 at 20:05 IST. This is the status at lookup, not on the invoice date.";
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) => {
+    const data = invoice();
+    data.issues = [
+      {
+        ...data.issues[0],
+        code: "buyer_gst_name_review",
+        title: "Check buyer name against GST records",
+        message,
+        lookup_details: details,
+      },
+    ];
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await expect(page.getByRole("heading", { name: "Invoice lines", exact: true })).toHaveCount(0);
+  await expect(page.getByText("1 line", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Needs your review", exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("heading", { name: "Calculated totals", exact: true })).toBeVisible();
+  await expect(page.getByText(message, { exact: true })).toBeVisible();
+  const lookup = page.getByRole("button", { name: "GST lookup details", exact: true });
+  await expect(lookup).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(details, { exact: true })).not.toBeVisible();
+  await lookup.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(details, { exact: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(details, { exact: true })).not.toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("simplified-review.png"),
+    animations: "disabled",
+  });
 });

@@ -11,6 +11,7 @@ export default function SourcePdf(props: {
   pages: number[];
   images?: string[];
   label?: string;
+  zoom?: React.RefObject<number>;
 }) {
   return <PdfSurface key={`${props.url}:${props.pages.join(",")}`} {...props} />;
 }
@@ -20,19 +21,25 @@ function PdfSurface({
   pages,
   images = [],
   label = "Invoice",
+  zoom,
 }: {
   url: string;
   pages: number[];
   images?: string[];
   label?: string;
+  zoom?: React.RefObject<number>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!root.current) return;
-    const renderer = Object.assign({ el: root.current }, PdfViewer);
+    const renderer = Object.assign({ el: root.current, zoom: 1 }, PdfViewer);
     renderer.mounted();
-    return () => renderer.destroyed();
-  }, []);
+    if (zoom) renderer.zoom = zoom.current;
+    return () => {
+      if (zoom) zoom.current = renderer.zoom;
+      renderer.destroyed();
+    };
+  }, [zoom]);
 
   return (
     <div

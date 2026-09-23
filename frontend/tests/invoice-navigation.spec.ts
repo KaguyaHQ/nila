@@ -22,8 +22,20 @@ function invoice(id: string): SalesInvoiceReviewData {
     source: null,
     states: [],
     queue: [
-      { id: "one", number: "INV-001", status: "needs_review" },
-      { id: "two", number: "INV-002", status: "ready" },
+      {
+        id: "one",
+        number: "INV-001",
+        customer: "Customer A",
+        amount: "₹1,180.00",
+        status: "needs_review",
+      },
+      {
+        id: "two",
+        number: "INV-002",
+        customer: "Customer B",
+        amount: "₹2,360.00",
+        status: "ready",
+      },
     ],
     can_edit: true,
     lock_reason: null,
@@ -41,13 +53,14 @@ test("invoice picker searches, navigates with keyboard, and returns focus on Esc
   page,
 }, testInfo) => {
   await page.goto("/app/gst/1/2026-06/sales/invoices/one?q=Customer+A");
-  const trigger = page.getByRole("button", { name: "Jump to invoice" });
+  const trigger = page.getByRole("button", { name: "Invoice list" });
   await trigger.click();
   const search = page.getByRole("combobox", { name: "Find invoice" });
   await expect(search).toBeFocused();
   await search.fill("no match");
   await expect(page.getByText("No invoices found.")).toBeVisible();
-  await search.fill("INV-002");
+  await search.fill("Customer B");
+  await expect(page.getByRole("option")).toContainText("₹2,360.00");
   await expect(page.getByRole("option")).toHaveCount(1);
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/invoices\/two\?q=Customer\+A/);
@@ -70,7 +83,7 @@ test("invoice picker searches, navigates with keyboard, and returns focus on Esc
 
 test("invoice picker respects active status filter", async ({ page }) => {
   await page.goto("/app/gst/1/2026-06/sales/invoices/one?filter=needs_review");
-  await page.getByRole("button", { name: "Jump to invoice" }).click();
+  await page.getByRole("button", { name: "Invoice list" }).click();
   await expect(page.getByRole("option")).toHaveCount(1);
   await expect(page.getByRole("option")).toContainText("INV-001");
 });

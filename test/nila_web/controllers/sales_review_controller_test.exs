@@ -68,11 +68,52 @@ defmodule NilaWeb.SalesReviewControllerTest do
     assert body["source"]["name"] == "sales.pdf"
     assert body["source"]["url"] == "/gst/#{client.id}/2025-10/original/#{dump.id}/0"
     assert is_list(body["source"]["pages"])
-    assert Enum.any?(body["queue"], &(&1["id"] == invoice["id"]))
+    row = Enum.find(body["queue"], &(&1["id"] == invoice["id"]))
+    assert row["customer"] == body["invoice"]["buyer_name"]
+    assert row["amount"] == Enum.find(body["totals"], &(&1["field"] == "total"))["calculated"]
     assert Enum.all?(body["totals"], &is_binary(&1["calculated"]))
     assert body["lines"] != []
     assert Enum.all?(hd(body["lines"])["values"], fn {_field, value} -> is_binary(value) end)
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
+  end
+
+  test "buyer name warning separates the comparison from dated lookup evidence", %{
+    conn: conn,
+    path: path,
+    invoice: invoice,
+    month: month,
+    dump: dump
+  } do
+    replace = fn invoices ->
+      Enum.map(invoices, fn row ->
+        if row["id"] == invoice["id"],
+          do:
+            row
+            |> Map.put("buyer_gstin", "33AEWPH4158J1Z3")
+            |> Map.put("buyer_name", "Different customer"),
+          else: row
+      end)
+    end
+
+    month |> Ecto.Changeset.change(invoices: replace.(month.invoices)) |> Repo.update!()
+    dump |> Ecto.Changeset.change(invoices: replace.(dump.invoices)) |> Repo.update!()
+
+    Repo.insert!(%Nila.Gst.Portal.TaxpayerLookup{
+      gstin: "33AEWPH4158J1Z3",
+      legal_name: "Registered Customer Limited",
+      registration_status: "Active",
+      checked_at: DateTime.utc_now(),
+      payload: %{}
+    })
+
+    body = conn |> get(path) |> contract_response(200)
+    issue = Enum.find(body["issues"], &(&1["code"] == "buyer_gst_name_review"))
+
+    assert issue["message"] ==
+             "The bill says “Different customer”. GST records say “Registered Customer Limited”."
+
+    assert issue["lookup_details"] =~ "Active. Checked"
+    assert issue["lookup_details"] =~ "not on the invoice date"
   end
 
   test "displays the GST treatment's place of supply without inventing a captured source fact", %{
