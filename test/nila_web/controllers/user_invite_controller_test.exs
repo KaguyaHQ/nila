@@ -1,8 +1,6 @@
 defmodule NilaWeb.UserInviteControllerTest do
   use NilaWeb.ConnCase, async: true
 
-  import Phoenix.LiveViewTest
-
   alias Nila.Accounts
 
   defp invite(org, attrs) do
@@ -26,20 +24,16 @@ defmodule NilaWeb.UserInviteControllerTest do
     test "renders the set-password form for a valid token", %{conn: conn, org: org} do
       token = invite(org, %{name: "Jaimathi", email: "jaimathi@example.com"})
 
-      {:ok, view, html} = live(conn, ~p"/users/invite/#{token}")
-
-      assert has_element?(view, "#invite-form[method=post]")
-      refute has_element?(view, "#invite-form input[name=_method][value=put]")
-
-      assert html =~ "Set up your Nila workspace"
-      assert html =~ "Welcome, Jaimathi"
-      assert html =~ "Create a password"
+      response = get(conn, ~p"/users/invite/#{token}")
+      assert response.assigns.auth_page.valid
+      assert response.assigns.auth_page.name == "Jaimathi"
+      assert response.assigns.auth_page.kind == "invite"
+      assert html_response(response, 200) =~ "auth-page"
     end
 
     test "shows an invalid-link message for a bad token", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/users/invite/garbage")
-
-      assert html =~ "no longer valid"
+      response = get(conn, ~p"/users/invite/garbage")
+      refute response.assigns.auth_page.valid
     end
   end
 
@@ -60,7 +54,7 @@ defmodule NilaWeb.UserInviteControllerTest do
       assert Accounts.get_user_by_email_and_password("kannan@example.com", "supersecret123")
     end
 
-    test "rejects a weak password and redirects back", %{conn: conn, org: org} do
+    test "rejects a weak password with field errors", %{conn: conn, org: org} do
       token = invite(org, %{name: "Weak", email: "weak@example.com"})
 
       conn =
@@ -68,7 +62,8 @@ defmodule NilaWeb.UserInviteControllerTest do
           "user" => %{"password" => "short", "password_confirmation" => "short"}
         })
 
-      assert redirected_to(conn) == ~p"/users/invite/#{token}"
+      assert conn.status == 422
+      assert conn.assigns.auth_page.errors.password != []
       refute get_session(conn, :user_token)
     end
   end

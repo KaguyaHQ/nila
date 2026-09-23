@@ -249,12 +249,11 @@ defmodule NilaWeb.Router do
     get "/", PageController, :home
     get "/users/sign_up", PageController, :signup_redirect
 
-    live_session :redirect_if_authenticated,
-      on_mount: [{NilaWeb.UserAuth, :redirect_if_authenticated}] do
-      live "/users/log_in", UserLoginLive, :new
-      live "/users/reset_password", UserForgotPasswordLive, :new
-      live "/users/reset_password/:token", UserResetPasswordLive, :edit
-    end
+    get "/users/log_in", AuthPageController, :login
+    get "/users/reset_password", AuthPageController, :forgot
+    post "/users/reset_password", AuthPageController, :forgot_submit
+    get "/users/reset_password/:token", AuthPageController, :reset
+    post "/users/reset_password/:token", AuthPageController, :reset_submit
   end
 
   scope "/", NilaWeb do
@@ -265,19 +264,14 @@ defmodule NilaWeb.Router do
     get "/users/confirm/:token", UserConfirmationController, :confirm
     post "/users/invite/:token", UserInviteController, :create
 
-    live_session :accept_invite,
-      on_mount: [{NilaWeb.UserAuth, :mount_current_scope}] do
-      live "/users/invite/:token", UserInviteLive, :new
-    end
+    get "/users/invite/:token", AuthPageController, :invite
   end
 
   scope "/", NilaWeb do
     pipe_through [:browser, :authenticated_browser]
 
-    live_session :require_authenticated,
-      on_mount: [{NilaWeb.UserAuth, :require_authenticated}] do
-      live "/users/confirm", UserConfirmationLive, :new
-    end
+    get "/users/confirm", AuthPageController, :confirmation
+    post "/users/confirm", AuthPageController, :resend
   end
 
   scope "/", NilaWeb do
@@ -324,7 +318,6 @@ defmodule NilaWeb.Router do
       # setup does not reload the shell. Firm-only pages enforce their own
       # capability guard in the LiveView.
       live "/settings/profile", Settings.ProfileLive, :edit
-      live "/settings/profile/confirm_email/:token", Settings.ProfileLive, :confirm_email
       live "/settings/security", Settings.SecurityLive, :edit
       live "/settings/workspace", Settings.WorkspaceLive, :index
       live "/settings/connectors", Settings.ConnectorsLive, :index
@@ -349,6 +342,7 @@ defmodule NilaWeb.Router do
     get "/gstr1/:client_id/:period/winman-b2b.xlsm", Gstr1Controller, :winman_b2b
     get "/gstr1/:client_id/:period/evidence/:basename", Gstr1Controller, :evidence
 
+    get "/settings/profile/confirm_email/:token", AuthPageController, :confirm_email
     get "/settings", SettingsController, :index
     get "/clients/import-template.xlsx", ClientImportController, :template
     get "/notices/:id/documents/:index", NoticeDocumentController, :show

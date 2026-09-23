@@ -17,8 +17,8 @@ defmodule NilaWeb.UserConfirmationController do
     end
   end
 
-  defp verified_redirect_path(%{assigns: %{current_scope: %{current_client: client}}}),
-    do: NilaWeb.GoTo.sales_home(client)
+  defp verified_redirect_path(%{assigns: %{current_scope: %{user: %{}}}}),
+    do: "/users/confirm"
 
   defp verified_redirect_path(_conn), do: ~p"/users/log_in"
 end

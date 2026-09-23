@@ -4,14 +4,13 @@ defmodule NilaWeb.Settings.ProfileLive do
   alias Nila.Accounts
 
   @impl true
-  def mount(params, _session, socket) do
+  def mount(_params, _session, socket) do
     socket =
       socket
       |> assign(:page_title, "Profile")
       |> assign(:settings_section, :profile)
       |> assign_name_form(%{})
       |> assign_email_form(%{})
-      |> maybe_confirm_email(params)
 
     {:ok, socket}
   end
@@ -95,10 +94,12 @@ defmodule NilaWeb.Settings.ProfileLive do
             <div class="bg-primary rounded-field text-body text-primary-content grid size-14 shrink-0 place-items-center font-semibold">
               {user_initials(@current_scope.user)}
             </div>
+
             <div class="min-w-0 flex-1">
               <h2 id="profile-name" class="text-base-content text-h4 font-semibold wrap-break-word">
                 {@current_scope.user.name}
               </h2>
+
               <p id="profile-email" class="text-ink-subtle text-ui wrap-break-word">
                 {@current_scope.user.email}
               </p>
@@ -110,14 +111,17 @@ defmodule NilaWeb.Settings.ProfileLive do
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Firm
               </dt>
+
               <dd id="profile-workspace" class="text-base-content text-ui font-semibold">
                 {workspace_name(@current_scope)}
               </dd>
             </div>
+
             <div class="space-y-related">
               <dt class="text-ink-subtle text-label font-medium uppercase">
                 Role
               </dt>
+
               <dd id="profile-role" class="text-base-content text-ui font-semibold">
                 {role_label(@current_scope)}
               </dd>
@@ -174,23 +178,6 @@ defmodule NilaWeb.Settings.ProfileLive do
     </Layouts.settings>
     """
   end
-
-  defp maybe_confirm_email(socket, %{"token" => token}) do
-    case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
-      {:ok, user} ->
-        socket
-        |> put_flash(:info, "Your email has been updated.")
-        |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
-        |> redirect(to: ~p"/app/settings/profile?email=confirmed")
-
-      {:error, _reason} ->
-        socket
-        |> put_flash(:error, "Email change link is invalid or expired.")
-        |> redirect(to: ~p"/app/settings/profile?email=invalid")
-    end
-  end
-
-  defp maybe_confirm_email(socket, _params), do: socket
 
   defp assign_name_form(socket, params) do
     form =

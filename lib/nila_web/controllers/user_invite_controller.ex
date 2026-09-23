@@ -18,13 +18,15 @@ defmodule NilaWeb.UserInviteController do
             |> put_flash(:info, "Welcome to Nila. You're signed in.")
             |> UserAuth.log_in_user(user)
 
-          {:error, _changeset} ->
+          {:error, changeset} ->
             conn
-            |> put_flash(
-              :error,
-              "Password must be at least 8 characters and match the confirmation."
-            )
-            |> redirect(to: ~p"/users/invite/#{token}")
+            |> put_status(422)
+            |> NilaWeb.AuthPageController.page("invite", %{
+              valid: true,
+              name: user.name,
+              email: user.email,
+              errors: NilaWeb.AuthPageController.errors(changeset)
+            })
         end
     end
   end

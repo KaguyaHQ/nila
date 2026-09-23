@@ -14,6 +14,19 @@ defmodule NilaWeb.ReactAppController do
         html =
           String.replace(html, "</head>", ~s(<meta name="csrf-token" content="#{csrf}"></head>))
 
+        html =
+          if data = conn.assigns[:auth_page] do
+            json = data |> Jason.encode!() |> String.replace("<", "\\u003c")
+
+            String.replace(
+              html,
+              "</head>",
+              ~s(<script id="auth-page" type="application/json">#{json}</script></head>)
+            )
+          else
+            html
+          end
+
         conn |> put_resp_header("cache-control", "no-store") |> html(html)
 
       {:error, :enoent} ->
