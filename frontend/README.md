@@ -151,6 +151,7 @@ Run from `frontend/`:
 - `pnpm run format`: apply formatting only; no lint fixes or import reordering.
 - `pnpm run quality`: check formatting, lint and import organization without editing files.
 
-The initial formatting and lint cleanup is deferred. These commands may report existing
-findings and are deliberately not part of `check`, `build`, or deployment yet.
+Formatting is applied; run `format:check` before committing frontend changes.
+Lint cleanup remains deferred. Lint and quality checks may report existing findings.
+These commands are not part of `check`, `build`, or deployment yet.
 Keep formatting changes separate from feature changes; inspect lint fixes individually.

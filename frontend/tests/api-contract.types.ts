@@ -12,7 +12,15 @@ function invalidRequests(signal: AbortSignal) {
   businessRequest("createBusinessInvoice", { body: { customer: {} } });
   // @ts-expect-error OTP verification must include the server challenge.
   gstr2bRequest(1, "2026-09", signal, { action: "verify", body: { otp: "123456" } });
-  // @ts-expect-error Every treatment write needs the current evidence basis.
-  savePurchaseTreatment("1", "2026-09", "row", "all", "", { case_ids: [1], values: { choice: "claim" } }, signal);
+  savePurchaseTreatment(
+    "1",
+    "2026-09",
+    "row",
+    "all",
+    "",
+    // @ts-expect-error Every treatment write needs the current evidence basis.
+    { case_ids: [1], values: { choice: "claim" } },
+    signal,
+  );
 }
 void invalidRequests;

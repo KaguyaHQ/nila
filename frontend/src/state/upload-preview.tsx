@@ -10,16 +10,35 @@ const Context = createContext<UploadPreview | null>(null);
 
 export function UploadPreviewProvider({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<File[]>([]);
-  const addFiles = (incoming: File[]) => setFiles(current => {
-    const next = [...current];
-    for (const file of incoming) {
-      if (!next.some(existing => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified)) {
-        next.push(file);
+  const addFiles = (incoming: File[]) =>
+    setFiles((current) => {
+      const next = [...current];
+      for (const file of incoming) {
+        if (
+          !next.some(
+            (existing) =>
+              existing.name === file.name &&
+              existing.size === file.size &&
+              existing.lastModified === file.lastModified,
+          )
+        ) {
+          next.push(file);
+        }
       }
-    }
-    return next;
-  });
-  return <Context.Provider value={{ files, addFiles, removeFile: index => setFiles(current => current.filter((_, i) => i !== index)), clearFiles: () => setFiles([]) }}>{children}</Context.Provider>;
+      return next;
+    });
+  return (
+    <Context.Provider
+      value={{
+        files,
+        addFiles,
+        removeFile: (index) => setFiles((current) => current.filter((_, i) => i !== index)),
+        clearFiles: () => setFiles([]),
+      }}
+    >
+      {children}
+    </Context.Provider>
+  );
 }
 
 export function useUploadPreview() {

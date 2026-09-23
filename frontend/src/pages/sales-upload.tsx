@@ -38,17 +38,33 @@ export default function SalesUpload() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Button  variant="ghost" size="sm" className="mb-4 -ml-3" nativeButton={false} role="link" render={<Link to="/sales" />}> <ArrowLeft /> Sales &amp; GSTR-1</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-4 -ml-3"
+          nativeButton={false}
+          role="link"
+          render={<Link to="/sales" />}
+        >
+          {" "}
+          <ArrowLeft /> Sales &amp; GSTR-1
+        </Button>
         <h1 className="text-2xl font-semibold tracking-tight">Add sales bills</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{monthLabel} · Select your sales bills as PDFs.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {monthLabel} · Select your sales bills as PDFs.
+        </p>
       </div>
 
       <Card className="gap-0 overflow-hidden py-0 shadow-none">
         <div
           className={`m-6 flex flex-col items-center rounded-lg border border-dashed px-6 py-12 text-center transition-colors ${dragging ? "border-foreground bg-muted" : "border-border"}`}
-          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
           onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+              setDragging(false);
           }}
           onDrop={(event) => {
             event.preventDefault();
@@ -60,8 +76,12 @@ export default function SalesUpload() {
             <Upload className="size-5 text-muted-foreground" aria-hidden="true" />
           </div>
           <h2 className="text-sm font-medium">Drop your sales PDFs here</h2>
-          <p className="mt-2 text-sm text-muted-foreground">One bill or a combined PDF of several bills.</p>
-          <Button className="mt-5" onClick={() => picker.current?.click()}>Choose PDFs</Button>
+          <p className="mt-2 text-sm text-muted-foreground">
+            One bill or a combined PDF of several bills.
+          </p>
+          <Button className="mt-5" onClick={() => picker.current?.click()}>
+            Choose PDFs
+          </Button>
           <Input
             ref={picker}
             id="sales-pdf-picker"
@@ -82,10 +102,15 @@ export default function SalesUpload() {
       </Card>
 
       {errors.length > 0 && (
-        <div role="alert" className="rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive"
+        >
           <p className="font-medium">Some files could not be selected</p>
           <ul className="mt-2 list-inside list-disc space-y-1 break-words">
-            {errors.map((error, index) => <li key={index}>{error}</li>)}
+            {errors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -96,17 +121,36 @@ export default function SalesUpload() {
             <h2 id="selected-files-heading" className="text-sm font-semibold" aria-live="polite">
               {files.length} {files.length === 1 ? "file" : "files"} selected
             </h2>
-            <Button variant="ghost" size="sm" onClick={() => { clearFiles(); setErrors([]); }}>Clear all</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                clearFiles();
+                setErrors([]);
+              }}
+            >
+              Clear all
+            </Button>
           </div>
           <ul className="divide-y rounded-lg border bg-card">
             {files.map((file, index) => (
-              <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center gap-3 px-4 py-3">
+              <li
+                key={`${file.name}-${file.size}-${file.lastModified}`}
+                className="flex items-center gap-3 px-4 py-3"
+              >
                 <FileText className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium">{file.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">PDF · {fileSize(file.size)}</p>
                 </div>
-                <Button variant="ghost" size="icon" aria-label={`Remove ${file.name}`} onClick={() => removeFile(index)}><X /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => removeFile(index)}
+                >
+                  <X />
+                </Button>
               </li>
             ))}
           </ul>
@@ -114,7 +158,15 @@ export default function SalesUpload() {
       )}
 
       <div className="flex justify-end">
-        <Button  variant="outline" nativeButton={false} role="link" render={<Link to="/sales/uploads" />}> View uploads <ArrowRight /></Button>
+        <Button
+          variant="outline"
+          nativeButton={false}
+          role="link"
+          render={<Link to="/sales/uploads" />}
+        >
+          {" "}
+          View uploads <ArrowRight />
+        </Button>
       </div>
     </div>
   );

@@ -16,7 +16,8 @@ async function request<T>(url: string, signal: AbortSignal, body?: unknown): Pro
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
-    headers["X-CSRF-Token"] = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "";
+    headers["X-CSRF-Token"] =
+      document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "";
   }
   const response = await fetch(url, {
     method: body === undefined ? "GET" : "POST",
@@ -27,7 +28,12 @@ async function request<T>(url: string, signal: AbortSignal, body?: unknown): Pro
   });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new ApiError(response.status, typeof data?.error === "string" ? data.error : "We couldn't complete this request. Please try again.");
+    throw new ApiError(
+      response.status,
+      typeof data?.error === "string"
+        ? data.error
+        : "We couldn't complete this request. Please try again.",
+    );
   }
   return response.json();
 }
@@ -43,14 +49,23 @@ export function prepareUpload(client: number, period: string, files: File[], sig
 }
 
 export function commitUpload(client: number, period: string, token: string, signal: AbortSignal) {
-  return request<CommittedUpload>(uploadPath(client, period), signal, { token } satisfies UploadToken);
+  return request<CommittedUpload>(uploadPath(client, period), signal, {
+    token,
+  } satisfies UploadToken);
 }
 
 export function refreshUpload(client: number, period: string, token: string, signal: AbortSignal) {
-  return request<PreparedUpload>(`${uploadPath(client, period)}/prepare`, signal, { token } satisfies UploadToken);
+  return request<PreparedUpload>(`${uploadPath(client, period)}/prepare`, signal, {
+    token,
+  } satisfies UploadToken);
 }
 
-export function uploadPdf(url: string, file: File, signal: AbortSignal, onProgress: (percent: number) => void): Promise<void> {
+export function uploadPdf(
+  url: string,
+  file: File,
+  signal: AbortSignal,
+  onProgress: (percent: number) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const abort = () => xhr.abort();
@@ -66,8 +81,9 @@ export function uploadPdf(url: string, file: File, signal: AbortSignal, onProgre
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", "application/pdf");
     xhr.timeout = 10 * 60 * 1000;
-    xhr.upload.onprogress = event => {
-      if (event.lengthComputable) onProgress(Math.min(99, Math.round(event.loaded / event.total * 100)));
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable)
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -75,7 +91,8 @@ export function uploadPdf(url: string, file: File, signal: AbortSignal, onProgre
         finish();
       } else finish(new ApiError(xhr.status, `Couldn't upload ${file.name}. Please retry.`));
     };
-    xhr.onerror = () => finish(new Error(`Connection lost while uploading ${file.name}. Please retry.`));
+    xhr.onerror = () =>
+      finish(new Error(`Connection lost while uploading ${file.name}. Please retry.`));
     xhr.ontimeout = () => finish(new Error(`Upload timed out for ${file.name}. Please retry.`));
     xhr.onabort = () => finish(new DOMException("Upload cancelled", "AbortError"));
     signal.addEventListener("abort", abort, { once: true });

@@ -12,9 +12,7 @@ const queryClient = new QueryClient();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter
-        basename={location.pathname.startsWith("/app/") ? "/app" : undefined}
-      >
+      <BrowserRouter basename={location.pathname.startsWith("/app/") ? "/app" : undefined}>
         <UploadPreviewProvider>
           <LiveUploadDraftProvider>
             <App />

@@ -59,11 +59,23 @@ export function Shell({
   const sectionLabel = inPurchases ? "Purchases & ITC" : "Sales & GSTR-1";
   const period = live?.base.split("/")[3] ?? new URLSearchParams(search).get("period");
   const clientsPath = period ? `/clients?period=${encodeURIComponent(period)}` : "/clients";
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("nila:rail-collapsed") === "true");
-  useEffect(() => { localStorage.setItem("nila:rail-collapsed", String(collapsed)); }, [collapsed]);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("nila:rail-collapsed") === "true",
+  );
+  useEffect(() => {
+    localStorage.setItem("nila:rail-collapsed", String(collapsed));
+  }, [collapsed]);
   const title = firm
-    ? pathname.endsWith("/new") ? "Add client" : pathname.endsWith("/edit") ? "Edit client" : pathname.endsWith("/import") ? "Import clients" : "Clients"
-    : titles[live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname] ?? "Page not found";
+    ? pathname.endsWith("/new")
+      ? "Add client"
+      : pathname.endsWith("/edit")
+        ? "Edit client"
+        : pathname.endsWith("/import")
+          ? "Import clients"
+          : "Clients"
+    : (titles[
+        live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname
+      ] ?? "Page not found");
 
   useEffect(() => {
     document.title = `${title} · Nila${live || firm ? "" : " preview"}`;
@@ -74,143 +86,135 @@ export function Shell({
     return () => cancelAnimationFrame(frame);
   }, [pathname, title]);
 
-  const navigation = (collapsed: boolean) => <>
-        <div
-          className={`flex h-16 items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}
-        >
-          {!collapsed && (
-            <Link
-              to={firm ? clientsPath : salesPath}
-              aria-label={firm ? "Nila clients home" : "Nila sales home"}
-              className="text-2xl font-semibold tracking-tighter"
-            >
-              nila<span className="text-neutral-400">.</span>
-            </Link>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="hidden md:inline-flex"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            onClick={() => setCollapsed((value) => !value)}
+  const navigation = (collapsed: boolean) => (
+    <>
+      <div
+        className={`flex h-16 items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}
+      >
+        {!collapsed && (
+          <Link
+            to={firm ? clientsPath : salesPath}
+            aria-label={firm ? "Nila clients home" : "Nila sales home"}
+            className="text-2xl font-semibold tracking-tighter"
           >
-            <PanelLeft className="text-muted-foreground" />
-          </Button>
-        </div>
-        <div className="px-3 pt-3">
-          {live ? (
-            <ClientSwitcher client={live.client} clients={live.clients} collapsed={collapsed} />
-          ) : (
-            <div
-              className={`flex h-11 items-center rounded-md border text-sm font-medium ${collapsed ? "justify-center" : "gap-2.5 px-3"}`}
-              title={clientName}
-            >
-              <Building2 className="size-4 shrink-0 text-muted-foreground" />
-              {!collapsed && <span className="truncate">{clientName}</span>}
-            </div>
-          )}
-        </div>
-        <nav aria-label="Product" className="space-y-1 px-3 py-7">
-          {!firm && <NavigationLink collapsed={collapsed}
+            nila<span className="text-neutral-400">.</span>
+          </Link>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden md:inline-flex"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <PanelLeft className="text-muted-foreground" />
+        </Button>
+      </div>
+      <div className="px-3 pt-3">
+        {live ? (
+          <ClientSwitcher client={live.client} clients={live.clients} collapsed={collapsed} />
+        ) : (
+          <div
+            className={`flex h-11 items-center rounded-md border text-sm font-medium ${collapsed ? "justify-center" : "gap-2.5 px-3"}`}
+            title={clientName}
+          >
+            <Building2 className="size-4 shrink-0 text-muted-foreground" />
+            {!collapsed && <span className="truncate">{clientName}</span>}
+          </div>
+        )}
+      </div>
+      <nav aria-label="Product" className="space-y-1 px-3 py-7">
+        {!firm && (
+          <NavigationLink
+            collapsed={collapsed}
             to={salesPath}
             aria-current={pathname.startsWith(salesPath) ? "page" : undefined}
             label="Sales & GSTR-1"
             className={`flex h-10 items-center rounded-md text-sm ${pathname.startsWith(salesPath) ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
           >
             <FileText className="size-4 shrink-0" />
-            {!collapsed ? (
-              "Sales & GSTR-1"
-            ) : (
-              <span className="sr-only">Sales & GSTR-1</span>
-            )}
-          </NavigationLink>}
-          {!live && !firm &&
-            [
-              { label: "Purchases & ITC", Icon: FileSpreadsheet },
-              { label: "Banking", Icon: Landmark },
-            ].map(({ label, Icon }) => (
-              <button
-                key={label}
-                disabled
-                title="Not included in the sales UI preview"
-                className={`flex h-10 w-full cursor-not-allowed items-center rounded-md text-sm text-muted-foreground ${collapsed ? "justify-center" : "gap-3 px-3"}`}
-              >
-                <Icon className="size-4 shrink-0" />
-                {!collapsed ? label : <span className="sr-only">{label}</span>}
-              </button>
-            ))}
-          {live && (
-            <>
-              <NavigationLink collapsed={collapsed}
-                to={live.purchases}
-                aria-current={inPurchases ? "page" : undefined}
-                label="Purchases & ITC"
-                className={`flex h-10 items-center rounded-md text-sm ${inPurchases ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
-              >
-                <FileSpreadsheet className="size-4" />
-                {!collapsed ? (
-                  "Purchases & ITC"
-                ) : (
-                  <span className="sr-only">Purchases & ITC</span>
-                )}
-              </NavigationLink>
-
-            </>
-          )}
-          <div
-            className={`${firm ? "pt-1" : "pt-7"} pb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground ${collapsed ? "text-center" : "pl-3"}`}
-          >
-            {collapsed ? "···" : "Firm"}
-          </div>
-          {!live && !firm &&
-            [
-              { label: "Clients", Icon: Users },
-              { label: "Notices", Icon: Inbox },
-            ].map(({ label, Icon }) => (
-              <button
-                key={label}
-                disabled
-                title="Not included in the sales UI preview"
-                className={`flex h-10 w-full cursor-not-allowed items-center rounded-md text-sm text-muted-foreground ${collapsed ? "justify-center" : "gap-3 px-3"}`}
-              >
-                <Icon className="size-4 shrink-0" />
-                {!collapsed ? label : <span className="sr-only">{label}</span>}
-              </button>
-            ))}
-          {(live || firm) && (
-            <>
-              <NavigationLink collapsed={collapsed}
-                to={clientsPath}
-                label="Clients"
-                aria-current={firm ? "page" : undefined}
-                className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
-              >
-                <Users className="size-4" />
-                {!collapsed ? (
-                  "Clients"
-                ) : (
-                  <span className="sr-only">Clients</span>
-                )}
-              </NavigationLink>
-              <a
-                href="/notices"
-                className="flex h-10 items-center gap-3 px-3 text-sm text-muted-foreground"
-              >
-                <Inbox className="size-4" />
-                {!collapsed ? (
-                  "Notices"
-                ) : (
-                  <span className="sr-only">Notices</span>
-                )}
-              </a>
-            </>
-          )}
-        </nav>
-        <div className="mt-auto border-t p-3">
-          {user && <AccountMenu user={user} collapsed={collapsed} />}
+            {!collapsed ? "Sales & GSTR-1" : <span className="sr-only">Sales & GSTR-1</span>}
+          </NavigationLink>
+        )}
+        {!live &&
+          !firm &&
+          [
+            { label: "Purchases & ITC", Icon: FileSpreadsheet },
+            { label: "Banking", Icon: Landmark },
+          ].map(({ label, Icon }) => (
+            <button
+              key={label}
+              disabled
+              title="Not included in the sales UI preview"
+              className={`flex h-10 w-full cursor-not-allowed items-center rounded-md text-sm text-muted-foreground ${collapsed ? "justify-center" : "gap-3 px-3"}`}
+            >
+              <Icon className="size-4 shrink-0" />
+              {!collapsed ? label : <span className="sr-only">{label}</span>}
+            </button>
+          ))}
+        {live && (
+          <>
+            <NavigationLink
+              collapsed={collapsed}
+              to={live.purchases}
+              aria-current={inPurchases ? "page" : undefined}
+              label="Purchases & ITC"
+              className={`flex h-10 items-center rounded-md text-sm ${inPurchases ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
+            >
+              <FileSpreadsheet className="size-4" />
+              {!collapsed ? "Purchases & ITC" : <span className="sr-only">Purchases & ITC</span>}
+            </NavigationLink>
+          </>
+        )}
+        <div
+          className={`${firm ? "pt-1" : "pt-7"} pb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground ${collapsed ? "text-center" : "pl-3"}`}
+        >
+          {collapsed ? "···" : "Firm"}
         </div>
-  </>;
+        {!live &&
+          !firm &&
+          [
+            { label: "Clients", Icon: Users },
+            { label: "Notices", Icon: Inbox },
+          ].map(({ label, Icon }) => (
+            <button
+              key={label}
+              disabled
+              title="Not included in the sales UI preview"
+              className={`flex h-10 w-full cursor-not-allowed items-center rounded-md text-sm text-muted-foreground ${collapsed ? "justify-center" : "gap-3 px-3"}`}
+            >
+              <Icon className="size-4 shrink-0" />
+              {!collapsed ? label : <span className="sr-only">{label}</span>}
+            </button>
+          ))}
+        {(live || firm) && (
+          <>
+            <NavigationLink
+              collapsed={collapsed}
+              to={clientsPath}
+              label="Clients"
+              aria-current={firm ? "page" : undefined}
+              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
+            >
+              <Users className="size-4" />
+              {!collapsed ? "Clients" : <span className="sr-only">Clients</span>}
+            </NavigationLink>
+            <a
+              href="/notices"
+              className="flex h-10 items-center gap-3 px-3 text-sm text-muted-foreground"
+            >
+              <Inbox className="size-4" />
+              {!collapsed ? "Notices" : <span className="sr-only">Notices</span>}
+            </a>
+          </>
+        )}
+      </nav>
+      <div className="mt-auto border-t p-3">
+        {user && <AccountMenu user={user} collapsed={collapsed} />}
+      </div>
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-neutral-50/70">
@@ -235,7 +239,17 @@ export function Shell({
             <span>{clientName}</span>
             <ChevronRight className="size-3" />
             {firm ? (
-              <><Link to={clientsPath} className="hover:text-foreground">Clients</Link>{title !== "Clients" && <><ChevronRight className="size-3" /><span className="text-foreground">{title}</span></>}</>
+              <>
+                <Link to={clientsPath} className="hover:text-foreground">
+                  Clients
+                </Link>
+                {title !== "Clients" && (
+                  <>
+                    <ChevronRight className="size-3" />
+                    <span className="text-foreground">{title}</span>
+                  </>
+                )}
+              </>
             ) : pathname === sectionPath ? (
               <span className="text-foreground">{title}</span>
             ) : (
@@ -248,12 +262,14 @@ export function Shell({
               </>
             )}
           </nav>
-          {(live || firm) && <div className="ml-auto flex items-center gap-1"><WorkspaceCommand live={live} period={period} /><ShortcutHelpButton /></div>}
+          {(live || firm) && (
+            <div className="ml-auto flex items-center gap-1">
+              <WorkspaceCommand live={live} period={period} />
+              <ShortcutHelpButton />
+            </div>
+          )}
           {!live && !firm && (
-            <Badge
-              variant="outline"
-              className="font-normal text-muted-foreground"
-            >
+            <Badge variant="outline" className="font-normal text-muted-foreground">
               UI preview · sample data
             </Badge>
           )}
@@ -270,7 +286,17 @@ export function Shell({
   );
 }
 
-function NavigationLink({ collapsed, label, children, ...props }: ComponentProps<typeof Link> & { collapsed: boolean; label: string }) {
+function NavigationLink({
+  collapsed,
+  label,
+  children,
+  ...props
+}: ComponentProps<typeof Link> & { collapsed: boolean; label: string }) {
   if (!collapsed) return <Link {...props}>{children}</Link>;
-  return <Tooltip><TooltipTrigger render={<Link {...props} />}>{children}</TooltipTrigger><TooltipContent side="right">{label}</TooltipContent></Tooltip>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Link {...props} />}>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
 }

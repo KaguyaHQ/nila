@@ -1,12 +1,6 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { createContext, useContext, useState } from "react";
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -59,10 +53,8 @@ export function LiveSalesLayout() {
     queryKey: ["sales", clientId, period],
     queryFn: ({ signal }) => fetchSales(clientId, period, signal),
     staleTime: 0,
-    retry: (count, error) =>
-      !(error instanceof ApiError && error.status < 500) && count < 1,
-    refetchInterval: (query) =>
-      query.state.data?.uploads.unfinished ? 5000 : false,
+    retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
+    refetchInterval: (query) => (query.state.data?.uploads.unfinished ? 5000 : false),
   });
 
   if (query.isPending)
@@ -130,9 +122,7 @@ function PeriodHeading({ register = false }: { register?: boolean }) {
         </h1>
         <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
           <DialogTrigger
-            render={
-              <Button variant="ghost" size={register ? "sm" : "icon-sm"} />
-            }
+            render={<Button variant="ghost" size={register ? "sm" : "icon-sm"} />}
             aria-label="Choose month"
           >
             {register && data.month_label}
@@ -141,9 +131,7 @@ function PeriodHeading({ register = false }: { register?: boolean }) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Choose working month</DialogTitle>
-              <DialogDescription>
-                Open the sales working for another month.
-              </DialogDescription>
+              <DialogDescription>Open the sales working for another month.</DialogDescription>
             </DialogHeader>
             <Input
               type="month"
@@ -204,10 +192,7 @@ export function LiveSalesSummary() {
     <>
       <PeriodHeading />
       {data.uploads.unfinished && (
-        <p
-          role="status"
-          className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
-        >
+        <p role="status" className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           Some uploads are still being read or need attention.{" "}
           <Link to={`${base}/uploads`} className="font-medium underline">
             Check uploads
@@ -242,9 +227,7 @@ export function LiveSalesSummary() {
           ].map(([label, value], i) => (
             <div key={label} className={i ? "sm:border-l sm:pl-6" : ""}>
               <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">
-                {value}
-              </p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
             </div>
           ))}
         </div>
@@ -265,17 +248,19 @@ export function LiveSalesSummary() {
             role="link"
             render={<Link to={`${base}/uploads`} />}
           >
-            <Upload /> Uploads · {data.uploads.files}{" "}
-            {data.uploads.files === 1 ? "file" : "files"}
+            <Upload /> Uploads · {data.uploads.files} {data.uploads.files === 1 ? "file" : "files"}
           </Button>
         </div>
       </Card>
-      {data.month_issue_count > 0 && <p className="mt-5 text-sm">
-        <Link to={`${base}/checks`} className="font-medium underline underline-offset-4">
-          Review {data.month_issue_count} month {data.month_issue_count === 1 ? "check" : "checks"}
-        </Link>
-        <span className="text-muted-foreground"> before downloading GSTR-1 JSON.</span>
-      </p>}
+      {data.month_issue_count > 0 && (
+        <p className="mt-5 text-sm">
+          <Link to={`${base}/checks`} className="font-medium underline underline-offset-4">
+            Review {data.month_issue_count} month{" "}
+            {data.month_issue_count === 1 ? "check" : "checks"}
+          </Link>
+          <span className="text-muted-foreground"> before downloading GSTR-1 JSON.</span>
+        </p>
+      )}
       <div className="mt-8 grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_220px]">
         <section aria-labelledby="gstr1-summary" className="min-w-0">
           <h2 id="gstr1-summary" className="mb-3 text-sm font-semibold">
@@ -306,17 +291,13 @@ export function LiveSalesSummary() {
                         section.label
                       )}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      {section.count}
-                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{section.count}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">
                       {money(section.value)}
                     </TableCell>
                     <TableCell>
                       {section.status === "No entries" ? (
-                        <span className="text-xs text-muted-foreground">
-                          No entries
-                        </span>
+                        <span className="text-xs text-muted-foreground">No entries</span>
                       ) : (
                         <Badge
                           variant="secondary"
@@ -349,9 +330,7 @@ export function LiveSalesSummary() {
 export function LiveSalesRegister() {
   const data = useSales();
   const [params, setParams] = useSearchParams();
-  const filter = ["needs_review", "ready", "excluded"].includes(
-    params.get("filter") ?? "",
-  )
+  const filter = ["needs_review", "ready", "excluded"].includes(params.get("filter") ?? "")
     ? params.get("filter")!
     : "all";
   const search = params.get("q") ?? "";
@@ -378,17 +357,17 @@ export function LiveSalesRegister() {
         Sales summary
       </Link>
       <PeriodHeading register />
-      <section
-        className="overflow-hidden rounded-xl border bg-card"
-        aria-label="Sales invoices"
-      >
+      <section className="overflow-hidden rounded-xl border bg-card" aria-label="Sales invoices">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b p-4">
           <ToggleGroup
             aria-label="Filter invoices by status"
             className="flex-wrap"
             size="sm"
             value={[filter]}
-            onValueChange={values => { const value = values[0]; if (value) set("filter", value === "all" ? "" : value); }}
+            onValueChange={(values) => {
+              const value = values[0];
+              if (value) set("filter", value === "all" ? "" : value);
+            }}
           >
             {[
               ["all", "All invoices"],
@@ -396,17 +375,10 @@ export function LiveSalesRegister() {
               ["ready", "Ready"],
               ["excluded", "Excluded"],
             ].map(([value, label]) => (
-              <ToggleGroupItem
-                key={value}
-                value={value}
-              >
+              <ToggleGroupItem key={value} value={value}>
                 {label}
                 <span className="ml-1 text-muted-foreground">
-                  {
-                    data.rows.filter(
-                      (row) => value === "all" || row.status === value,
-                    ).length
-                  }
+                  {data.rows.filter((row) => value === "all" || row.status === value).length}
                 </span>
               </ToggleGroupItem>
             ))}
@@ -438,13 +410,18 @@ export function LiveSalesRegister() {
             {visible.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="py-4 pl-5">
-                  {row.path ? <Link to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`} className="font-medium hover:underline">
-                    {row.number}
-                  </Link> : <span className="font-medium">{row.number}</span>}
+                  {row.path ? (
+                    <Link
+                      to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`}
+                      className="font-medium hover:underline"
+                    >
+                      {row.number}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{row.number}</span>
+                  )}
                 </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {row.date ?? "—"}
-                </TableCell>
+                <TableCell className="whitespace-nowrap">{row.date ?? "—"}</TableCell>
                 <TableCell>
                   <p className="max-w-72 whitespace-normal font-medium">{row.customer}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -460,11 +437,7 @@ export function LiveSalesRegister() {
                 <TableCell>
                   <Badge
                     variant="secondary"
-                    className={
-                      row.status === "needs_review"
-                        ? "bg-amber-50 text-amber-800"
-                        : ""
-                    }
+                    className={row.status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
                   >
                     {row.status === "needs_review"
                       ? "Needs review"
@@ -484,9 +457,7 @@ export function LiveSalesRegister() {
               <TableRow>
                 <TableCell colSpan={6} className="py-14 text-center">
                   <p className="font-medium">
-                    {data.rows.length
-                      ? "No invoices match"
-                      : "No sales invoices yet"}
+                    {data.rows.length ? "No invoices match" : "No sales invoices yet"}
                   </p>
                   <p className="mt-2 text-muted-foreground">
                     {data.rows.length
@@ -494,11 +465,7 @@ export function LiveSalesRegister() {
                       : "Add sales bills to build this month's register."}
                   </p>
                   {data.review_count > 0 && (
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => setParams({})}
-                    >
+                    <Button variant="outline" className="mt-4" onClick={() => setParams({})}>
                       Clear filters
                     </Button>
                   )}
@@ -507,16 +474,13 @@ export function LiveSalesRegister() {
             )}
           </TableBody>
         </Table>
-        <p
-          role="status"
-          className="border-t bg-muted/20 px-5 py-3 text-sm text-muted-foreground"
-        >
+        <p role="status" className="border-t bg-muted/20 px-5 py-3 text-sm text-muted-foreground">
           Showing {visible.length} of {data.rows.length} invoices
         </p>
       </section>
       <p className="mt-4 text-xs text-muted-foreground">
-        Register amounts are extracted from source invoices. The summary shows
-        their contribution to the GST working.
+        Register amounts are extracted from source invoices. The summary shows their contribution to
+        the GST working.
       </p>
     </>
   );

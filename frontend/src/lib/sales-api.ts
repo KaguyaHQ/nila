@@ -3,7 +3,8 @@ import type { components, paths } from "./generated/workspace";
 export type SalesSectionRow = components["schemas"]["SalesSectionRow"];
 export type SalesSectionDetail = components["schemas"]["SalesSectionDetail"];
 export type SalesExportItem = components["schemas"]["SalesExportItem"];
-export type SalesWorkspace = paths["/api/workspace/sales/{client_id}/{period}"]["get"]["responses"][200]["content"]["application/json"];
+export type SalesWorkspace =
+  paths["/api/workspace/sales/{client_id}/{period}"]["get"]["responses"][200]["content"]["application/json"];
 
 export class ApiError extends Error {
   constructor(
