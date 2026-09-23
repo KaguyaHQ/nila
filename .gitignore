@@ -24,6 +24,7 @@ erl_crash.dump
 
 # Generated workbooks and other local deliverables.
 /outputs/
+/output/
 
 # Native Tally source PDFs live in the private eval corpus.
 /test/fixtures/gstr1/tally/**/*.pdf
@@ -47,6 +48,7 @@ npm-debug.log
 /assets/node_modules/
 /frontend/node_modules/
 /frontend/dist/
+/frontend/*.tsbuildinfo
 /priv/static/frontend/
 /frontend/test-results/
 /frontend/playwright-report/

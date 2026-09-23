@@ -1,15 +1,15 @@
-# React sales migration slice
+# React frontend
 
 The user explicitly selected React + TypeScript + Vite + shadcn in this repository.
 This directory uses shadcn React components backed by Base UI (not Radix), its neutral CSS theme, and lucide icons;
-the root HEEx-only component, token, and bundle rules still apply to the existing
+the scoped rules in `lib/nila_web/AGENTS.md` and `assets/AGENTS.md` apply to the existing
 LiveView frontend, not this separately built React entry point.
 
 - Sales summary, register, PDF intake, upload history and invoice review use real Phoenix data. Sample screens are development-only. Reuse the existing correction and check rules in Phoenix.
 - GSTR-1 section details and export availability come from Phoenix. Workings Excel may be a draft; do not equate its availability with permission to download GSTR-1 JSON. Downloads must show server errors in the current screen.
 - Month-check confirmations use the server's current evidence basis. A stale response requires a fresh review, never an automatic retry with a new basis. Unsupported or blocking findings cannot be dismissed.
 - Clients, identity add/edit, and Excel import use real Phoenix data. GST/Tally connection management remains in LiveView.
-- Migration scope is GST automation. Exclude banking, Tally workflows, and Winman Excel exports. Required outputs are GST workings Excel and GSTR-1 JSON.
+- GST migration scope is GST automation: workings Excel and GSTR-1 JSON. Banking, Tally workflows and Winman Excel exports remain outside that migration. Nila Business is separately approved work; follow the root scope and `docs/business-invoicing.md`.
 - Purchases overview and source registers use Phoenix data. Purchase review and ITC decisions use Phoenix APIs with fresh evidence tokens. Import, source corrections and pairing remain explicit LiveView handoffs. GSTR-2B fetching and OTP connection stay in React. GSTR-3B stays in LiveView. Source document counts differ from grouped reconciliation items; matching never means claimed ITC. Preserve source tax, including credit-note signs and any legacy cess, without adding routine cess controls.
 - Use shared components in `src/components/ui`, not copied control classes in pages.
 - Before building a generic control, check the official shadcn Base UI registry. Use its existing component when it covers the interaction; keep custom code for Nila's data, routes and accounting behavior. Do not port LiveView DOM hooks when the React primitive already owns that behavior.
