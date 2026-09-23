@@ -237,7 +237,7 @@ test("reader handles PDF failure, document switching and back without legacy nav
     route.fulfill({ status: 409, contentType: "text/plain", body: "GST login expired." }),
   );
   await page.goto("/app/notices");
-  await page.getByRole("link", { name: "Open notice ZD33092600123" }).click();
+  await page.getByRole("row").filter({ hasText: "ZD33092600123" }).getByRole("cell").nth(1).click();
   await expect(page).toHaveURL(/\/app\/notices\/10$/);
   await expect(page.getByRole("heading", { name: "Reminder", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute(

@@ -257,7 +257,12 @@ test("saved edits survive reopen and issued party names use frozen snapshot", as
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Draft saved." })).toBeVisible();
   await page.getByRole("link", { name: "Invoices", exact: true }).first().click();
-  await page.getByRole("link", { name: "Draft", exact: true }).click();
+  await page
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: "Draft", exact: true }) })
+    .getByRole("cell")
+    .nth(1)
+    .click();
   await expect(page.locator("#line-0-description")).toHaveValue("Saved revision");
   await page.route(/\/api\/business\/invoices\/9$/, (route) =>
     route.fulfill({

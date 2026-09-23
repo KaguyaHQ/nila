@@ -1,21 +1,15 @@
-import { createContext, useContext, useState } from "react";
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
+import { createContext, useContext } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { PurchaseRegisterTable } from "@/components/purchase-register-table";
 import { Gstr2bSource } from "@/components/gstr2b-source";
 import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { MonthPicker } from "@/components/month-picker";
 import {
   Table,
   TableHeader,
@@ -133,7 +127,6 @@ function PeriodControl() {
   const data = usePurchases();
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
-  const [open, setOpen] = useState(false);
   const current = new Date().toISOString().slice(0, 7);
   const go = (period: string) =>
     navigate(pathname.replace(`/${data.period}/`, `/${period}/`) + search);
@@ -144,32 +137,7 @@ function PeriodControl() {
   };
   return (
     <div className="flex items-center gap-1">
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger render={<Button variant="ghost" size="sm" />} aria-label="Choose month">
-          {data.month_label}
-          <ChevronDown />
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Choose working month</DialogTitle>
-            <DialogDescription>Open purchases for another month.</DialogDescription>
-          </DialogHeader>
-          <Input
-            type="month"
-            aria-label="Working month"
-            min="2017-07"
-            max={current}
-            value={data.period}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (/^\d{4}-\d{2}$/.test(value) && value >= "2017-07" && value <= current) {
-                go(value);
-                setOpen(false);
-              }
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      <MonthPicker period={data.period} label={data.month_label} max={current} onSelect={go} />
       <Button
         variant="ghost"
         size="icon-sm"
@@ -291,19 +259,19 @@ export function LivePurchasesSummary() {
               </TableHeader>
               <TableBody>
                 {overview.buckets.map((bucket) => (
-                  <TableRow key={bucket.id}>
+                  <RecordTableRow key={bucket.id}>
                     <TableCell>
-                      <Link
+                      <RecordTableLink
                         to={`${basePath(data)}/review?${new URLSearchParams({ filter: bucket.id })}`}
                         className="underline underline-offset-4"
                       >
                         {bucket.label}
-                      </Link>
+                      </RecordTableLink>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{bucket.count}</TableCell>
                     <TableCell className="text-right tabular-nums">{bucket.books_tax}</TableCell>
                     <TableCell className="text-right tabular-nums">{bucket.portal_tax}</TableCell>
-                  </TableRow>
+                  </RecordTableRow>
                 ))}
               </TableBody>
             </Table>

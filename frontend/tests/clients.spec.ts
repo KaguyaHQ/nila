@@ -83,6 +83,20 @@ test("directory search preserves URL and period; slash focuses search without hi
   ).toBe(true);
 });
 
+test("client row opens workspace while its edit action stays separate", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/clients?period=2026-04");
+  const row = page
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: "Breeze Tech", exact: true }) });
+  await expect(row).toHaveCSS("cursor", "pointer");
+  await row.getByRole("cell").nth(1).click();
+  await expect(page).toHaveURL("/app/gst/1/2026-04/sales");
+  await page.goBack();
+  await row.getByRole("link", { name: "Edit Breeze Tech", exact: true }).click();
+  await expect(page).toHaveURL(/\/clients\/1\/edit\?period=2026-04$/);
+});
+
 test("add form retains server validation errors and sends only client identity with CSRF", async ({
   page,
 }) => {
@@ -310,7 +324,8 @@ test("client GST connects in place without fetching 2B and retains identity edit
   });
   const fetches: string[] = [];
   page.on("request", (request) => {
-    if (request.url().includes("/api/") && request.url().includes("/gstr2b")) fetches.push(request.url());
+    if (request.url().includes("/api/") && request.url().includes("/gstr2b"))
+      fetches.push(request.url());
   });
   await page.goto("/app/clients/1/edit");
   await expect(page.getByText("GST login expired")).toBeVisible();

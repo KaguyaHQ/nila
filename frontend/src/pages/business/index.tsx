@@ -1,3 +1,4 @@
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
 import {
   createContext,
   lazy,
@@ -258,15 +259,15 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
           </TableHeader>
           <TableBody>
             {documents.map((invoice) => (
-              <TableRow key={invoice.id}>
+              <RecordTableRow key={invoice.id}>
                 <TableCell>
-                  <Link
+                  <RecordTableLink
                     className="font-medium underline-offset-4 hover:underline"
                     to={`${path}/${invoice.id}`}
                   >
                     {invoice.number || "Draft"}
                     {invoice.document_type === "credit_note" ? " · Credit note" : ""}
-                  </Link>
+                  </RecordTableLink>
                 </TableCell>
                 <TableCell>
                   {invoice.snapshot?.customer?.name ??
@@ -290,7 +291,7 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
                     ? money(invoice.totals.total_paise)
                     : "—"}
                 </TableCell>
-              </TableRow>
+              </RecordTableRow>
             ))}
             {documents.length === 0 && (
               <TableRow>

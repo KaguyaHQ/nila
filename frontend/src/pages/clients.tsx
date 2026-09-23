@@ -1,3 +1,4 @@
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -163,9 +164,9 @@ export function ClientsPage() {
           </TableHeader>
           <TableBody>
             {visible.map((client) => (
-              <TableRow key={client.id}>
+              <RecordTableRow key={client.id}>
                 <TableCell className="py-4 pl-5">
-                  <Link
+                  <RecordTableLink
                     to={
                       selected
                         ? `/gst/${client.id}/${selected.period}/${selected.section}`
@@ -174,7 +175,7 @@ export function ClientsPage() {
                     className="font-medium whitespace-normal underline-offset-4 hover:underline"
                   >
                     {client.name}
-                  </Link>
+                  </RecordTableLink>
                 </TableCell>
                 <TableCell>
                   {client.gstin || <span className="text-muted-foreground">Not provided</span>}
@@ -203,7 +204,7 @@ export function ClientsPage() {
                     </Button>
                   )}
                 </TableCell>
-              </TableRow>
+              </RecordTableRow>
             ))}
             {visible.length === 0 && (
               <TableRow>

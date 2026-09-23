@@ -1,3 +1,4 @@
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -471,14 +472,17 @@ function NoticeList({
             </TableHeader>
             <TableBody>
               {notices.map((n) => (
-                <TableRow key={n.id}>
+                <RecordTableRow key={n.id}>
                   <TableCell className="py-4">
-                    <Link to={`/notices/${n.id}`} className="font-medium hover:underline">
+                    <RecordTableLink
+                      to={`/notices/${n.id}`}
+                      className="font-medium hover:underline"
+                    >
                       {n.type}
                       <span className="mt-1 block text-xs font-normal text-muted-foreground">
                         {n.reference}
                       </span>
-                    </Link>
+                    </RecordTableLink>
                   </TableCell>
                   <TableCell>{n.client_name}</TableCell>
                   <TableCell className="text-muted-foreground">{date(n.issued_on)}</TableCell>
@@ -495,7 +499,7 @@ function NoticeList({
                       <ArrowUpRight />
                     </Button>
                   </TableCell>
-                </TableRow>
+                </RecordTableRow>
               ))}
             </TableBody>
           </Table>

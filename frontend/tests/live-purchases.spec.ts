@@ -221,6 +221,9 @@ test("source registers keep linked originals and search submits without losing t
     "href",
     "/app/gst/1/2026-06/purchases/review/source1",
   );
+  await page.getByRole("row").filter({ hasText: "CN-002" }).getByRole("cell").first().click();
+  await expect(page).toHaveURL("/app/gst/1/2026-06/purchases/review/source1");
+  await page.goBack();
   await search.pressSequentially("missing", { delay: 25 });
   await expect(search).toHaveValue("missing");
   await page.getByRole("button", { name: "Search", exact: true }).click();
@@ -293,6 +296,8 @@ test("register sorts signed GST, dates and vendors with compact accessible heade
   await expect.poll(invoices).toEqual(["CN-002", "BIG-003", "B-001"]);
   await page.getByRole("button", { name: "Matched", exact: true }).first().hover();
   await expect(page.getByText("Two source entries linked during review")).toBeVisible();
+  await page.getByRole("button", { name: "Matched", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/purchases\/register\?source=gstr2b$/);
   await page.getByRole("heading", { name: "GSTR-2B register" }).hover();
   await page.screenshot({ path: info.outputPath("compact-register.png"), fullPage: true });
 });
@@ -339,7 +344,7 @@ test("month controls preserve source and search", async ({ page }) => {
   await page.getByRole("button", { name: "Previous month" }).click();
   await expect(page).toHaveURL(/2026-05\/purchases\/register\?source=gstr2b&q=Supplier$/);
   await page.getByRole("button", { name: "Choose month" }).click();
-  await page.getByRole("dialog").getByLabel("Working month").fill("2026-07");
+  await page.getByRole("button", { name: "July 2026", exact: true }).click();
   await expect(page).toHaveURL(/2026-07\/purchases\/register\?source=gstr2b&q=Supplier$/);
 });
 

@@ -1,3 +1,4 @@
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
 import { useMemo } from "react";
 import {
   createColumnHelper,
@@ -9,7 +10,6 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -103,13 +103,13 @@ const makeColumns = (comparisonAvailable: boolean) =>
       header: () => <span className="sr-only">Review</span>,
       cell: ({ row }) =>
         row.original.review_url ? (
-          <Link
+          <RecordTableLink
             to={row.original.review_url}
             className="text-sm underline underline-offset-4"
             aria-label={`Review ${row.original.number}`}
           >
             Review
-          </Link>
+          </RecordTableLink>
         ) : null,
     }),
   ]);
@@ -175,7 +175,7 @@ export function PurchaseRegisterTable({
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
+          <RecordTableRow key={row.id}>
             {row.getAllCells().map((cell) => (
               <TableCell
                 key={cell.id}
@@ -184,7 +184,7 @@ export function PurchaseRegisterTable({
                 <table.FlexRender cell={cell} />
               </TableCell>
             ))}
-          </TableRow>
+          </RecordTableRow>
         ))}
       </TableBody>
     </Table>

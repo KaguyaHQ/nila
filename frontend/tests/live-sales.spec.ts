@@ -78,7 +78,7 @@ test("real workspace uses server data, changes month/client and preserves regist
   await page.getByRole("link", { name: "View sales register", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/gst\/1\/2026-06\/sales\/register$/);
   expect(await page.evaluate(() => (window as any).sameDocument)).toBe(true);
-  await expect(page.getByRole("link", { name: "REAL-101" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "REAL-101", exact: true })).toHaveAttribute(
     "href",
     "/app/gst/1/2026-06/sales/invoices/one?filter=all",
   );
@@ -89,12 +89,82 @@ test("real workspace uses server data, changes month/client and preserves regist
   ).toHaveValue("Customer A");
   await page.getByRole("button", { name: "Next month", exact: true }).click();
   await expect(page).toHaveURL(/\/2026-07\/sales\/register/);
-  await expect(page.getByRole("link", { name: "REAL-101" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "REAL-101", exact: true })).toHaveCount(0);
   await expect(page.getByText("No sales invoices yet", { exact: true })).toBeVisible();
   await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
   await page.getByRole("option", { name: "Second client", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/gst\/2\/2026-07\/sales\/register/);
   await expect(page.getByLabel("Switch client: Second client", { exact: true })).toBeVisible();
+});
+
+test("sales rows open review while links, text selection and keyboard stay usable", async ({
+  page,
+}, info) => {
+  const data = month();
+  data.rows[0].status = "needs_review";
+  data.rows[0].reason = "Check buyer name against GST records";
+  await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: data }));
+  const register = "/app/gst/1/2026-06/sales/register?filter=needs_review&q=Customer";
+  const review = /sales\/invoices\/one\?filter=needs_review&q=Customer$/;
+  await page.goto(register);
+  const row = page.getByRole("row").filter({ hasText: "REAL-101" });
+  const link = page.getByRole("link", { name: "Review invoice REAL-101", exact: true });
+  await expect(link).toBeVisible();
+  await expect(row).toHaveCSS("cursor", "pointer");
+  await row.hover();
+  await page.screenshot({ path: info.outputPath("sales-row-review.png") });
+  await row.getByText("Customer A", { exact: true }).evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect(page).toHaveURL(register);
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await row.getByRole("cell").nth(3).click();
+  await expect(page).toHaveURL(review);
+  await page.goBack();
+  await link.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(review);
+  await page.goBack();
+  // Modified link clicks stay native rather than triggering same-tab row navigation.
+  expect(
+    await link.evaluate((element) => {
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    }),
+  ).toBe(false);
+  await expect(page).toHaveURL(register);
+  await link.click();
+  await expect(page).toHaveURL(review);
+  await page.goBack();
+  await page.goBack();
+  await expect(page).not.toHaveURL(review);
+});
+
+test("summary rows open available sections and leave unavailable sections inert", async ({
+  page,
+}) => {
+  const data = month();
+  data.sections.push({
+    ...data.sections[0],
+    id: "exports",
+    label: "Exports",
+    path: null,
+    count: "—",
+    status: "No entries",
+  });
+  await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: data }));
+  await page.goto("/app/gst/1/2026-06/sales");
+  const unavailable = page.getByRole("row").filter({ hasText: "Exports" });
+  await expect(unavailable).not.toHaveCSS("cursor", "pointer");
+  await unavailable.getByRole("cell").first().click();
+  await expect(page).toHaveURL("/app/gst/1/2026-06/sales");
+  await page.getByRole("row").filter({ hasText: "B2B" }).getByRole("cell").nth(1).click();
+  await expect(page).toHaveURL("/app/gst/1/2026-06/sales/sections/b2b");
 });
 
 test("loading, forbidden and expired session never masquerade as an empty register", async ({
@@ -207,4 +277,46 @@ test("excluded sources stay visible without opening a different invoice", async 
   await page.goto("/app/gst/1/2026-06/sales/register");
   await expect(page.getByText("EXCLUDED-1", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "EXCLUDED-1" })).toHaveCount(0);
+});
+
+test("month popover selects by year, preserves register filters and respects bounds", async ({
+  page,
+}, info) => {
+  await page.clock.install({ time: new Date("2026-09-23T12:00:00Z") });
+  await page.route("**/api/workspace/sales/*/*", (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    return route.fulfill({ json: month(Number(parts[4]), parts[5]) });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/register?filter=all&q=Customer");
+  const trigger = page.getByRole("button", { name: "Choose month", exact: true });
+  await trigger.click();
+  const picker = page.getByRole("dialog", { name: "Choose working month" });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole("button", { name: "June 2026", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(picker.getByRole("button", { name: "June 2026", exact: true })).toBeFocused();
+  await expect(picker.getByRole("button", { name: "October 2026", exact: true })).toBeDisabled();
+  await expect(picker.getByRole("button", { name: "Next year" })).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("month-picker.png") });
+  await picker.getByRole("button", { name: "Previous year" }).click();
+  await picker.getByRole("button", { name: "December 2025", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/2025-12\/sales\/register\?filter=all&q=Customer$/);
+  await expect(picker).toBeHidden();
+  await trigger.click();
+  await expect(picker.getByRole("button", { name: "December 2025", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.goto("/app/gst/1/2017-07/sales");
+  await trigger.click();
+  await expect(picker.getByRole("button", { name: "Previous year" })).toBeDisabled();
+  await expect(picker.getByRole("button", { name: "June 2017", exact: true })).toBeDisabled();
+  await page.getByRole("heading", { name: "GSTR-1 summary" }).click();
+  await expect(picker).toBeHidden();
+  await expect(page).toHaveURL(/2017-07\/sales$/);
 });

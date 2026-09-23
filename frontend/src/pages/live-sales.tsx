@@ -1,5 +1,6 @@
+import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  ChevronDown,
   Search,
   Upload,
 } from "lucide-react";
@@ -16,14 +16,7 @@ import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { MonthPicker } from "@/components/month-picker";
 import { Card } from "@/components/ui/card";
 import {
   Table,
@@ -174,7 +167,6 @@ function PeriodHeading({
   const workspace = useContext(Workspace);
   const data = supplied ?? workspace!;
   const navigate = useNavigate();
-  const [pickerOpen, setPickerOpen] = useState(false);
   const { search } = useLocation();
   const suffix = register ? "/register" : "";
   const go = (client: string, period: string) =>
@@ -189,41 +181,27 @@ function PeriodHeading({
   return (
     <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {register ? "Sales register" : data.month_label}
-        </h1>
-        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-          <DialogTrigger
-            render={<Button variant="ghost" size={register ? "sm" : "icon-sm"} />}
-            aria-label="Choose month"
-          >
-            {register && data.month_label}
-            <ChevronDown />
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Choose working month</DialogTitle>
-              <DialogDescription>Open the sales working for another month.</DialogDescription>
-            </DialogHeader>
-            <Input
-              type="month"
-              aria-label="Working month"
-              min="2017-07"
+        {register ? (
+          <>
+            <h1 className="text-3xl font-semibold tracking-tight">Sales register</h1>
+            <MonthPicker
+              period={data.period}
+              label={data.month_label}
               max={current}
-              value={data.period}
-              onChange={(e) => {
-                if (
-                  /^\d{4}-\d{2}$/.test(e.target.value) &&
-                  e.target.value >= "2017-07" &&
-                  e.target.value <= current
-                ) {
-                  go(String(data.client.id), e.target.value);
-                  setPickerOpen(false);
-                }
-              }}
+              onSelect={(period) => go(String(data.client.id), period)}
             />
-          </DialogContent>
-        </Dialog>
+          </>
+        ) : (
+          <h1 aria-label={data.month_label}>
+            <MonthPicker
+              large
+              period={data.period}
+              label={data.month_label}
+              max={current}
+              onSelect={(period) => go(String(data.client.id), period)}
+            />
+          </h1>
+        )}
         <div className="flex">
           <Button
             variant="ghost"
@@ -354,15 +332,15 @@ export function LiveSalesSummary() {
               </TableHeader>
               <TableBody>
                 {data.sections.map((section) => (
-                  <TableRow key={section.id}>
+                  <RecordTableRow key={section.id}>
                     <TableCell className="py-3 pl-4">
                       {section.path ? (
-                        <Link
+                        <RecordTableLink
                           to={`${base}/sections/${section.id}`}
                           className="font-medium hover:underline"
                         >
                           {section.label}
-                        </Link>
+                        </RecordTableLink>
                       ) : (
                         section.label
                       )}
@@ -389,7 +367,7 @@ export function LiveSalesSummary() {
                         </Badge>
                       )}
                     </TableCell>
-                  </TableRow>
+                  </RecordTableRow>
                 ))}
               </TableBody>
             </Table>
@@ -480,11 +458,14 @@ export function LiveSalesRegister() {
               <TableHead className="text-right">Taxable value</TableHead>
               <TableHead className="text-right">GST</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>
+                <span className="sr-only">Review invoice</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visible.map((row) => (
-              <TableRow key={row.id}>
+              <RecordTableRow key={row.id}>
                 <TableCell className="py-4 pl-5">
                   {row.path ? (
                     <Link
@@ -527,11 +508,22 @@ export function LiveSalesRegister() {
                     </p>
                   )}
                 </TableCell>
-              </TableRow>
+                <TableCell className="pr-5 text-right">
+                  {row.path && (
+                    <RecordTableLink
+                      to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`}
+                      aria-label={`Review invoice ${row.number}`}
+                      className="inline-flex items-center gap-1 font-medium hover:underline"
+                    >
+                      Review <ArrowRight className="size-4" aria-hidden="true" />
+                    </RecordTableLink>
+                  )}
+                </TableCell>
+              </RecordTableRow>
             ))}
             {visible.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-14 text-center">
+                <TableCell colSpan={7} className="py-14 text-center">
                   <p className="font-medium">
                     {data.rows.length ? "No invoices match" : "No sales invoices yet"}
                   </p>
