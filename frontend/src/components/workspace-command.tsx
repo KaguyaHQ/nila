@@ -1,25 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { useClientContext } from "@/state/client-context";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Building2,
-  CalendarDays,
-  FileSpreadsheet,
-  FileText,
-  Search,
-  Upload,
-  Users,
-  Inbox,
-} from "lucide-react";
+import { clientDestination } from "@/components/client-switcher";
+import { navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import {
   Command,
   CommandEmpty,
@@ -28,10 +9,30 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
 import { fetchClients } from "@/lib/clients-api";
-import { clientDestination } from "@/components/client-switcher";
+import { urlDestination } from "@/lib/route-url";
+import { useClientContext } from "@/state/client-context";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  Building2,
+  CalendarDays,
+  FileSpreadsheet,
+  FileText,
+  Inbox,
+  Search,
+  Upload,
+  Users,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 type Client = { id: number; name: string; gstin?: string | null };
 type Props = {
@@ -40,7 +41,7 @@ type Props = {
 };
 
 export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
-  const { pathname, search: routeSearch } = useLocation();
+  const { pathname, searchStr: routeSearch } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -83,7 +84,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
   }, [pathname]);
   function go(path: string) {
     setOpen(false);
-    navigate(path);
+    navigate(urlDestination(path));
   }
 
   const selected = useClientContext();

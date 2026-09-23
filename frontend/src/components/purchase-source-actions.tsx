@@ -1,21 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   decidePurchaseSource,
   PurchaseReviewError,
   type PurchaseReviewData,
 } from "@/lib/purchase-review-api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { reviewSearch } from "@/lib/route-search";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 type Pair = NonNullable<PurchaseReviewData["item"]>["comparisons"][number];
 type Action = "correct" | "confirm_pair" | "reject_pair";
 export function PurchaseSourceActions({
@@ -34,7 +35,7 @@ export function PurchaseSourceActions({
   const [reason, setReason] = useState("");
   const controller = useRef<AbortController | null>(null);
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const params = useSearch({ strict: false });
   const cache = useQueryClient();
   useEffect(
     () => () => {
@@ -94,10 +95,16 @@ export function PurchaseSourceActions({
           ],
           fresh,
         );
-        navigate(
-          `/gst/${data.client.id}/${data.period}/purchases/review/${encodeURIComponent(fresh.item.id)}?${params}`,
-        );
-      } else navigate(`/gst/${data.client.id}/${data.period}/purchases`);
+        navigate({
+          to: "/gst/$clientId/$period/purchases/review/$itemId",
+          params: { clientId: String(data.client.id), period: data.period, itemId: fresh.item.id },
+          search: reviewSearch(params),
+        });
+      } else
+        navigate({
+          to: "/gst/$clientId/$period/purchases",
+          params: { clientId: String(data.client.id), period: data.period },
+        });
     },
   });
   const needsRefresh =

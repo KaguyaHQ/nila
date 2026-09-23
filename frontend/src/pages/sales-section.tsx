@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowUpRight, ChevronRight } from "lucide-react";
+import { SalesExports } from "@/components/sales-exports";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -10,9 +8,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SalesExports } from "@/components/sales-exports";
+import { urlDestination } from "@/lib/route-url";
 import type { SalesSectionDetail, SalesSectionRow } from "@/lib/sales-api";
-import { basePath, useSales } from "./live-sales";
+import { Link, useParams } from "@tanstack/react-router";
+import { ArrowLeft, ArrowUpRight, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { useSales } from "./live-sales";
 
 type SectionGroup = SalesSectionDetail["groups"][number];
 
@@ -64,7 +65,7 @@ function SectionRow({
           <TableCell className="pr-4 text-right">
             {row.invoice_path && (
               <Link
-                to={row.invoice_path}
+                {...urlDestination(row.invoice_path)}
                 className="inline-flex items-center gap-1 whitespace-nowrap text-sm underline-offset-4 hover:underline"
                 aria-label={`Review source invoice ${title}`}
               >
@@ -132,10 +133,9 @@ function SectionTable({ group }: { group: SectionGroup }) {
 
 export default function SalesSection() {
   const data = useSales();
-  const { section = "" } = useParams();
+  const { section = "" } = useParams({ strict: false });
   const detail =
     data.details && Object.hasOwn(data.details, section) ? data.details[section] : undefined;
-  const base = basePath(data);
   if (!detail)
     return (
       <div className="space-y-4">
@@ -143,7 +143,17 @@ export default function SalesSection() {
         <p className="text-sm text-muted-foreground">
           This section is not available for the selected month.
         </p>
-        <Button variant="outline" nativeButton={false} role="link" render={<Link to={base} />}>
+        <Button
+          variant="outline"
+          nativeButton={false}
+          role="link"
+          render={
+            <Link
+              to="/gst/$clientId/$period/sales"
+              params={{ clientId: String(data.client.id), period: data.period }}
+            />
+          }
+        >
           <ArrowLeft /> Back to sales summary
         </Button>
       </div>
@@ -151,7 +161,8 @@ export default function SalesSection() {
   return (
     <>
       <Link
-        to={base}
+        to="/gst/$clientId/$period/sales"
+        params={{ clientId: String(data.client.id), period: data.period }}
         className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" /> Sales summary
@@ -169,7 +180,8 @@ export default function SalesSection() {
         <div className="min-w-0 space-y-6">
           {section === "documents" && (
             <Link
-              to={`${base}/checks`}
+              to="/gst/$clientId/$period/sales/checks"
+              params={{ clientId: String(data.client.id), period: data.period }}
               className="inline-flex text-sm font-medium underline underline-offset-4"
             >
               Review month checks and recorded decisions

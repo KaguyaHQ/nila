@@ -1,15 +1,9 @@
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
-import { createContext, useContext, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
-import { Shell } from "@/components/workspace-shell";
+import { BusinessInvitation } from "@/components/business-invitation";
 import { ClientGstConnection } from "@/components/client-gst-connection";
-import { useClientContext } from "@/state/client-context";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { BusinessInvitation } from "@/components/business-invitation";
 import {
   Table,
   TableBody,
@@ -18,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError } from "@/lib/sales-api";
+import { Shell } from "@/components/workspace-shell";
 import {
   ClientApiError,
   fetchClient,
@@ -29,6 +23,13 @@ import {
   type ClientIdentity,
   type ClientsDirectory,
 } from "@/lib/clients-api";
+import { urlDestination } from "@/lib/route-url";
+import { ApiError } from "@/lib/sales-api";
+import { useClientContext } from "@/state/client-context";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent } from "react";
 
 const Directory = createContext<ClientsDirectory | null>(null);
 function useClients() {
@@ -38,13 +39,11 @@ function useClients() {
 }
 const retry = (count: number, error: Error) =>
   !(error instanceof ApiError && error.status < 500) && count < 1;
-const pathFor = (period: string, suffix = "") =>
-  `/clients${suffix}?period=${encodeURIComponent(period)}`;
 
 export function ClientsLayout() {
   const selected = useClientContext();
-  const [params] = useSearchParams();
-  const period = params.get("period") ?? selected?.period ?? null;
+  const params = useSearch({ from: "/clients" });
+  const period = params.period ?? selected?.period ?? null;
   const query = useQuery({
     queryKey: ["clients", period],
     queryFn: ({ signal }) => fetchClients(period, signal),
@@ -84,18 +83,16 @@ export function ClientsLayout() {
 export function ClientsPage() {
   const data = useClients();
   const selected = useClientContext();
-  const [params, setParams] = useSearchParams();
+  const params = useSearch({ from: "/clients" });
+  const setParams = useNavigate({ from: "/clients/" });
   const search = useRef<HTMLInputElement>(null);
-  const query = params.get("q") ?? "";
+  const query = params.q ?? "";
   const needle = query.trim().toLocaleLowerCase();
   const visible = data.clients.filter((client) =>
     `${client.name} ${client.gstin ?? ""}`.toLocaleLowerCase().includes(needle),
   );
   function setSearch(value: string) {
-    const next = new URLSearchParams(params);
-    if (value) next.set("q", value);
-    else next.delete("q");
-    setParams(next, { replace: true });
+    setParams({ search: { ...params, q: value || undefined }, resetScroll: false, replace: true });
   }
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -108,14 +105,14 @@ export function ClientsPage() {
                 variant="outline"
                 nativeButton={false}
                 role="link"
-                render={<Link to={pathFor(data.period, "/import")} />}
+                render={<Link to="/clients/import" search={{ period: data.period }} />}
               >
                 <Upload /> Import Excel
               </Button>
               <Button
                 nativeButton={false}
                 role="link"
-                render={<Link to={pathFor(data.period, "/new")} />}
+                render={<Link to="/clients/new" search={{ period: data.period }} />}
               >
                 <Plus /> Add client
               </Button>
@@ -168,11 +165,11 @@ export function ClientsPage() {
               <RecordTableRow key={client.id}>
                 <TableCell className="py-4 pl-5">
                   <RecordTableLink
-                    to={
+                    {...urlDestination(
                       selected
                         ? `/gst/${client.id}/${selected.period}/${selected.section}`
-                        : client.sales_path
-                    }
+                        : client.sales_path,
+                    )}
                     className="font-medium whitespace-normal underline-offset-4 hover:underline"
                   >
                     {client.name}
@@ -189,7 +186,13 @@ export function ClientsPage() {
                       nativeButton={false}
                       role="link"
                       aria-label={`Edit ${client.name}`}
-                      render={<Link to={pathFor(data.period, `/${client.id}/edit`)} />}
+                      render={
+                        <Link
+                          to="/clients/$clientId/edit"
+                          params={{ clientId: String(client.id) }}
+                          search={{ period: data.period }}
+                        />
+                      }
                     >
                       <Pencil className="size-4" />
                     </Button>
@@ -242,7 +245,7 @@ export function ClientsPage() {
 }
 
 export function ClientForm() {
-  const { clientId } = useParams();
+  const { clientId } = useParams({ strict: false });
   return <ClientEditor key={clientId ?? "new"} clientId={clientId} />;
 }
 
@@ -265,7 +268,7 @@ function ClientEditor({ clientId }: { clientId?: string }) {
         <Button variant="outline" onClick={() => query.refetch()}>
           Try again
         </Button>
-        <Link className="ml-4 underline" to={pathFor(data.period)}>
+        <Link className="ml-4 underline" to="/clients" search={{ period: data.period }}>
           Back to clients
         </Link>
       </div>
@@ -311,7 +314,7 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
       void cache.invalidateQueries({ queryKey: ["purchases"] });
       void cache.invalidateQueries({ queryKey: ["gst-connection", saved.client.id] });
       void cache.invalidateQueries({ queryKey: ["gstr2b", saved.client.id] });
-      if (!controller.signal.aborted) navigate(pathFor(data.period));
+      if (!controller.signal.aborted) navigate({ to: "/clients", search: { period: data.period } });
     },
     onSettled: (_saved, _error, { controller }) => {
       if (operation.current === controller) operation.current = null;
@@ -331,7 +334,8 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
     <div className="mx-auto max-w-xl space-y-6">
       <div>
         <Link
-          to={pathFor(data.period)}
+          to="/clients"
+          search={{ period: data.period }}
           className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> Clients
@@ -404,7 +408,7 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
             variant="outline"
             nativeButton={false}
             role="link"
-            render={<Link to={pathFor(data.period)} />}
+            render={<Link to="/clients" search={{ period: data.period }} />}
           >
             Cancel
           </Button>
@@ -493,7 +497,8 @@ export function ClientsImport() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <Link
-          to={pathFor(data.period)}
+          to="/clients"
+          search={{ period: data.period }}
           className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> Clients
@@ -613,7 +618,11 @@ export function ClientsImport() {
           </div>
           <div className="flex justify-end">
             {result ? (
-              <Button nativeButton={false} role="link" render={<Link to={pathFor(data.period)} />}>
+              <Button
+                nativeButton={false}
+                role="link"
+                render={<Link to="/clients" search={{ period: data.period }} />}
+              >
                 View clients <ArrowRight />
               </Button>
             ) : (

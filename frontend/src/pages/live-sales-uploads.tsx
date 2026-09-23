@@ -1,19 +1,8 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, FileText, Plus, Upload, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { urlDestination } from "@/lib/route-url";
 import { ApiError } from "@/lib/sales-api";
 import {
   commitUpload,
@@ -24,7 +13,19 @@ import {
   type PreparedUpload,
   type UploadHistory,
 } from "@/lib/upload-api";
-import { basePath, useSales } from "./live-sales";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, FileText, Plus, Upload, X } from "lucide-react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useSales } from "./live-sales";
 
 type UploadDraft = {
   files: File[];
@@ -56,7 +57,6 @@ export function LiveSalesUpload() {
 
 function UploadForm() {
   const data = useSales();
-  const base = basePath(data);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const draftContext = useContext(UploadDrafts);
@@ -204,7 +204,10 @@ function UploadForm() {
       void queryClient.invalidateQueries({
         queryKey: ["sales-uploads", data.client.id, data.period],
       });
-      navigate(`${base}/uploads`);
+      navigate({
+        to: "/gst/$clientId/$period/sales/uploads",
+        params: { clientId: String(data.client.id), period: data.period },
+      });
     },
   });
   const busy = upload.isPending;
@@ -226,7 +229,12 @@ function UploadForm() {
           className="mb-4 -ml-3"
           nativeButton={false}
           role="link"
-          render={<Link to={base} />}
+          render={
+            <Link
+              to="/gst/$clientId/$period/sales"
+              params={{ clientId: String(data.client.id), period: data.period }}
+            />
+          }
         >
           <ArrowLeft /> Sales &amp; GSTR-1
         </Button>
@@ -351,7 +359,12 @@ function UploadForm() {
           variant="outline"
           nativeButton={false}
           role="link"
-          render={<Link to={`${base}/uploads`} />}
+          render={
+            <Link
+              to="/gst/$clientId/$period/sales/uploads"
+              params={{ clientId: String(data.client.id), period: data.period }}
+            />
+          }
         >
           View uploads <ArrowRight />
         </Button>
@@ -366,7 +379,6 @@ function UploadForm() {
 
 export function LiveSalesUploads() {
   const data = useSales();
-  const base = basePath(data);
   function reviewLink(batch: UploadHistory["batches"][number]) {
     const invoice = data.rows.find((row) => row.path && batch.invoice_ids?.includes(row.id));
     const content = (
@@ -376,7 +388,7 @@ export function LiveSalesUploads() {
     );
     const className = "text-sm font-medium underline-offset-4 hover:underline";
     return invoice?.path ? (
-      <Link to={`${invoice.path}?filter=all`} className={className}>
+      <Link {...urlDestination(`${invoice.path}?filter=all`)} className={className}>
         {content}
       </Link>
     ) : (
@@ -399,7 +411,12 @@ export function LiveSalesUploads() {
         className="mb-4 -ml-3"
         nativeButton={false}
         role="link"
-        render={<Link to={base} />}
+        render={
+          <Link
+            to="/gst/$clientId/$period/sales"
+            params={{ clientId: String(data.client.id), period: data.period }}
+          />
+        }
       >
         <ArrowLeft /> Sales &amp; GSTR-1
       </Button>
@@ -410,7 +427,16 @@ export function LiveSalesUploads() {
             {data.client.name} · {data.month_label}
           </p>
         </div>
-        <Button nativeButton={false} role="link" render={<Link to={`${base}/upload`} />}>
+        <Button
+          nativeButton={false}
+          role="link"
+          render={
+            <Link
+              to="/gst/$clientId/$period/sales/upload"
+              params={{ clientId: String(data.client.id), period: data.period }}
+            />
+          }
+        >
           <Plus /> Add invoices
         </Button>
       </div>
@@ -505,7 +531,12 @@ export function LiveSalesUploads() {
               variant="outline"
               nativeButton={false}
               role="link"
-              render={<Link to={`${base}/register`} />}
+              render={
+                <Link
+                  to="/gst/$clientId/$period/sales/register"
+                  params={{ clientId: String(data.client.id), period: data.period }}
+                />
+              }
             >
               View sales register <ArrowRight />
             </Button>

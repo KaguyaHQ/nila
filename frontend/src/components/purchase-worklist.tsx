@@ -1,35 +1,36 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
-import { Search } from "lucide-react";
-import {
-  fetchPurchaseReview,
-  saveBulkPurchaseTreatment,
-  type PurchaseReviewData,
-  PurchaseReviewError,
-} from "@/lib/purchase-review-api";
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Table,
-  TableHeader,
-  TableHead,
-  TableRow,
   TableBody,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  fetchPurchaseReview,
+  PurchaseReviewError,
+  saveBulkPurchaseTreatment,
+  type PurchaseReviewData,
+} from "@/lib/purchase-review-api";
+import { purchaseSearch, stringifySearch } from "@/lib/route-search";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 const treatmentLabels: Record<string, string> = {
   claim: "Claim this month",
@@ -48,9 +49,10 @@ export function PurchaseWorklist({
   portalAvailable: boolean;
   importAction: ReactNode;
 }) {
-  const [params, setParams] = useSearchParams();
-  const filter = params.get("work") ?? "all";
-  const search = params.get("q") ?? "";
+  const params = useSearch({ from: "/gst/$clientId/$period/purchases" });
+  const setParams = useNavigate({ from: "/gst/$clientId/$period/purchases/" });
+  const filter = params.work ?? "all";
+  const search = params.q ?? "";
   const cache = useQueryClient();
   const queryKey = ["purchase-review", String(client), period, "", "all", ""];
   const query = useQuery({
@@ -141,11 +143,18 @@ export function PurchaseWorklist({
   const needsRefresh =
     mutation.error instanceof PurchaseReviewError &&
     [403, 404, 409].includes(mutation.error.status);
-  function change(key: string, value: string) {
-    const next = new URLSearchParams(params);
-    value ? next.set(key, value) : next.delete(key);
+  function change(key: "work" | "q", value: string) {
     setSelected([]);
-    setParams(next, { replace: true });
+    setParams({
+      search: {
+        ...params,
+        ...(key === "work"
+          ? { work: purchaseSearch({ work: value }).work }
+          : { q: value || undefined }),
+      },
+      resetScroll: false,
+      replace: true,
+    });
   }
   function open() {
     if (!selectedLines.length || selectedLines.length !== selected.length) return;
@@ -285,7 +294,12 @@ export function PurchaseWorklist({
                     </TableCell>
                     <TableCell>
                       <RecordTableLink
-                        to={`/gst/${client}/${period}/purchases/review/${encodeURIComponent(row.id)}?${new URLSearchParams({ filter: "all", return_to: `/gst/${client}/${period}/purchases?${params}` })}`}
+                        to="/gst/$clientId/$period/purchases/review/$itemId"
+                        params={{ clientId: String(client), period, itemId: row.id }}
+                        search={{
+                          filter: "all",
+                          return_to: `/gst/${client}/${period}/purchases${stringifySearch(params)}`,
+                        }}
                         className="text-sm underline underline-offset-4"
                       >
                         Review

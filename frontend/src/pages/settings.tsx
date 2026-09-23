@@ -1,28 +1,28 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserRound, LockKeyhole, Building2, Users, Plus, ArrowUpRight } from "lucide-react";
-import { Shell } from "@/components/workspace-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { NativeSelect } from "@/components/ui/native-select";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Shell } from "@/components/workspace-shell";
 import {
-  settingsRequest,
   SettingsError,
+  settingsRequest,
   type SettingsData,
   type SettingsResult,
 } from "@/lib/settings-api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
+import { ArrowUpRight, Building2, LockKeyhole, Plus, UserRound, Users } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 const sections = [
   { id: "profile", label: "Profile", icon: UserRound },
@@ -187,7 +187,7 @@ function Panel({
 }
 
 export default function SettingsPage() {
-  const { section = "profile" } = useParams();
+  const { section = "profile" } = useParams({ from: "/settings/$section" });
   const query = useQuery({
     queryKey: ["settings"],
     queryFn: ({ signal }) => settingsRequest("getSettings", { signal }),
@@ -234,7 +234,7 @@ export default function SettingsPage() {
                 variant="ghost"
                 nativeButton={false}
                 role="link"
-                render={<Link to={`/settings/${item.id}`} />}
+                render={<Link to="/settings/$section" params={{ section: item.id }} />}
                 aria-current={section === item.id ? "page" : undefined}
                 className={`w-full justify-start ${section === item.id ? "bg-muted" : "text-muted-foreground"}`}
               >
@@ -292,11 +292,11 @@ export default function SettingsPage() {
 }
 
 function Profile({ data }: { data: SettingsData }) {
-  const [params] = useSearchParams();
+  const params = useSearch({ from: "/settings/$section" });
   return (
     <>
-      {params.get("email") === "confirmed" && <p role="status">Your email has been updated.</p>}
-      {params.get("email") === "invalid" && (
+      {params.email === "confirmed" && <p role="status">Your email has been updated.</p>}
+      {params.email === "invalid" && (
         <p role="alert" className="text-destructive">
           Email change link is invalid or expired.
         </p>
@@ -347,14 +347,14 @@ function Profile({ data }: { data: SettingsData }) {
 }
 
 function Security() {
-  const [params] = useSearchParams();
+  const params = useSearch({ from: "/settings/$section" });
   const [open, setOpen] = useState(false);
   const signout = useSettingsSave((_: void, signal) =>
     settingsRequest("deleteSettingsSessions", { signal }),
   );
   return (
     <>
-      {params.get("updated") === "password" && <p role="status">Password updated.</p>}
+      {params.updated === "password" && <p role="status">Password updated.</p>}
       <Panel title="Password" description="Changing your password signs out your other sessions.">
         <SettingsForm
           id="password"

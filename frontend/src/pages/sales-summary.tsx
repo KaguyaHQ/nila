@@ -1,4 +1,17 @@
-import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { invoices, money, monthLabel, totals } from "@/data/sales";
+import { urlDestination } from "@/lib/route-url";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -10,18 +23,6 @@ import {
   Plus,
   Upload,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { invoices, monthLabel, money, totals } from "@/data/sales";
 
 const sections = [
   {
@@ -113,7 +114,7 @@ export default function SalesSummary() {
             <Button
               nativeButton={false}
               role="link"
-              render={<Link to="/sales/register?filter=needs_review" />}
+              render={<Link to="/sales/register" search={{ filter: "needs_review" }} />}
             >
               {" "}
               Review invoices <ArrowRight />
@@ -180,7 +181,7 @@ export default function SalesSummary() {
                     <TableCell className="py-3 pl-4">
                       {to ? (
                         <Link
-                          to={to}
+                          {...urlDestination(to)}
                           className="text-sm font-medium underline-offset-4 hover:underline"
                         >
                           {label}
@@ -220,7 +221,7 @@ export default function SalesSummary() {
                           size="icon-xs"
                           nativeButton={false}
                           role="link"
-                          render={<Link to={to} aria-label={`Open ${label}`} />}
+                          render={<Link {...urlDestination(to)} aria-label={`Open ${label}`} />}
                         >
                           {" "}
                           <ChevronRight className="text-muted-foreground" />

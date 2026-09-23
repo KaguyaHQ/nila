@@ -1,6 +1,3 @@
-import { useRef } from "react";
-import { Link } from "react-router-dom";
-import { ChevronsUpDown, LogOut, Settings, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,6 +6,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Link } from "@tanstack/react-router";
+import { ChevronsUpDown, LogOut, Settings, UserRound } from "lucide-react";
+import { useRef } from "react";
 export function AccountMenu({
   user,
   collapsed,
@@ -40,7 +40,9 @@ export function AccountMenu({
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" className="min-w-48">
-          <DropdownMenuItem render={<Link to="/settings/profile" />}>
+          <DropdownMenuItem
+            render={<Link to="/settings/$section" params={{ section: "profile" }} />}
+          >
             <Settings />
             Settings
           </DropdownMenuItem>

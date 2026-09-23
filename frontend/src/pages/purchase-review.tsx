@@ -1,33 +1,35 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
+import { PurchaseSourceActions } from "@/components/purchase-source-actions";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Badge } from "@/components/ui/badge";
-import { PurchaseSourceActions } from "@/components/purchase-source-actions";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
-  TableHeader,
-  TableHead,
   TableBody,
-  TableRow,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  fetchPurchaseReview,
-  savePurchaseTreatment,
-  recordPurchaseDocument,
   PurchaseReviewError,
+  fetchPurchaseReview,
+  recordPurchaseDocument,
+  savePurchaseTreatment,
   type PurchaseReviewData,
-  type TreatmentValues,
   type TreatmentChoice,
+  type TreatmentValues,
 } from "@/lib/purchase-review-api";
+import { reviewSearch } from "@/lib/route-search";
+import { urlDestination } from "@/lib/route-url";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const choices: { id: TreatmentChoice; label: string }[] = [
   { id: "claim", label: "Claim this month" },
@@ -48,10 +50,14 @@ const blankValues = (): TreatmentValues => ({
 });
 
 export default function PurchaseReview() {
-  const { clientId = "", period = "", itemId = "" } = useParams();
-  const [params] = useSearchParams();
-  const filter = params.get("filter") ?? "needs_review";
-  const q = (params.get("q") ?? "").slice(0, 200);
+  const { clientId = "", period = "", itemId = "" } = useParams({ strict: false });
+  const params = useSearch({
+    from: itemId
+      ? "/gst/$clientId/$period/purchases/review/$itemId"
+      : "/gst/$clientId/$period/purchases/review",
+  });
+  const filter = params.filter ?? "needs_review";
+  const q = (params.q ?? "").slice(0, 200);
   const queryKey = ["purchase-review", clientId, period, itemId, filter, q];
   const query = useQuery({
     queryKey,
@@ -63,7 +69,6 @@ export default function PurchaseReview() {
     refetchOnReconnect: false,
     retry: false,
   });
-  const back = `/gst/${clientId}/${period}/purchases`;
   if (query.isPending)
     return (
       <main className="p-10">
@@ -76,7 +81,11 @@ export default function PurchaseReview() {
         <h1 className="text-2xl font-semibold">Purchase review unavailable</h1>
         <p role="alert">{query.error.message}</p>
         <Button onClick={() => query.refetch()}>Try again</Button>
-        <Link to={back} className="ml-4 underline">
+        <Link
+          to="/gst/$clientId/$period/purchases"
+          params={{ clientId, period }}
+          className="ml-4 underline"
+        >
           Back to purchases
         </Link>
       </main>
@@ -87,6 +96,7 @@ export default function PurchaseReview() {
       loading={query.isPlaceholderData}
       selectedId={itemId || query.data.item?.id || ""}
       data={query.data}
+      searchParams={params}
       queryKey={queryKey}
       refreshing={query.isFetching}
       refresh={() => query.refetch()}
@@ -95,6 +105,7 @@ export default function PurchaseReview() {
 }
 
 function Review({
+  searchParams: params,
   data,
   queryKey,
   refreshing,
@@ -102,6 +113,7 @@ function Review({
   selectedId,
   refresh,
 }: {
+  searchParams: ReturnType<typeof reviewSearch>;
   data: PurchaseReviewData;
   queryKey: string[];
   refreshing: boolean;
@@ -111,9 +123,8 @@ function Review({
 }) {
   const navigate = useNavigate();
   const cache = useQueryClient();
-  const [params] = useSearchParams();
   const [search, setSearch] = useState(data.q);
-  const routeQuery = params.get("q") ?? "";
+  const routeQuery = params.q ?? "";
   const queueRef = useRef<HTMLElement>(null);
   const [editorRevision, setEditorRevision] = useState("");
   const [resetVersion, setResetVersion] = useState(0);
@@ -124,7 +135,7 @@ function Review({
   const operation = useRef<AbortController | null>(null);
   const openingCases = useRef<PurchaseReviewData["cases"]>([]);
   const base = `/gst/${data.client.id}/${data.period}/purchases`;
-  const returnTo = params.get("return_to");
+  const returnTo = params.return_to;
   const backTo = returnTo === base || returnTo?.startsWith(`${base}?`) ? returnTo : base;
   const item = data.item;
   const position = data.queue.findIndex((row) => row.id === selectedId);
@@ -145,7 +156,11 @@ function Review({
     if (!id || busy || dirty) return;
     setSaved("");
     mutation.reset();
-    navigate(`${base}/review/${encodeURIComponent(id)}?${params}`);
+    navigate({
+      to: "/gst/$clientId/$period/purchases/review/$itemId",
+      params: { clientId: String(data.client.id), period: data.period, itemId: id },
+      search: params,
+    });
   }
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
@@ -251,7 +266,12 @@ function Review({
         const target =
           fresh.queue.find((row) => row.id === next?.id) ??
           fresh.queue.find((row) => row.id !== write.itemId);
-        if (target) navigate(`${base}/review/${encodeURIComponent(target.id)}?${params}`);
+        if (target)
+          navigate({
+            to: "/gst/$clientId/$period/purchases/review/$itemId",
+            params: { clientId: String(data.client.id), period: data.period, itemId: target.id },
+            search: params,
+          });
         else setSaved("ITC treatment saved. No more items in this queue.");
       }
     },
@@ -307,9 +327,12 @@ function Review({
   useEffect(() => {
     if (search === routeQuery || dirty || busy) return;
     const timer = setTimeout(() => {
-      const nextParams = new URLSearchParams(params);
-      search ? nextParams.set("q", search) : nextParams.delete("q");
-      navigate(`${base}/review?${nextParams}`, { replace: true });
+      navigate({
+        to: "/gst/$clientId/$period/purchases/review",
+        params: { clientId: String(data.client.id), period: data.period },
+        search: { ...params, q: search || undefined },
+        replace: true,
+      });
     }, 250);
     return () => clearTimeout(timer);
   }, [search, routeQuery, dirty, busy]);
@@ -382,7 +405,7 @@ function Review({
     <main className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b bg-card px-6 py-4">
         <Link
-          to={backTo}
+          {...urlDestination(backTo)}
           onClick={(event) => {
             if (busy || dirty) event.preventDefault();
           }}
@@ -429,9 +452,11 @@ function Review({
             value={data.filter}
             disabled={busy || dirty}
             onChange={(event) => {
-              const nextParams = new URLSearchParams(params);
-              nextParams.set("filter", event.target.value);
-              navigate(`${base}/review?${nextParams}`);
+              navigate({
+                to: "/gst/$clientId/$period/purchases/review",
+                params: { clientId: String(data.client.id), period: data.period },
+                search: { ...params, filter: reviewSearch({ filter: event.target.value }).filter },
+              });
             }}
           >
             {[

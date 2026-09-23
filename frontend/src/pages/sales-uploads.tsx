@@ -1,10 +1,10 @@
-import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, FileText, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { monthLabel } from "@/data/sales";
 import { useUploadPreview } from "@/state/upload-preview";
+import { Link } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, FileText, Plus } from "lucide-react";
 
 export default function SalesUploads() {
   const { files } = useUploadPreview();

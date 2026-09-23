@@ -1,17 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, FileText, Pencil } from "lucide-react";
-import { ShortcutHelpButton, navigationShortcutBlocked } from "@/components/keyboard-shortcuts";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import type { Layout } from "react-resizable-panels";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { InvoiceQueue } from "@/components/invoice-queue";
-import { NativeSelect } from "@/components/ui/native-select";
+import { navigationShortcutBlocked, ShortcutHelpButton } from "@/components/keyboard-shortcuts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Table,
   TableBody,
@@ -27,6 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { salesSearch } from "@/lib/route-search";
 import { ApiError } from "@/lib/sales-api";
 import {
   confirmSalesInvoiceIssue,
@@ -37,6 +33,11 @@ import {
   type ReviewValues,
   type SalesInvoiceReviewData,
 } from "@/lib/sales-review-api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, FileText, Pencil } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import type { Layout } from "react-resizable-panels";
 
 const SourcePdf = lazy(() => import("@/components/source-pdf"));
 const filters = [
@@ -91,8 +92,12 @@ const decimalFields = new Set([
 ]);
 
 export default function SalesInvoiceReview() {
-  const { clientId = "", period = "", invoiceId = "" } = useParams();
-  const [params] = useSearchParams();
+  const {
+    clientId = "",
+    period = "",
+    invoiceId = "",
+  } = useParams({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
+  const params = useSearch({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const layout = useRef<Layout>({ source: 45, details: 55 });
   const pdfZoom = useRef(1);
   const key = ["sales-review", clientId, period, invoiceId];
@@ -102,11 +107,11 @@ export default function SalesInvoiceReview() {
     staleTime: 0,
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
   });
-  const backParams = new URLSearchParams();
-  if (["needs_review", "ready"].includes(params.get("filter") ?? ""))
-    backParams.set("filter", params.get("filter")!);
-  if (params.get("q")) backParams.set("q", params.get("q")!);
-  const back = `/gst/${clientId}/${period}/sales/register${backParams.size ? `?${backParams}` : ""}`;
+  const backSearch = {
+    filter:
+      params.filter === "needs_review" || params.filter === "ready" ? params.filter : undefined,
+    q: params.q,
+  };
   if (query.isPending)
     return (
       <main className="p-10">
@@ -130,7 +135,18 @@ export default function SalesInvoiceReview() {
               Try again
             </Button>
           )}
-          <Button variant="ghost" nativeButton={false} role="link" render={<Link to={back} />}>
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            role="link"
+            render={
+              <Link
+                to="/gst/$clientId/$period/sales/register"
+                params={{ clientId, period }}
+                search={backSearch}
+              />
+            }
+          >
             Back to register
           </Button>
         </div>
@@ -161,8 +177,13 @@ function InvoiceReview({
   refreshing: boolean;
   refresh: () => unknown;
 }) {
-  const { clientId = "", period = "", invoiceId = "" } = useParams();
-  const [params, setParams] = useSearchParams();
+  const {
+    clientId = "",
+    period = "",
+    invoiceId = "",
+  } = useParams({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
+  const params = useSearch({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
+  const setParams = useNavigate({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [edit, setEdit] = useState<{ section: ReviewChange["section"]; index?: number } | null>(
@@ -216,7 +237,7 @@ function InvoiceReview({
   });
   const busy = mutation.isPending;
   const error = mutation.error;
-  const requestedFilter = params.get("filter");
+  const requestedFilter = params.filter;
   const filter =
     requestedFilter === "ready" || requestedFilter === "needs_review" ? requestedFilter : "all";
   const visible = data.queue.filter((item) => filter === "all" || item.status === filter);
@@ -234,11 +255,7 @@ function InvoiceReview({
       : filter === "needs_review" && visible.length === 0
         ? "No invoices need review"
         : `${visible.length} ${filter === "needs_review" ? "still need review" : "in this view"}`;
-  const base = `/gst/${clientId}/${period}/sales`;
-  const registerParams = new URLSearchParams();
-  if (filter !== "all") registerParams.set("filter", filter);
-  if (params.get("q")) registerParams.set("q", params.get("q")!);
-  const register = `${base}/register${registerParams.size ? `?${registerParams}` : ""}`;
+  const registerSearch = { filter: filter === "all" ? undefined : filter, q: params.q };
   const status = data.queue.find((item) => item.id === data.invoice.id)?.status;
   const canEdit = data.can_edit && !refreshing && !busy;
   const fieldErrors = error instanceof ReviewApiError ? error.fields : {};
@@ -253,20 +270,28 @@ function InvoiceReview({
 
   function go(id: string | undefined, selectedFilter = filter) {
     if (!id || busy || dialogOpen) return;
-    const search = new URLSearchParams(params);
-    if (selectedFilter === "all") search.delete("filter");
-    else search.set("filter", selectedFilter);
-    navigate(`${base}/invoices/${encodeURIComponent(id)}${search.size ? `?${search}` : ""}`);
+    navigate({
+      to: "/gst/$clientId/$period/sales/invoices/$invoiceId",
+      params: { clientId, period, invoiceId: id },
+      search: {
+        ...params,
+        filter:
+          selectedFilter === "all" ? undefined : salesSearch({ filter: selectedFilter }).filter,
+      },
+    });
   }
   function changeFilter(value: string) {
     const matching = data.queue.filter((item) => value === "all" || item.status === value);
     const currentMatches = matching.some((item) => item.id === data.invoice.id);
     if (!currentMatches && matching.length) go(matching[0].id, value);
     else {
-      const search = new URLSearchParams(params);
-      if (value === "all") search.delete("filter");
-      else search.set("filter", value);
-      setParams(search);
+      setParams({
+        search: {
+          ...params,
+          filter: value === "all" ? undefined : salesSearch({ filter: value }).filter,
+        },
+        resetScroll: false,
+      });
     }
   }
   useEffect(() => {
@@ -348,7 +373,13 @@ function InvoiceReview({
             size="sm"
             nativeButton={false}
             role="link"
-            render={<Link to={register} />}
+            render={
+              <Link
+                to="/gst/$clientId/$period/sales/register"
+                params={{ clientId, period }}
+                search={registerSearch}
+              />
+            }
             disabled={busy}
           >
             <ArrowLeft /> Back to register

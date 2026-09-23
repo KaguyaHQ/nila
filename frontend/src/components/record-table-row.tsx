@@ -1,7 +1,7 @@
-import type { ComponentProps, MouseEvent } from "react";
-import { Link } from "react-router-dom";
 import { TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { createLink } from "@tanstack/react-router";
+import type { ComponentProps, MouseEvent } from "react";
 
 const interactive =
   "a, button, input, select, textarea, label, summary, [role=button], [role=checkbox], [role=switch], [role=combobox], [contenteditable], [tabindex], [data-row-action]";
@@ -53,9 +53,12 @@ export function RecordTableRow({
   );
 }
 
-export function RecordTableLink({ className, ...props }: ComponentProps<typeof Link>) {
+export const RecordTableLink = createLink(function RecordAnchor({
+  className,
+  ...props
+}: ComponentProps<"a">) {
   return (
-    <Link
+    <a
       {...props}
       data-record-link
       className={cn(
@@ -64,4 +67,4 @@ export function RecordTableLink({ className, ...props }: ComponentProps<typeof L
       )}
     />
   );
-}
+});

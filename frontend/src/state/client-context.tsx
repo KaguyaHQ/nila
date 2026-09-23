@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "@/lib/generated/workspace";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type ClientContext = components["schemas"]["WorkspaceNavigation"];
 type Response = components["schemas"]["WorkspaceNavigationResponse"];
@@ -75,7 +75,7 @@ export function ClientContextProvider({ children }: { children: ReactNode }) {
 
 export function useClientContext() {
   const selected = useContext(Context);
-  const { search } = useLocation();
+  const { searchStr: search } = useLocation();
   const period = new URLSearchParams(search).get("period");
   // An explicit directory period takes priority over remembered defaults.
   return selected && period && /^\d{4}-(0[1-9]|1[0-2])$/.test(period)

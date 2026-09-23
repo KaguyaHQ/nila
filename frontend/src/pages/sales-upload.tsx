@@ -1,11 +1,11 @@
-import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, FileText, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { monthLabel } from "@/data/sales";
 import { useUploadPreview } from "@/state/upload-preview";
+import { Link } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, FileText, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 
 function fileSize(bytes: number) {
   return bytes < 1024 * 1024

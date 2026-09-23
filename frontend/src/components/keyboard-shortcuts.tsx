@@ -1,16 +1,17 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { urlDestination } from "@/lib/route-url";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { Keyboard } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 export function navigationShortcutBlocked(event: KeyboardEvent) {
   const target = event.target;
@@ -53,7 +54,7 @@ export function ShortcutHelpButton() {
 }
 
 export function KeyboardShortcuts({ children }: { children: ReactNode }) {
-  const { pathname, search } = useLocation();
+  const { pathname, searchStr: search } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
@@ -123,7 +124,11 @@ export function KeyboardShortcuts({ children }: { children: ReactNode }) {
       ) {
         prefix.current = 0;
         event.preventDefault();
-        navigate(`/gst/${gst[1]}/${gst[2]}/${event.key === "s" ? "sales" : "purchases"}`);
+        navigate({
+          to:
+            event.key === "s" ? "/gst/$clientId/$period/sales" : "/gst/$clientId/$period/purchases",
+          params: { clientId: gst[1], period: gst[2] },
+        });
         return;
       }
       prefix.current = event.key === "g" ? now : 0;
@@ -134,7 +139,7 @@ export function KeyboardShortcuts({ children }: { children: ReactNode }) {
         const period = date.toISOString().slice(0, 7);
         if (period < "2017-07" || period > new Date().toISOString().slice(0, 7)) return;
         event.preventDefault();
-        navigate(pathname.replace(`/${gst[2]}/`, `/${period}/`) + search);
+        navigate(urlDestination(pathname.replace(`/${gst[2]}/`, `/${period}/`) + search));
       }
     }
     const reset = () => {

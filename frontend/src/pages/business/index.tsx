@@ -1,34 +1,10 @@
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
-import {
-  createContext,
-  lazy,
-  Suspense,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Outlet,
-  useNavigate,
-  useLocation,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, FileText, Loader2, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ServicesPage } from "./services";
 import { InvoiceDocument, type InvoiceCalculation } from "@/components/business/invoice-document";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -46,9 +22,31 @@ import {
   type BusinessCustomer,
   type BusinessInvoice,
   type BusinessLine,
-  type BusinessProfile,
   type InvoiceInput,
 } from "@/lib/business-api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Link,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
+import { ArrowLeft, Download, FileText, Loader2, Plus } from "lucide-react";
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { ServicesPage } from "./services";
 
 const SourcePdf = lazy(() => import("@/components/source-pdf"));
 const Workspace = createContext<BusinessBootstrap | null>(null);
@@ -117,14 +115,6 @@ function StateSelect({
     </NativeSelect>
   );
 }
-function ActionLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Button nativeButton={false} role="link" render={<Link to={to} />}>
-      {children}
-    </Button>
-  );
-}
-
 export function BusinessLayout() {
   const location = useLocation();
   const editingInvoice = /\/business\/(?:invoices|quotations)\/.+/.test(location.pathname);
@@ -184,22 +174,25 @@ export function BusinessLayout() {
             aria-label="Business"
             className={`mx-auto flex gap-6 overflow-x-auto px-4 sm:px-8 ${editingInvoice ? "max-w-[1440px]" : "max-w-6xl"}`}
           >
-            {[
-              ["invoices", "Invoices"],
-              ["quotations", "Quotations"],
-              ["customers", "Customers"],
-              ["services", "Services"],
-              ["settings", "Business details"],
-            ].map(([path, title]) => (
-              <NavLink
+            {(
+              [
+                ["/business/invoices", "Invoices"],
+                ["/business/quotations", "Quotations"],
+                ["/business/customers", "Customers"],
+                ["/business/services", "Services"],
+                ["/business/settings", "Business details"],
+              ] as const
+            ).map(([path, title]) => (
+              <Link
                 key={path}
-                to={`/business/${path}`}
-                className={({ isActive }) =>
-                  `border-b-2 py-3 text-sm whitespace-nowrap ${isActive ? "border-foreground font-medium" : "border-transparent text-muted-foreground"}`
-                }
+                to={path}
+                activeOptions={{ includeSearch: false }}
+                className="border-b-2 py-3 text-sm whitespace-nowrap"
+                activeProps={{ className: "border-foreground font-medium" }}
+                inactiveProps={{ className: "border-transparent text-muted-foreground" }}
               >
                 {title}
-              </NavLink>
+              </Link>
             ))}
           </nav>
         </header>
@@ -228,7 +221,6 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
   const documents = data.invoices.filter(
     (invoice) => (invoice.document_type === "quotation") === quotation,
   );
-  const path = quotation ? "/business/quotations" : "/business/invoices";
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -240,10 +232,14 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
               : "Issued invoices are shared with your CA."}
           </p>
         </div>
-        <ActionLink to={`${path}/new`}>
+        <Button
+          nativeButton={false}
+          role="link"
+          render={<Link to={quotation ? "/business/quotations/new" : "/business/invoices/new"} />}
+        >
           <Plus />
           {quotation ? "New quotation" : "New invoice"}
-        </ActionLink>
+        </Button>
       </div>
       <div className="overflow-hidden rounded-lg border">
         <Table>
@@ -263,7 +259,12 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
                 <TableCell>
                   <RecordTableLink
                     className="font-medium underline-offset-4 hover:underline"
-                    to={`${path}/${invoice.id}`}
+                    to={
+                      quotation
+                        ? "/business/quotations/$invoiceId"
+                        : "/business/invoices/$invoiceId"
+                    }
+                    params={{ invoiceId: String(invoice.id) }}
                   >
                     {invoice.number || "Draft"}
                     {invoice.document_type === "credit_note" ? " · Credit note" : ""}
@@ -580,9 +581,9 @@ export function BusinessSettings() {
 }
 
 export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" | "quotation" }) {
-  const { invoiceId } = useParams();
-  const [params] = useSearchParams();
-  const originalId = mode === "invoice" ? params.get("credit_for") : null;
+  const { invoiceId } = useParams({ strict: false });
+  const params = useSearch({ strict: false });
+  const originalId = mode === "invoice" ? params.credit_for : null;
   const query = useQuery({
     queryKey: ["business-invoice", invoiceId ?? originalId],
     queryFn: ({ signal }) =>
@@ -634,7 +635,12 @@ export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" |
     return (
       <Navigate
         replace
-        to={`/business/${query.data.invoice.document_type === "quotation" ? "quotations" : "invoices"}/${invoiceId}`}
+        to={
+          query.data.invoice.document_type === "quotation"
+            ? "/business/quotations/$invoiceId"
+            : "/business/invoices/$invoiceId"
+        }
+        params={{ invoiceId }}
       />
     );
   return (
@@ -733,7 +739,12 @@ function InvoiceForm({
       setSaved(result.invoice);
       setDirty(false);
       await cache.invalidateQueries({ queryKey });
-      if (!saved) navigate(`${documentPath}/${result.invoice.id}`, { replace: true });
+      if (!saved)
+        navigate({
+          to: quotation ? "/business/quotations/$invoiceId" : "/business/invoices/$invoiceId",
+          params: { invoiceId: String(result.invoice.id) },
+          replace: true,
+        });
       else setMessage("Draft saved.");
     } catch (error) {
       setError(error as Error);
@@ -788,7 +799,10 @@ function InvoiceForm({
           invoice: result.invoice,
         });
         await cache.invalidateQueries({ queryKey });
-        navigate(`/business/invoices/${result.invoice.id}`);
+        navigate({
+          to: "/business/invoices/$invoiceId",
+          params: { invoiceId: String(result.invoice.id) },
+        });
       } else {
         const result = await businessRequest("setQuotationStatus", {
           id: saved.id,
@@ -836,7 +850,9 @@ function InvoiceForm({
                   variant="outline"
                   nativeButton={false}
                   role="link"
-                  render={<Link to={`/business/invoices/new?credit_for=${saved!.id}`} />}
+                  render={
+                    <Link to="/business/invoices/new" search={{ credit_for: String(saved!.id) }} />
+                  }
                 >
                   Create credit note
                 </Button>
@@ -886,9 +902,18 @@ function InvoiceForm({
           </p>
           <div className="flex flex-wrap gap-2">
             {saved.converted_invoice_id ? (
-              <ActionLink to={`/business/invoices/${saved.converted_invoice_id}`}>
+              <Button
+                nativeButton={false}
+                role="link"
+                render={
+                  <Link
+                    to="/business/invoices/$invoiceId"
+                    params={{ invoiceId: String(saved.converted_invoice_id) }}
+                  />
+                }
+              >
                 Open invoice
-              </ActionLink>
+              </Button>
             ) : (
               <>
                 {saved.status !== "accepted" && (

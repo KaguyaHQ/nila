@@ -1,17 +1,18 @@
-import { PurchaseWorklist } from "@/components/purchase-worklist";
-import { createContext, useContext } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { PurchaseRegisterTable } from "@/components/purchase-register-table";
 import { Gstr2bSource } from "@/components/gstr2b-source";
-import { Shell } from "@/components/workspace-shell";
+import { MonthPicker } from "@/components/month-picker";
+import { PurchaseRegisterTable } from "@/components/purchase-register-table";
+import { PurchaseWorklist } from "@/components/purchase-worklist";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { MonthPicker } from "@/components/month-picker";
-import { ApiError } from "@/lib/sales-api";
+import { Shell } from "@/components/workspace-shell";
 import { fetchPurchases, type PurchasesWorkspace } from "@/lib/purchases-api";
+import { urlDestination } from "@/lib/route-url";
+import { ApiError } from "@/lib/sales-api";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { createContext, useContext } from "react";
 
 const Workspace = createContext<PurchasesWorkspace | null>(null);
 export function usePurchases() {
@@ -22,12 +23,12 @@ export function usePurchases() {
 const basePath = (data: PurchasesWorkspace) => `/gst/${data.client.id}/${data.period}/purchases`;
 
 export function LivePurchasesLayout() {
-  const { clientId = "", period = "" } = useParams();
-  const [params] = useSearchParams();
+  const { clientId, period } = useParams({ from: "/gst/$clientId/$period/purchases" });
+  const params = useSearch({ from: "/gst/$clientId/$period/purchases" });
   const { pathname } = useLocation();
   const register = pathname.endsWith("/register");
-  const filter = register && params.get("source") === "gstr2b" ? "gstr2b" : "register";
-  const q = register ? (params.get("q") ?? "").slice(0, 200) : "";
+  const filter = register && params.source === "gstr2b" ? "gstr2b" : "register";
+  const q = register ? (params.q ?? "").slice(0, 200) : "";
   const query = useQuery({
     queryKey: ["purchases", clientId, period, filter, q],
     queryFn: ({ signal }) => fetchPurchases(clientId, period, filter, q, signal),
@@ -104,10 +105,10 @@ function LegacyAction({
 function PeriodControl() {
   const data = usePurchases();
   const navigate = useNavigate();
-  const { pathname, search } = useLocation();
+  const { pathname, searchStr: search } = useLocation();
   const current = new Date().toISOString().slice(0, 7);
   const go = (period: string) =>
-    navigate(pathname.replace(`/${data.period}/`, `/${period}/`) + search);
+    navigate(urlDestination(pathname.replace(`/${data.period}/`, `/${period}/`) + search));
   const shift = (delta: number) => {
     const date = new Date(`${data.period}-01T12:00:00Z`);
     date.setUTCMonth(date.getUTCMonth() + delta);
@@ -154,7 +155,11 @@ export function LivePurchasesSummary() {
         <div className="flex items-center gap-3">
           {data.signed_off && <Badge variant="outline">Signed off</Badge>}
           {canReview && (
-            <Button nativeButton={false} role="link" render={<Link to={data.links.treatment} />}>
+            <Button
+              nativeButton={false}
+              role="link"
+              render={<Link {...urlDestination(data.links.treatment)} />}
+            >
               Review purchases <ArrowRight />
             </Button>
           )}
@@ -203,7 +208,9 @@ export function LivePurchasesSummary() {
               <h2 className="font-medium">{title}</h2>
               {input.present && (
                 <Link
-                  to={`${basePath(data)}/register?source=${key}`}
+                  to="/gst/$clientId/$period/purchases/register"
+                  params={{ clientId: String(data.client.id), period: data.period }}
+                  search={{ source: key }}
                   className="text-sm underline underline-offset-4"
                 >
                   View register
@@ -271,13 +278,15 @@ const emptyRegisterRows: PurchasesWorkspace["rows"] = [];
 
 export function LivePurchasesRegister() {
   const data = usePurchases();
-  const [params, setParams] = useSearchParams();
-  const source = params.get("source") === "gstr2b" ? "gstr2b" : "purchases";
-  const q = (params.get("q") ?? "").slice(0, 200);
+  const params = useSearch({ from: "/gst/$clientId/$period/purchases" });
+  const setParams = useNavigate({ from: "/gst/$clientId/$period/purchases/register" });
+  const source = params.source === "gstr2b" ? "gstr2b" : "purchases";
+  const q = (params.q ?? "").slice(0, 200);
   return (
     <div className="space-y-6">
       <Link
-        to={basePath(data)}
+        to="/gst/$clientId/$period/purchases"
+        params={{ clientId: String(data.client.id), period: data.period }}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -296,10 +305,12 @@ export function LivePurchasesRegister() {
       </header>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <nav aria-label="Register source" className="flex gap-2">
-          {[
-            { id: "purchases", label: "Purchase books" },
-            { id: "gstr2b", label: "GSTR-2B" },
-          ].map((item) => (
+          {(
+            [
+              { id: "purchases", label: "Purchase books" },
+              { id: "gstr2b", label: "GSTR-2B" },
+            ] as const
+          ).map((item) => (
             <Button
               key={item.id}
               variant={source === item.id ? "secondary" : "ghost"}
@@ -308,7 +319,9 @@ export function LivePurchasesRegister() {
               render={
                 <Link
                   aria-current={source === item.id ? "page" : undefined}
-                  to={`${basePath(data)}/register?${new URLSearchParams({ source: item.id, ...(q ? { q } : {}) })}`}
+                  to="/gst/$clientId/$period/purchases/register"
+                  params={{ clientId: String(data.client.id), period: data.period }}
+                  search={{ source: item.id, q: q || undefined }}
                 />
               }
             >
@@ -321,10 +334,11 @@ export function LivePurchasesRegister() {
           onSubmit={(event) => {
             event.preventDefault();
             const value = String(new FormData(event.currentTarget).get("q") ?? "").slice(0, 200);
-            const next = new URLSearchParams(params);
-            next.set("source", source);
-            value ? next.set("q", value) : next.delete("q");
-            setParams(next, { replace: true });
+            setParams({
+              search: { ...params, source, q: value || undefined },
+              resetScroll: false,
+              replace: true,
+            });
           }}
         >
           <Input
@@ -362,9 +376,11 @@ export function LivePurchasesRegister() {
                 variant="ghost"
                 className="mt-3"
                 onClick={() => {
-                  const next = new URLSearchParams(params);
-                  next.delete("q");
-                  setParams(next, { replace: true });
+                  setParams({
+                    search: { ...params, q: undefined },
+                    resetScroll: false,
+                    replace: true,
+                  });
                 }}
               >
                 Clear search

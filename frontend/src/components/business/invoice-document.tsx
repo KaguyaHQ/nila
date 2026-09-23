@@ -6,19 +6,19 @@
  * Nila adaptation: controlled React state replaces RHF; GST/SAC fields replace
  * template settings, and every calculated amount comes from Phoenix.
  */
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { InlineInput, InlineSelect, InlineTextarea } from "./inline-input";
-import { ServicePicker } from "./service-picker";
-import { CustomerPicker } from "./customer-picker";
 import type {
   BusinessBootstrap,
   BusinessInvoice,
   BusinessLine,
   InvoiceInput,
 } from "@/lib/business-api";
+import { Link } from "@tanstack/react-router";
+import { Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { CustomerPicker } from "./customer-picker";
+import { InlineInput, InlineSelect, InlineTextarea } from "./inline-input";
+import { ServicePicker } from "./service-picker";
 
 export type InvoiceCalculation =
   import("@/lib/generated/workspace").components["schemas"]["InvoiceCalculation"];

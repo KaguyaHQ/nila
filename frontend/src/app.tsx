@@ -1,34 +1,53 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
-import { ClientContextProvider } from "@/state/client-context";
-import NoticesPage from "@/pages/notices";
-import SettingsPage from "@/pages/settings";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
-import {
-  BusinessLayout,
-  BusinessInvoices,
-  BusinessInvoiceEditor,
-  BusinessCustomers,
-  BusinessSettings,
-  BusinessServices,
-} from "@/pages/business";
 import { Shell } from "@/components/workspace-shell";
-import SalesSummary from "@/pages/sales-summary";
-import SalesRegister from "@/pages/sales-register";
-import SalesUpload from "@/pages/sales-upload";
-import SalesUploads from "@/pages/sales-uploads";
-import { LiveSalesUpload, LiveSalesUploads } from "@/pages/live-sales-uploads";
-import { ClientsLayout, ClientsPage, ClientForm, ClientsImport } from "@/pages/clients";
-import SalesInvoiceReview from "@/pages/sales-invoice";
-import SalesSection from "@/pages/sales-section";
-import SalesChecks from "@/pages/sales-checks";
-import PurchaseReview from "@/pages/purchase-review";
+import {
+  businessSearch,
+  clientsSearch,
+  noticesSearch,
+  parseSearch,
+  purchaseSearch,
+  reviewSearch,
+  salesSearch,
+  settingsSearch,
+  stringifySearch,
+} from "@/lib/route-search";
+import {
+  BusinessCustomers,
+  BusinessInvoiceEditor,
+  BusinessInvoices,
+  BusinessLayout,
+  BusinessServices,
+  BusinessSettings,
+} from "@/pages/business";
+import { ClientForm, ClientsImport, ClientsLayout, ClientsPage } from "@/pages/clients";
 import {
   LivePurchasesLayout,
-  LivePurchasesSummary,
   LivePurchasesRegister,
+  LivePurchasesSummary,
 } from "@/pages/live-purchases";
-import { LiveSalesLayout, LiveSalesSummary, LiveSalesRegister } from "@/pages/live-sales";
+import { LiveSalesLayout, LiveSalesRegister, LiveSalesSummary } from "@/pages/live-sales";
+import { LiveSalesUpload, LiveSalesUploads } from "@/pages/live-sales-uploads";
+import NoticesPage from "@/pages/notices";
+import PurchaseReview from "@/pages/purchase-review";
+import SalesChecks from "@/pages/sales-checks";
+import SalesInvoiceReview from "@/pages/sales-invoice";
+import SalesRegister from "@/pages/sales-register";
+import SalesSection from "@/pages/sales-section";
+import SalesSummary from "@/pages/sales-summary";
+import SalesUpload from "@/pages/sales-upload";
+import SalesUploads from "@/pages/sales-uploads";
+import SettingsPage from "@/pages/settings";
+import { ClientContextProvider } from "@/state/client-context";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Navigate,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
 
 function NotFound() {
   return (
@@ -45,82 +64,288 @@ function NotFound() {
   );
 }
 
-export default function App() {
+function RootLayout() {
   return (
     <ClientContextProvider>
       <KeyboardShortcuts>
-        <Routes>
-          <Route path="notices" element={<NoticesPage />} />
-          <Route path="notices/:noticeId" element={<NoticesPage />} />
-          <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
-          <Route path="settings/:section" element={<SettingsPage />} />
-          <Route path="business" element={<BusinessLayout />}>
-            <Route index element={<Navigate to="invoices" replace />} />
-            <Route path="invoices" element={<BusinessInvoices />} />
-            <Route path="invoices/new" element={<BusinessInvoiceEditor />} />
-            <Route path="invoices/:invoiceId" element={<BusinessInvoiceEditor />} />
-            <Route path="quotations" element={<BusinessInvoices mode="quotation" />} />
-            <Route path="quotations/new" element={<BusinessInvoiceEditor mode="quotation" />} />
-            <Route
-              path="quotations/:invoiceId"
-              element={<BusinessInvoiceEditor mode="quotation" />}
-            />
-            <Route path="customers" element={<BusinessCustomers />} />
-            <Route path="services" element={<BusinessServices />} />
-            <Route path="settings" element={<BusinessSettings />} />
-          </Route>
-          <Route
-            path="gst/:clientId/:period/sales/invoices/:invoiceId"
-            element={<SalesInvoiceReview />}
-          />
-          <Route path="gst/:clientId/:period/purchases/review" element={<PurchaseReview />} />
-          <Route
-            path="gst/:clientId/:period/purchases/review/:itemId"
-            element={<PurchaseReview />}
-          />
-          <Route path="gst/:clientId/:period/purchases" element={<LivePurchasesLayout />}>
-            <Route index element={<LivePurchasesSummary />} />
-            <Route path="register" element={<LivePurchasesRegister />} />
-          </Route>
-          <Route path="clients" element={<ClientsLayout />}>
-            <Route index element={<ClientsPage />} />
-            <Route path="new" element={<ClientForm />} />
-            <Route path=":clientId/edit" element={<ClientForm />} />
-            <Route path="import" element={<ClientsImport />} />
-          </Route>
-          <Route path="gst/:clientId/:period" element={<LiveSalesLayout />}>
-            <Route path="sales" element={<LiveSalesSummary />} />
-            <Route path="sales/register" element={<LiveSalesRegister />} />
-            <Route path="sales/checks" element={<SalesChecks />} />
-            <Route path="sales/sections/:section" element={<SalesSection />} />
-            <Route path="sales/upload" element={<LiveSalesUpload />} />
-            <Route path="sales/uploads" element={<LiveSalesUploads />} />
-          </Route>
-          {import.meta.env.DEV && (
-            <Route element={<Shell />}>
-              <Route index element={<Navigate to="/sales" replace />} />
-              <Route path="sales" element={<SalesSummary />} />
-              <Route path="sales/register" element={<SalesRegister />} />
-              <Route path="sales/upload" element={<SalesUpload />} />
-              <Route path="sales/uploads" element={<SalesUploads />} />
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          )}
-          {!import.meta.env.DEV && (
-            <Route
-              path="*"
-              element={
-                <main className="p-10">
-                  <h1 className="text-2xl font-semibold">Page not found</h1>
-                  <a href="/clients" className="mt-4 inline-block underline">
-                    Back to clients
-                  </a>
-                </main>
-              }
-            />
-          )}
-        </Routes>
+        <Outlet />
       </KeyboardShortcuts>
     </ClientContextProvider>
   );
+}
+const root = createRootRoute({
+  component: RootLayout,
+  notFoundComponent: () =>
+    import.meta.env.DEV ? (
+      <Shell>
+        <NotFound />
+      </Shell>
+    ) : (
+      <main className="p-10">
+        <h1 className="text-2xl font-semibold">Page not found</h1>
+        <a href="/clients" className="mt-4 inline-block underline">
+          Back to clients
+        </a>
+      </main>
+    ),
+});
+const notices = createRoute({
+  getParentRoute: () => root,
+  path: "notices",
+  validateSearch: noticesSearch,
+  component: NoticesPage,
+});
+const notice = createRoute({
+  getParentRoute: () => root,
+  path: "notices/$noticeId",
+  validateSearch: noticesSearch,
+  component: NoticesPage,
+});
+const settingsIndex = createRoute({
+  getParentRoute: () => root,
+  path: "settings",
+  component: () => <Navigate to="/settings/$section" params={{ section: "profile" }} replace />,
+});
+const settings = createRoute({
+  getParentRoute: () => root,
+  path: "settings/$section",
+  validateSearch: settingsSearch,
+  component: SettingsPage,
+});
+const business = createRoute({
+  getParentRoute: () => root,
+  path: "business",
+  component: BusinessLayout,
+});
+const businessIndex = createRoute({
+  getParentRoute: () => business,
+  path: "/",
+  component: () => <Navigate to="/business/invoices" replace />,
+});
+const businessInvoices = createRoute({
+  getParentRoute: () => business,
+  path: "invoices",
+  component: BusinessInvoices,
+});
+const businessInvoiceNew = createRoute({
+  getParentRoute: () => business,
+  path: "invoices/new",
+  validateSearch: businessSearch,
+  component: BusinessInvoiceEditor,
+});
+const businessInvoice = createRoute({
+  getParentRoute: () => business,
+  path: "invoices/$invoiceId",
+  component: BusinessInvoiceEditor,
+});
+const businessQuotations = createRoute({
+  getParentRoute: () => business,
+  path: "quotations",
+  component: () => <BusinessInvoices mode="quotation" />,
+});
+const businessQuotationNew = createRoute({
+  getParentRoute: () => business,
+  path: "quotations/new",
+  component: () => <BusinessInvoiceEditor mode="quotation" />,
+});
+const businessQuotation = createRoute({
+  getParentRoute: () => business,
+  path: "quotations/$invoiceId",
+  component: () => <BusinessInvoiceEditor mode="quotation" />,
+});
+const businessCustomers = createRoute({
+  getParentRoute: () => business,
+  path: "customers",
+  component: BusinessCustomers,
+});
+const businessServices = createRoute({
+  getParentRoute: () => business,
+  path: "services",
+  component: BusinessServices,
+});
+const businessSettings = createRoute({
+  getParentRoute: () => business,
+  path: "settings",
+  component: BusinessSettings,
+});
+const invoice = createRoute({
+  getParentRoute: () => root,
+  path: "gst/$clientId/$period/sales/invoices/$invoiceId",
+  validateSearch: salesSearch,
+  component: SalesInvoiceReview,
+});
+const purchaseReview = createRoute({
+  getParentRoute: () => root,
+  path: "gst/$clientId/$period/purchases/review",
+  validateSearch: reviewSearch,
+  component: PurchaseReview,
+});
+const purchaseReviewItem = createRoute({
+  getParentRoute: () => root,
+  path: "gst/$clientId/$period/purchases/review/$itemId",
+  validateSearch: reviewSearch,
+  component: PurchaseReview,
+});
+const purchases = createRoute({
+  getParentRoute: () => root,
+  path: "gst/$clientId/$period/purchases",
+  validateSearch: purchaseSearch,
+  component: LivePurchasesLayout,
+});
+const purchasesIndex = createRoute({
+  getParentRoute: () => purchases,
+  path: "/",
+  component: LivePurchasesSummary,
+});
+const purchasesRegister = createRoute({
+  getParentRoute: () => purchases,
+  path: "register",
+  component: LivePurchasesRegister,
+});
+const clients = createRoute({
+  getParentRoute: () => root,
+  path: "clients",
+  validateSearch: clientsSearch,
+  component: ClientsLayout,
+});
+const clientsIndex = createRoute({
+  getParentRoute: () => clients,
+  path: "/",
+  component: ClientsPage,
+});
+const clientNew = createRoute({
+  getParentRoute: () => clients,
+  path: "new",
+  component: ClientForm,
+});
+const clientEdit = createRoute({
+  getParentRoute: () => clients,
+  path: "$clientId/edit",
+  component: ClientForm,
+});
+const clientsImport = createRoute({
+  getParentRoute: () => clients,
+  path: "import",
+  component: ClientsImport,
+});
+const sales = createRoute({
+  getParentRoute: () => root,
+  path: "gst/$clientId/$period",
+  validateSearch: salesSearch,
+  component: LiveSalesLayout,
+});
+const salesIndex = createRoute({
+  getParentRoute: () => sales,
+  path: "sales",
+  component: LiveSalesSummary,
+});
+const salesRegister = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/register",
+  component: LiveSalesRegister,
+});
+const salesChecks = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/checks",
+  component: SalesChecks,
+});
+const salesSection = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/sections/$section",
+  component: SalesSection,
+});
+const salesUpload = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/upload",
+  component: LiveSalesUpload,
+});
+const salesUploads = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/uploads",
+  component: LiveSalesUploads,
+});
+const preview = createRoute({ getParentRoute: () => root, id: "preview", component: Shell });
+const previewIndex = createRoute({
+  getParentRoute: () => preview,
+  path: "/",
+  component: () => <Navigate to="/sales" replace />,
+});
+const previewSales = createRoute({
+  getParentRoute: () => preview,
+  path: "sales",
+  component: SalesSummary,
+});
+const previewRegister = createRoute({
+  getParentRoute: () => preview,
+  path: "sales/register",
+  validateSearch: salesSearch,
+  component: SalesRegister,
+});
+const previewUpload = createRoute({
+  getParentRoute: () => preview,
+  path: "sales/upload",
+  component: SalesUpload,
+});
+const previewUploads = createRoute({
+  getParentRoute: () => preview,
+  path: "sales/uploads",
+  component: SalesUploads,
+});
+const routeTree = root.addChildren([
+  notices,
+  notice,
+  settingsIndex,
+  settings,
+  business.addChildren([
+    businessIndex,
+    businessInvoices,
+    businessInvoiceNew,
+    businessInvoice,
+    businessQuotations,
+    businessQuotationNew,
+    businessQuotation,
+    businessCustomers,
+    businessServices,
+    businessSettings,
+  ]),
+  invoice,
+  purchaseReview,
+  purchaseReviewItem,
+  purchases.addChildren([purchasesIndex, purchasesRegister]),
+  clients.addChildren([clientsIndex, clientNew, clientEdit, clientsImport]),
+  sales.addChildren([
+    salesIndex,
+    salesRegister,
+    salesChecks,
+    salesSection,
+    salesUpload,
+    salesUploads,
+  ]),
+  ...(import.meta.env.DEV
+    ? [
+        preview.addChildren([
+          previewIndex,
+          previewSales,
+          previewRegister,
+          previewUpload,
+          previewUploads,
+        ]),
+      ]
+    : []),
+]);
+export const router = createRouter({
+  routeTree,
+  basepath:
+    location.pathname === "/app" || location.pathname.startsWith("/app/") ? "/app" : undefined,
+  parseSearch,
+  stringifySearch,
+  defaultPreload: false,
+});
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+export default function App() {
+  return <RouterProvider router={router} />;
 }

@@ -1,7 +1,3 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -13,6 +9,11 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox";
 import { fetchClients } from "@/lib/clients-api";
+import { urlDestination } from "@/lib/route-url";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Building2 } from "lucide-react";
+import { useState } from "react";
 
 type Client = { id: number; name: string; gstin?: string | null };
 
@@ -42,7 +43,7 @@ export function ClientSwitcher({
   collapsed: boolean;
   workspacePath?: string;
 }) {
-  const { pathname, search } = useLocation();
+  const { pathname, searchStr: search } = useLocation();
   const navigate = useNavigate();
   const activePath = pathname.startsWith("/gst/") ? pathname : (workspacePath ?? pathname);
   const explicitPeriod = new URLSearchParams(search).get("period");
@@ -73,10 +74,14 @@ export function ClientSwitcher({
           if (!targetPeriod) return;
           setOpen(false);
           navigate(
-            clientDestination(
-              activePath.startsWith("/gst/") ? activePath : `/gst/${item.id}/${targetPeriod}/sales`,
-              pathname.startsWith("/gst/") ? search : "",
-              item.id,
+            urlDestination(
+              clientDestination(
+                activePath.startsWith("/gst/")
+                  ? activePath
+                  : `/gst/${item.id}/${targetPeriod}/sales`,
+                pathname.startsWith("/gst/") ? search : "",
+                item.id,
+              ),
             ),
           );
         }
@@ -133,7 +138,7 @@ export function ClientSwitcher({
             className="w-full justify-start"
             nativeButton={false}
             role="link"
-            render={<Link to={period ? `/clients?period=${period}` : "/clients"} />}
+            render={<Link to="/clients" search={{ period: period ?? undefined }} />}
             onClick={() => setOpen(false)}
           >
             View all clients

@@ -99,6 +99,24 @@ test("switching keeps the queue mounted and hides the previous invoice while loa
   await expect(page.getByRole("button", { name: "Search", exact: true })).toHaveCount(0);
 });
 
+test("carried and source filters survive route validation and reach Phoenix", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/gst/1/2026-06/purchases/review/one");
+  for (const filter of ["carried", "register", "gstr2b"]) {
+    const response = page.waitForResponse((res) => {
+      const url = new URL(res.url());
+      return (
+        url.pathname === "/api/workspace/purchases/1/2026-06/review" &&
+        url.searchParams.get("filter") === filter
+      );
+    });
+    await page.getByRole("combobox", { name: "Review filter" }).selectOption(filter);
+    await response;
+    await expect(page.getByRole("combobox", { name: "Review filter" })).toHaveValue(filter);
+    expect(new URL(page.url()).searchParams.get("filter")).toBe(filter);
+  }
+});
+
 test("2B without books shows a single source and unconfirmed possession", async ({
   page,
 }, info) => {

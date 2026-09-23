@@ -1,8 +1,26 @@
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
+import { MonthPicker } from "@/components/month-picker";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
+import { SalesExports } from "@/components/sales-exports";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { createContext, useContext } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Shell } from "@/components/workspace-shell";
+import { salesSearch } from "@/lib/route-search";
+import { urlDestination } from "@/lib/route-url";
+import { ApiError, fetchSales, type SalesWorkspace } from "@/lib/sales-api";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,23 +30,7 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import { Shell } from "@/components/workspace-shell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { MonthPicker } from "@/components/month-picker";
-import { Card } from "@/components/ui/card";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { ApiError, fetchSales, type SalesWorkspace } from "@/lib/sales-api";
-import { SalesExports } from "@/components/sales-exports";
-import { Skeleton } from "@/components/ui/skeleton";
+import { createContext, useContext } from "react";
 
 const Workspace = createContext<SalesWorkspace | null>(null);
 export function useSales() {
@@ -36,13 +38,10 @@ export function useSales() {
   if (!data) throw new Error("Sales workspace is missing");
   return data;
 }
-export function basePath(data: Pick<SalesWorkspace, "client" | "period">) {
-  return `/gst/${data.client.id}/${data.period}/sales`;
-}
 const money = (value: string | null) => value ?? "—";
 
 export function LiveSalesLayout() {
-  const { clientId = "", period = "" } = useParams();
+  const { clientId, period } = useParams({ from: "/gst/$clientId/$period" });
   const { pathname } = useLocation();
   const query = useQuery({
     queryKey: ["sales", clientId, period],
@@ -167,10 +166,13 @@ function PeriodHeading({
   const workspace = useContext(Workspace);
   const data = supplied ?? workspace!;
   const navigate = useNavigate();
-  const { search } = useLocation();
-  const suffix = register ? "/register" : "";
-  const go = (client: string, period: string) =>
-    navigate(`/gst/${client}/${period}/sales${suffix}${search}`);
+  const search = useSearch({ from: "/gst/$clientId/$period" });
+  const go = (clientId: string, period: string) =>
+    navigate({
+      to: register ? "/gst/$clientId/$period/sales/register" : "/gst/$clientId/$period/sales",
+      params: { clientId, period },
+      search,
+    });
   const shift = (delta: number) => {
     const date = new Date(`${data.period}-01T12:00:00Z`);
     date.setUTCMonth(date.getUTCMonth() + delta);
@@ -230,7 +232,12 @@ function PeriodHeading({
           variant={data.invoice_count ? "outline" : "default"}
           nativeButton={false}
           role="link"
-          render={<Link to={`${basePath(data)}/upload`} />}
+          render={
+            <Link
+              to="/gst/$clientId/$period/sales/upload"
+              params={{ clientId: String(data.client.id), period: data.period }}
+            />
+          }
         >
           <Plus /> Add invoices
         </Button>
@@ -241,14 +248,17 @@ function PeriodHeading({
 
 export function LiveSalesSummary() {
   const data = useSales();
-  const base = basePath(data);
   return (
     <>
       <PeriodHeading />
       {data.uploads.unfinished && (
         <p role="status" className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           Some uploads are still being read or need attention.{" "}
-          <Link to={`${base}/uploads`} className="font-medium underline">
+          <Link
+            to="/gst/$clientId/$period/sales/uploads"
+            params={{ clientId: String(data.client.id), period: data.period }}
+            className="font-medium underline"
+          >
             Check uploads
           </Link>
         </p>
@@ -267,7 +277,13 @@ export function LiveSalesSummary() {
             <Button
               nativeButton={false}
               role="link"
-              render={<Link to={`${base}/register?filter=needs_review`} />}
+              render={
+                <Link
+                  to="/gst/$clientId/$period/sales/register"
+                  params={{ clientId: String(data.client.id), period: data.period }}
+                  search={{ filter: "needs_review" }}
+                />
+              }
             >
               Review invoices <ArrowRight />
             </Button>
@@ -291,7 +307,12 @@ export function LiveSalesSummary() {
             size="sm"
             nativeButton={false}
             role="link"
-            render={<Link to={`${base}/register`} />}
+            render={
+              <Link
+                to="/gst/$clientId/$period/sales/register"
+                params={{ clientId: String(data.client.id), period: data.period }}
+              />
+            }
           >
             View sales register <ArrowRight />
           </Button>
@@ -300,7 +321,12 @@ export function LiveSalesSummary() {
             size="sm"
             nativeButton={false}
             role="link"
-            render={<Link to={`${base}/uploads`} />}
+            render={
+              <Link
+                to="/gst/$clientId/$period/sales/uploads"
+                params={{ clientId: String(data.client.id), period: data.period }}
+              />
+            }
           >
             <Upload /> Uploads · {data.uploads.files} {data.uploads.files === 1 ? "file" : "files"}
           </Button>
@@ -308,7 +334,11 @@ export function LiveSalesSummary() {
       </Card>
       {data.month_issue_count > 0 && (
         <p className="mt-5 text-sm">
-          <Link to={`${base}/checks`} className="font-medium underline underline-offset-4">
+          <Link
+            to="/gst/$clientId/$period/sales/checks"
+            params={{ clientId: String(data.client.id), period: data.period }}
+            className="font-medium underline underline-offset-4"
+          >
             Review {data.month_issue_count} month{" "}
             {data.month_issue_count === 1 ? "check" : "checks"}
           </Link>
@@ -336,7 +366,12 @@ export function LiveSalesSummary() {
                     <TableCell className="py-3 pl-4">
                       {section.path ? (
                         <RecordTableLink
-                          to={`${base}/sections/${section.id}`}
+                          to="/gst/$clientId/$period/sales/sections/$section"
+                          params={{
+                            clientId: String(data.client.id),
+                            period: data.period,
+                            section: section.id,
+                          }}
                           className="font-medium hover:underline"
                         >
                           {section.label}
@@ -383,11 +418,12 @@ export function LiveSalesSummary() {
 
 export function LiveSalesRegister() {
   const data = useSales();
-  const [params, setParams] = useSearchParams();
-  const filter = ["needs_review", "ready", "excluded"].includes(params.get("filter") ?? "")
-    ? params.get("filter")!
+  const params = useSearch({ from: "/gst/$clientId/$period/sales/register" });
+  const setParams = useNavigate({ from: "/gst/$clientId/$period/sales/register" });
+  const filter = ["needs_review", "ready", "excluded"].includes(params.filter ?? "")
+    ? params.filter!
     : "all";
-  const search = params.get("q") ?? "";
+  const search = params.q ?? "";
   const visible = data.rows.filter(
     (row) =>
       (filter === "all" || row.status === filter) &&
@@ -395,16 +431,23 @@ export function LiveSalesRegister() {
         .toLowerCase()
         .includes(search.trim().toLowerCase()),
   );
-  function set(key: string, value: string) {
-    const next = new URLSearchParams(params);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setParams(next, { replace: key === "q" });
+  function set(key: "filter" | "q", value: string) {
+    setParams({
+      search: {
+        ...params,
+        ...(key === "filter"
+          ? { filter: salesSearch({ filter: value }).filter }
+          : { q: value || undefined }),
+      },
+      resetScroll: false,
+      replace: key === "q",
+    });
   }
   return (
     <>
       <Link
-        to={basePath(data)}
+        to="/gst/$clientId/$period/sales"
+        params={{ clientId: String(data.client.id), period: data.period }}
         className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -469,7 +512,9 @@ export function LiveSalesRegister() {
                 <TableCell className="py-4 pl-5">
                   {row.path ? (
                     <Link
-                      to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`}
+                      {...urlDestination(
+                        `${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`,
+                      )}
                       className="font-medium hover:underline"
                     >
                       {row.number}
@@ -511,7 +556,9 @@ export function LiveSalesRegister() {
                 <TableCell className="pr-5 text-right">
                   {row.path && (
                     <RecordTableLink
-                      to={`${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`}
+                      {...urlDestination(
+                        `${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`,
+                      )}
                       aria-label={`Review invoice ${row.number}`}
                       className="inline-flex items-center gap-1 font-medium hover:underline"
                     >
@@ -533,7 +580,11 @@ export function LiveSalesRegister() {
                       : "Add sales bills to build this month's register."}
                   </p>
                   {data.review_count > 0 && (
-                    <Button variant="outline" className="mt-4" onClick={() => setParams({})}>
+                    <Button
+                      variant="outline"
+                      className="mt-4"
+                      onClick={() => setParams({ search: {}, resetScroll: false })}
+                    >
                       Clear filters
                     </Button>
                   )}

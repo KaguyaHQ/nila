@@ -1,23 +1,24 @@
-import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  RefreshCw,
-  Search,
-  Inbox,
-  CircleAlert,
-  ChevronDown,
-} from "lucide-react";
-import { Shell } from "@/components/workspace-shell";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -27,27 +28,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Shell } from "@/components/workspace-shell";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  noticesRequest,
   NoticesError,
-  type NoticesData,
+  noticesRequest,
   type Notice,
   type NoticeClient,
+  type NoticesData,
 } from "@/lib/notices-api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  ChevronDown,
+  CircleAlert,
+  Inbox,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { NoticePdf } from "@/components/notice-pdf";
 const queryKey = ["notices"];
@@ -104,8 +104,9 @@ function useNoticeWrite<T, R>(
 }
 
 export default function NoticesPage() {
-  const { noticeId } = useParams();
-  const [params, setParams] = useSearchParams();
+  const { noticeId } = useParams({ strict: false });
+  const params = useSearch({ from: noticeId ? "/notices/$noticeId" : "/notices" });
+  const setParams = useNavigate();
   const cache = useQueryClient();
   const [search, setSearch] = useState("");
   const [checks, setChecks] = useState(false);
@@ -142,7 +143,7 @@ export default function NoticesPage() {
       void cache.invalidateQueries({ queryKey });
     },
   );
-  const clientFilter = params.get("client_id") ?? "";
+  const clientFilter = params.client_id ?? "";
   useEffect(() => {
     if (write.error) void cache.invalidateQueries({ queryKey });
   }, [write.error, cache]);
@@ -193,7 +194,15 @@ export default function NoticesPage() {
           error={detail.error?.message}
           retry={() => void detail.refetch()}
           params={params}
-          setDocument={(index) => setParams({ document: String(index) }, { replace: true })}
+          setDocument={(index) =>
+            setParams({
+              to: "/notices/$noticeId",
+              params: { noticeId: noticeId! },
+              search: { document: String(index) },
+              resetScroll: false,
+              ...{ replace: true },
+            })
+          }
           connect={(id) => openChecks(false, id)}
           reconnect={(id) => {
             const client = data?.clients.find((client) => client.id === id);
@@ -293,7 +302,13 @@ export default function NoticesPage() {
               aria-label="Filter by client"
               className="w-60"
               value={clientFilter}
-              onChange={(e) => setParams(e.target.value ? { client_id: e.target.value } : {})}
+              onChange={(e) =>
+                setParams({
+                  to: "/notices",
+                  search: e.target.value ? { client_id: e.target.value } : {},
+                  resetScroll: false,
+                })
+              }
             >
               <option value="">All clients</option>
               {data.clients.map((c) => (
@@ -388,7 +403,9 @@ export default function NoticesPage() {
                       size="sm"
                       nativeButton={false}
                       role="link"
-                      render={<Link to={`/clients/${c.id}/edit`} />}
+                      render={
+                        <Link to="/clients/$clientId/edit" params={{ clientId: String(c.id) }} />
+                      }
                     >
                       Add GSTIN
                     </Button>
@@ -475,7 +492,8 @@ function NoticeList({ notices, empty }: { notices: NoticesData["notices"]; empty
                 <RecordTableRow key={n.id}>
                   <TableCell className="py-4">
                     <RecordTableLink
-                      to={`/notices/${n.id}`}
+                      to="/notices/$noticeId"
+                      params={{ noticeId: String(n.id) }}
                       className="font-medium hover:underline"
                     >
                       {n.type}
@@ -498,7 +516,7 @@ function NoticeList({ notices, empty }: { notices: NoticesData["notices"]; empty
                       size="icon-sm"
                       nativeButton={false}
                       role="link"
-                      render={<Link to={`/notices/${n.id}`} />}
+                      render={<Link to="/notices/$noticeId" params={{ noticeId: String(n.id) }} />}
                       aria-label={`Open notice ${n.reference}`}
                     >
                       <ArrowUpRight />
@@ -530,18 +548,18 @@ function NoticeReader({
   pending: boolean;
   error?: string;
   retry: () => void;
-  params: URLSearchParams;
+  params: { document?: string };
   setDocument: (index: number) => void;
   connect: (id: number) => void;
   reconnect: (id: number) => void;
 }) {
-  const selected = Number(params.get("document"));
+  const selected = Number(params.document);
   const defaultIndex = Math.max(
     0,
     notice?.documents.findIndex((d) => d.type === "application/pdf") ?? 0,
   );
   const index =
-    params.has("document") &&
+    params.document !== undefined &&
     Number.isInteger(selected) &&
     selected >= 0 &&
     selected < (notice?.documents.length ?? 0)
@@ -569,7 +587,8 @@ function NoticeReader({
   return (
     <div className="space-y-6">
       <Link
-        to={notice ? `/notices?client_id=${notice.client_id}` : "/notices"}
+        to="/notices"
+        search={{ client_id: notice ? String(notice.client_id) : undefined }}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />

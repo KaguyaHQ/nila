@@ -1,24 +1,25 @@
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { AccountMenu } from "@/components/account-menu";
+import { ClientSwitcher } from "@/components/client-switcher";
+import { ShortcutHelpButton } from "@/components/keyboard-shortcuts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { WorkspaceCommand } from "@/components/workspace-command";
+import { clientName as sampleClientName } from "@/data/sales";
+import { urlDestination } from "@/lib/route-url";
+import { useClientContext } from "@/state/client-context";
+import { createLink, Link, Outlet, useLocation } from "@tanstack/react-router";
 import {
   Building2,
   ChevronRight,
-  FileSpreadsheet,
-  FileText,
   Inbox,
   Landmark,
   PanelLeft,
+  FileText,
+  FileSpreadsheet,
   Users,
 } from "lucide-react";
-import { ShortcutHelpButton } from "@/components/keyboard-shortcuts";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
-import { ClientSwitcher } from "@/components/client-switcher";
-import { WorkspaceCommand } from "@/components/workspace-command";
-import { AccountMenu } from "@/components/account-menu";
-import { useClientContext } from "@/state/client-context";
-import { clientName as sampleClientName } from "@/data/sales";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 const titles: Record<string, string> = {
   "/sales": "Sales & GSTR-1",
   "/sales/register": "Sales register",
@@ -72,7 +73,7 @@ export function Shell({
   const user = live?.user ?? firm;
   const clientName = live?.client.name ?? firm?.org ?? sampleClientName;
   const salesPath = live?.base ?? "/sales";
-  const { pathname, search } = useLocation();
+  const { pathname, searchStr: search } = useLocation();
   const purchasesPath = live?.purchases;
   const inPurchases = Boolean(purchasesPath && pathname.startsWith(purchasesPath));
   const sectionPath = inPurchases ? purchasesPath! : salesPath;
@@ -115,7 +116,7 @@ export function Shell({
       >
         {!collapsed && (
           <Link
-            to={firm ? clientsPath : salesPath}
+            {...urlDestination(firm ? clientsPath : salesPath)}
             aria-label={firm ? "Nila clients home" : "Nila sales home"}
             className="font-brand text-[32px] font-semibold tracking-tight"
           >
@@ -155,7 +156,7 @@ export function Shell({
         {(!firm || live) && (
           <NavigationLink
             collapsed={collapsed}
-            to={salesPath}
+            {...urlDestination(salesPath)}
             aria-current={pathname.startsWith(salesPath) ? "page" : undefined}
             label="Sales & GSTR-1"
             className={`flex h-10 items-center rounded-md text-sm ${pathname.startsWith(salesPath) ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
@@ -184,7 +185,7 @@ export function Shell({
           <>
             <NavigationLink
               collapsed={collapsed}
-              to={live.purchases}
+              {...urlDestination(live.purchases)}
               aria-current={inPurchases ? "page" : undefined}
               label="Purchases & ITC"
               className={`flex h-10 items-center rounded-md text-sm ${inPurchases ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
@@ -219,7 +220,8 @@ export function Shell({
           <>
             <NavigationLink
               collapsed={collapsed}
-              to={clientsPath}
+              to="/clients"
+              search={{ period: period ?? undefined }}
               label="Clients"
               aria-current={firm && !settings && !notices ? "page" : undefined}
               className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm && !settings && !notices ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
@@ -272,13 +274,15 @@ export function Shell({
               <span className="text-foreground">Notices</span>
             ) : settings ? (
               <>
-                <Link to="/settings/profile">Settings</Link>
+                <Link to="/settings/$section" params={{ section: "profile" }}>
+                  Settings
+                </Link>
                 <ChevronRight className="size-3" />
                 <span className="text-foreground">{settings}</span>
               </>
             ) : firm ? (
               <>
-                <Link to={clientsPath} className="hover:text-foreground">
+                <Link {...urlDestination(clientsPath)} className="hover:text-foreground">
                   Clients
                 </Link>
                 {title !== "Clients" && (
@@ -292,7 +296,7 @@ export function Shell({
               <span className="text-foreground">{title}</span>
             ) : (
               <>
-                <Link to={sectionPath} className="hover:text-foreground">
+                <Link {...urlDestination(sectionPath)} className="hover:text-foreground">
                   {sectionLabel}
                 </Link>
                 <ChevronRight className="size-3" />
@@ -324,17 +328,17 @@ export function Shell({
   );
 }
 
-function NavigationLink({
+const NavigationLink = createLink(function NavigationAnchor({
   collapsed,
   label,
   children,
   ...props
-}: ComponentProps<typeof Link> & { collapsed: boolean; label: string }) {
-  if (!collapsed) return <Link {...props}>{children}</Link>;
+}: ComponentProps<"a"> & { collapsed: boolean; label: string }) {
+  if (!collapsed) return <a {...props}>{children}</a>;
   return (
     <Tooltip>
-      <TooltipTrigger render={<Link {...props} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<a {...props} />}>{children}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
   );
-}
+});

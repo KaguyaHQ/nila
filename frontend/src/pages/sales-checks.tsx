@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { urlDestination } from "@/lib/route-url";
 import { ApiError } from "@/lib/sales-api";
 import {
   decideSalesCheck,
@@ -19,7 +16,11 @@ import {
   type MonthlySalesChecks,
   type MonthlySalesDecision,
 } from "@/lib/sales-checks-api";
-import { basePath, useSales } from "./live-sales";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useSales } from "./live-sales";
 
 const supportedChecks = new Set(["sequence_gaps", "pages_unaccounted", "evidence_unavailable"]);
 const changedMessage = "This check changed. Review the updated check before confirming it again.";
@@ -38,7 +39,8 @@ export default function SalesChecks() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <Link
-          to={basePath(workspace)}
+          to="/gst/$clientId/$period/sales"
+          params={{ clientId: String(workspace.client.id), period: workspace.period }}
           className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> Sales summary
@@ -249,7 +251,7 @@ function ChecksList({
                     {check.action_paths.map((path) => (
                       <Link
                         key={`${path.label}:${path.path}`}
-                        to={path.path}
+                        {...urlDestination(path.path)}
                         className="text-sm underline underline-offset-4"
                       >
                         {path.label}

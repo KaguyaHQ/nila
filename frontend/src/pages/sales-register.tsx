@@ -1,9 +1,5 @@
-import { useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronRight, Plus, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -20,6 +17,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { invoices, money, monthLabel, type SalesInvoice } from "@/data/sales";
+import { salesSearch } from "@/lib/route-search";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, ChevronRight, Plus, Search, X } from "lucide-react";
+import { useRef, useState } from "react";
 
 const filters = [
   { value: "all", label: "All invoices" },
@@ -52,11 +53,12 @@ function InvoiceStatus({ status }: { status: SalesInvoice["status"] }) {
 }
 
 export default function SalesRegister() {
-  const [params, setParams] = useSearchParams();
+  const params = useSearch({ from: "/preview/sales/register" });
+  const setParams = useNavigate({ from: "/sales/register" });
   const [selected, setSelected] = useState<SalesInvoice | null>(null);
   const dialogOpener = useRef<HTMLButtonElement | null>(null);
-  const query = params.get("q") ?? "";
-  const requestedFilter = params.get("filter");
+  const query = params.q ?? "";
+  const requestedFilter = params.filter;
   const filter =
     requestedFilter === "needs_review" || requestedFilter === "ready" ? requestedFilter : "all";
   const needle = query.trim().toLocaleLowerCase();
@@ -79,24 +81,21 @@ export default function SalesRegister() {
   }
 
   function changeQuery(value: string) {
-    const next = new URLSearchParams(params);
-    if (value) next.set("q", value);
-    else next.delete("q");
-    setParams(next, { replace: true });
+    setParams({ search: { ...params, q: value || undefined }, resetScroll: false, replace: true });
   }
 
   function changeFilter(value: string) {
-    const next = new URLSearchParams(params);
-    if (value === "all") next.delete("filter");
-    else next.set("filter", value);
-    setParams(next);
+    setParams({
+      search: {
+        ...params,
+        filter: salesSearch({ filter: value === "all" ? undefined : value }).filter,
+      },
+      resetScroll: false,
+    });
   }
 
   function resetFilters() {
-    const next = new URLSearchParams(params);
-    next.delete("q");
-    next.delete("filter");
-    setParams(next);
+    setParams({ search: { ...params, q: undefined, filter: undefined }, resetScroll: false });
   }
 
   return (

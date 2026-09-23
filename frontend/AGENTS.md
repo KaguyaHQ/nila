@@ -15,7 +15,7 @@ LiveView frontend, not this separately built React entry point.
 - For tables whose rows open a record, use `RecordTableRow` with one visible `RecordTableLink` inside it. The link owns the destination and keyboard access; other controls keep their actions. Keep breakdowns and multi-action management rows as ordinary `TableRow`s.
 - Before building a generic control, check the official shadcn Base UI registry. Use its existing component when it covers the interaction; keep custom code for Nila's data, routes and accounting behavior. Do not port LiveView DOM hooks when the React primitive already owns that behavior.
 - Nila is a desktop application. Do not expand migration work into mobile navigation or mobile-specific layouts unless requested.
-- Use React Router within migrated screens. Use normal same-origin links for screens still owned by LiveView.
+- Use TanStack Router within migrated screens. Keep route/search contracts typed; TanStack Query owns server-data fetching and caching. Use normal same-origin links for screens still owned by LiveView.
 - Do not claim an upload, review, export, or accounting decision was saved when it was not.
 - Use TanStack `useMutation` for server writes: derive pending/errors from the mutation, update caches only from confirmed responses, and invalidate affected queries. Keep `retry: false` and `networkMode: "always"` so failed/offline saves require an explicit retry. Preserve request cancellation and synchronous duplicate-submit guards; local validation, upload progress and downloads may keep local state.
 - Keep fixture facts in `src/data/sales.ts`, temporary PDF selections in the existing

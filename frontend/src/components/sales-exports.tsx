@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { Download, FileJson, FileSpreadsheet, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { urlDestination } from "@/lib/route-url";
 import type { SalesExportItem, SalesWorkspace } from "@/lib/sales-api";
+import { Link } from "@tanstack/react-router";
+import { Download, FileJson, FileSpreadsheet, LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 function downloadName(disposition: string | null) {
   if (!disposition) return null;
@@ -147,7 +148,10 @@ function ExportList({ data }: { data: SalesWorkspace }) {
                       {blocker.message}
                     </a>
                   ) : (
-                    <Link to={blocker.path} className="underline underline-offset-4">
+                    <Link
+                      {...urlDestination(blocker.path)}
+                      className="underline underline-offset-4"
+                    >
                       {blocker.message}
                     </Link>
                   )

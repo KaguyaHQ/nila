@@ -31,7 +31,12 @@ after changing development configuration. Login and `/app` open the React worksp
 directory when no client exists). Open `/app/gst/:client_id/:period/sales` directly
 on port 4000 for a particular month. The register ends in
 `/sales/register`; PDF intake and history end in `/sales/upload` and `/sales/uploads`.
-These pages use React Router; direct URLs and back/forward work.
+These pages use TanStack Router; direct URLs and back/forward work.
+The code-based route tree lives in `src/app.tsx`; validated search contracts live in
+`src/lib/route-search.ts`. Use typed `to`, `params` and `search` for new navigation.
+`urlDestination` is the boundary for URLs supplied by Phoenix or preserved workspace
+subpages. Query values stay plain strings so existing links and references keep their
+meaning. TanStack Query continues to own server-data caching; Phoenix owns business rules.
 GSTR-1 detail routes end in `/sales/sections/:section` for B2B, B2C, notes,
 exports, SEZ, HSN and documents issued.
 `/sales/checks` holds month-level document checks and their recorded decisions.
@@ -118,7 +123,7 @@ clients and months. The account menu opens React settings; sign-out remains owne
 and the remaining deliberate LiveView handoffs.
 
 References: [shadcn](https://ui.shadcn.com/docs/installation/vite),
-[React Router](https://reactrouter.com/start/declarative/installation),
+[TanStack Router](https://tanstack.com/router/latest/docs/guide/navigation),
 [Vite backend integration](https://vite.dev/guide/backend-integration).
 
 ## API contract
