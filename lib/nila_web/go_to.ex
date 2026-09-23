@@ -66,7 +66,7 @@ defmodule NilaWeb.GoTo do
          "/gst/upload?" <>
            URI.encode_query(%{"client_id" => client.id, "period" => current, "kind" => "sales"}),
          "upload invoices", context},
-        {"clients", "Client directory", "/clients", "clients", nil}
+        {"clients", "Client directory", "/app/clients", "clients", nil}
       ]
       |> Enum.map(fn {id, label, path, keywords, context} ->
         %{

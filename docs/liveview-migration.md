@@ -5,15 +5,22 @@ Phoenix; sessions, remember-me, invitations, password reset and verification sta
 in Accounts/UserAuth. Signup remains invite-only and redirects to Contact.
 The email-change token endpoint is a controller returning to React settings.
 
-## Replaced, but still routed to old screens
+## Duplicate screens removed
 
 - Clients list/new/edit, notices list/detail, settings profile/security/workspace/users.
-- Sales summary/register/checks/invoice review and PDF upload/history.
 - Purchases overview/register/invoice review; GSTR-2B connection/fetching.
 
-Before deleting these, update remaining legacy links and decide redirects for
-existing URLs. Keep API, export, download and evidence controllers used by React.
-`MonthLive` also owns GSTR-3B: do not delete the module with its sales actions.
+Old URLs redirect through `LegacyWorkspaceController` to React. Purchase source
+filters are translated to React's source selector; review filters keep their queue.
+Retained screens link directly to React for client and account management.
+API, export, download and evidence controllers remain.
+
+## Shared sales code still to separate
+
+- Sales summary/register/checks and month review live in `MonthLive`, which also
+  owns retained GSTR-3B. Separate those actions before deleting the sales UI.
+- The batch viewer and invoice viewer include Tally/accounting work. Audit those
+  entry paths with the deferred Tally scope before removing their modules.
 
 ## Still needed or explicitly deferred
 
@@ -26,8 +33,8 @@ existing URLs. Keep API, export, download and evidence controllers used by React
 
 ## Cleanup order
 
-1. Replace remaining links into duplicate screens, then remove their routes/modules/tests.
-2. Separate GSTR-3B from replaced `MonthLive` actions.
+1. Separate GSTR-3B from replaced `MonthLive` actions and remove the old sales routes.
+2. Resolve the remaining batch/invoice viewer dependency on Tally work.
 3. Decide and migrate remaining import flows.
 4. Audit banking/Tally jobs, data and shared dependencies before removing shelved code.
 5. Remove LiveView dependencies/assets only when no retained routes use them.

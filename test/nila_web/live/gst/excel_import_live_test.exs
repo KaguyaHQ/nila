@@ -90,7 +90,7 @@ defmodule NilaWeb.Gst.ExcelImportLiveTest do
     viewer = user_fixture()
     {:ok, _} = Nila.Orgs.add_user(org, viewer.id, "viewer")
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} =
+    assert {:error, {:live_redirect, %{to: "/app/clients"}}} =
              live(log_in_user(build_conn(), viewer), ~p"/gst/#{client.id}/2026-08/import-excel")
   end
 

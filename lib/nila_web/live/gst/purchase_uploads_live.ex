@@ -29,7 +29,7 @@ defmodule NilaWeb.Gst.PurchaseUploadsLive do
         {:ok,
          socket
          |> put_flash(:error, "That client or month isn't available.")
-         |> push_navigate(to: ~p"/clients")}
+         |> push_navigate(to: ~p"/app/clients")}
     end
   end
 

@@ -13,7 +13,7 @@ defmodule NilaWeb.Components.Today.WorkQueue do
     <.card :if={@sections == []} id="today-empty" padding="roomy" class="text-center">
       <div class="space-y-block mx-auto max-w-sm">
         <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
-        <.button navigate={~p"/clients/new"} id="today-add-first-client">
+        <.button navigate={~p"/app/clients/new"} id="today-add-first-client">
           <.icon name="hero-plus" class="size-4" /> Add your first client
         </.button>
       </div>

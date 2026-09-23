@@ -19,8 +19,7 @@ defmodule NilaWeb.Gst.PurchaseUploadsLiveTest do
 
   test "overview opens empty history and month navigation stays in uploads", c do
     base = "/gst/#{c.client.id}/2026-08/purchases"
-    {:ok, overview, _} = live(c.conn, base)
-    assert has_element?(overview, "#purchase-uploads-link[href='#{base}/uploads']")
+    assert c.conn |> get(base) |> redirected_to() == "/app" <> base
     {:ok, view, _} = live(c.conn, base <> "/uploads")
     assert has_element?(view, "#purchase-uploads-empty")
     assert has_element?(view, "#previous-filing-period[href*='/2026-07/purchases/uploads']")
@@ -81,7 +80,7 @@ defmodule NilaWeb.Gst.PurchaseUploadsLiveTest do
     %{user: other} = user_with_org_fixture()
     conn = build_conn() |> log_in_user(other)
 
-    assert {:error, {:live_redirect, %{to: "/clients"}}} =
+    assert {:error, {:live_redirect, %{to: "/app/clients"}}} =
              live(conn, "/gst/#{c.client.id}/2026-08/purchases/uploads")
   end
 

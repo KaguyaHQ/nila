@@ -69,7 +69,7 @@ defmodule NilaWeb.Gst.UploadLive do
         if prefilled["client_id"] do
           ~p"/gst/#{prefilled["client_id"]}/#{Calendar.closeable_period(Date.utc_today())}/sales"
         else
-          ~p"/clients"
+          ~p"/app/clients"
         end
 
       {:ok,
@@ -767,7 +767,7 @@ defmodule NilaWeb.Gst.UploadLive do
               <div class="space-y-block">
                 <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
 
-                <.button navigate={~p"/clients/new"} id="sales-bills-add-first-client">
+                <.button navigate={~p"/app/clients/new"} id="sales-bills-add-first-client">
                   <.icon name="hero-plus" class="size-4" /> Add your first client
                 </.button>
               </div>
@@ -801,7 +801,7 @@ defmodule NilaWeb.Gst.UploadLive do
         >
           <div class="space-y-block">
             <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
-            <.button navigate={~p"/clients/new"} id="gst-upload-add-first-client">
+            <.button navigate={~p"/app/clients/new"} id="gst-upload-add-first-client">
               <.icon name="hero-plus" class="size-4" /> Add your first client
             </.button>
           </div>
@@ -826,7 +826,7 @@ defmodule NilaWeb.Gst.UploadLive do
               <p class="text-ink-muted text-ui mt-1">
                 Client not listed?
                 <.link
-                  navigate={~p"/clients/new"}
+                  navigate={~p"/app/clients/new"}
                   id="gst-upload-add-client"
                   class="text-moon font-semibold"
                 >

@@ -277,6 +277,27 @@ defmodule NilaWeb.Router do
   scope "/", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
 
+    get "/clients", LegacyWorkspaceController, :show
+    get "/clients/new", LegacyWorkspaceController, :show
+    get "/clients/:id/edit", LegacyWorkspaceController, :show
+    get "/notices", LegacyWorkspaceController, :show
+    get "/notices/:id", LegacyWorkspaceController, :show
+    get "/settings/profile", LegacyWorkspaceController, :show
+    get "/settings/security", LegacyWorkspaceController, :show
+    get "/settings/workspace", LegacyWorkspaceController, :show
+    get "/settings/users", LegacyWorkspaceController, :show
+    get "/gst/:client_id/:period/purchases", LegacyWorkspaceController, :show
+
+    get "/gst/:client_id/:period/purchases/register",
+        LegacyWorkspaceController,
+        :purchase_register
+
+    get "/gst/2b", LegacyWorkspaceController, :gstr2b
+
+    get "/gst/:client_id/:period/purchases/invoices/:item_id",
+        LegacyWorkspaceController,
+        :purchase_review
+
     live_session :require_verified,
       on_mount: [
         {NilaWeb.UserAuth, :require_verified},
@@ -285,26 +306,14 @@ defmodule NilaWeb.Router do
       ] do
       live "/today", TodayLive, :index
       live "/sales-bills/:client_id/batch/:batch_ref", Gst.SalesBillsLive, :show
-      live "/clients", ClientsLive, :index
-      live "/notices", NoticesLive, :index
-      live "/notices/:id", NoticesLive, :show
       live "/register", Gst.RegisterLive, :index
-      live "/clients/new", ClientNewLive, :new
-      live "/clients/:id/edit", ClientEditLive, :edit
       live "/banking", Banking.UploadLive, :index
       live "/banking/new", Banking.UploadLive, :new
       live "/banking/:id", Banking.StatementLive, :show
       live "/gst/upload", Gst.UploadLive, :new
       live "/gst/:client_id/:period/import-excel", Gst.ExcelImportLive, :new
-      live "/gst/2b", Gst.Gstr2bLive, :index
-      live "/gst/:client_id/:period/purchases", Gst.PurchaseLive, :index
-      live "/gst/:client_id/:period/purchases/register", Gst.PurchaseLive, :register
       live "/gst/:client_id/:period/purchases/uploads", Gst.PurchaseUploadsLive, :index
       live "/gst/:client_id/:period/purchases/import-excel", Gst.PurchaseExcelImportLive, :new
-
-      live "/gst/:client_id/:period/purchases/invoices/:item_id",
-           Gst.PurchaseInvoiceReviewLive,
-           :show
 
       live "/gst/:client_id/:period", Gst.MonthLive, :index
       live "/gst/:client_id/:period/gstr3b", Gst.MonthLive, :gstr3b
@@ -317,12 +326,8 @@ defmodule NilaWeb.Router do
       # Settings share the product LiveView session so moving between work and
       # setup does not reload the shell. Firm-only pages enforce their own
       # capability guard in the LiveView.
-      live "/settings/profile", Settings.ProfileLive, :edit
-      live "/settings/security", Settings.SecurityLive, :edit
-      live "/settings/workspace", Settings.WorkspaceLive, :index
       live "/settings/connectors", Settings.ConnectorsLive, :index
       live "/settings/connectors/tally/pair/:approval_code", Settings.TallyPairingLive, :show
-      live "/settings/users", Settings.UsersLive, :index
     end
 
     # Tenant-scoped GST evidence: the controller checks the current org owns the

@@ -4,7 +4,6 @@ defmodule NilaWeb.SettingsLiveTest do
   import Phoenix.LiveViewTest
 
   alias Nila.Integrations
-  alias Nila.Orgs
   alias Nila.Repo
 
   describe "settings shell" do
@@ -82,70 +81,6 @@ defmodule NilaWeb.SettingsLiveTest do
       conn = get(conn, ~p"/settings")
 
       assert redirected_to(conn) == ~p"/app/settings/workspace"
-    end
-
-    test "keeps product and settings navigation in one LiveView session" do
-      sessions =
-        NilaWeb.Router.__routes__()
-        |> Enum.filter(&(&1.path in ["/clients", "/settings/profile", "/settings/connectors"]))
-        |> Enum.map(fn route ->
-          {_view, _action, _opts, session} = route.metadata.phoenix_live_view
-          {route.path, session.name}
-        end)
-        |> Map.new()
-
-      assert sessions == %{
-               "/clients" => :require_verified,
-               "/settings/profile" => :require_verified,
-               "/settings/connectors" => :require_verified
-             }
-    end
-
-    test "renders the firm settings form in the settings shell", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/settings/workspace")
-
-      assert has_element?(view, "#app-shell")
-      assert has_element?(view, "#settings-cockpit")
-      assert has_element?(view, "#settings-nav")
-      assert has_element?(view, "#settings-workspace")
-      assert has_element?(view, "#settings-firm-form")
-      assert has_element?(view, ~s|#settings-firm-form input[name="org[name]"]|)
-      assert has_element?(view, ~s|#settings-firm-form input[name="org[contact_phone]"]|)
-
-      assert has_element?(
-               view,
-               "#settings-save-firm[data-variant='primary']:not([disabled])",
-               "Save changes"
-             )
-
-      refute has_element?(view, ~s|#settings-firm-form input[name="org[legal_name]"]|)
-      refute has_element?(view, ~s|#settings-firm-form input[name="org[gstin]"]|)
-      refute has_element?(view, ~s|#settings-firm-form input[name="org[address_line1]"]|)
-      assert has_element?(view, ~s|a[aria-current="page"][href="/settings/workspace"]|)
-
-      settings_nav = view |> element("#settings-nav") |> render()
-
-      assert settings_nav =~
-               ~r|href="/settings/workspace".*href="/settings/users".*href="/settings/connectors"|s
-    end
-
-    test "updates the shared firm details", %{conn: conn, org: org} do
-      {:ok, view, _html} = live(conn, ~p"/settings/workspace")
-
-      view
-      |> form("#settings-firm-form",
-        org: %{
-          name: "Balaji & Associates",
-          contact_phone: "9962550448"
-        }
-      )
-      |> render_submit()
-
-      firm = Orgs.get_org!(org.id)
-      assert firm.name == "Balaji & Associates"
-      assert firm.contact_phone == "9962550448"
-      assert firm.legal_name == org.legal_name
-      assert firm.gstin == org.gstin
     end
 
     test "renders Meta Embedded Signup on the connectors screen", %{conn: conn} do

@@ -262,13 +262,13 @@ defmodule NilaWeb.Layouts do
               </span>
 
               <.settings_link
-                href={~p"/settings/profile"}
+                href={~p"/app/settings/profile"}
                 icon="hero-user-circle"
                 label="Profile"
                 active={@active_section == :profile}
               />
               <.settings_link
-                href={~p"/settings/security"}
+                href={~p"/app/settings/security"}
                 icon="hero-lock-closed"
                 label="Security"
                 active={@active_section == :security}
@@ -284,13 +284,13 @@ defmodule NilaWeb.Layouts do
               </span>
 
               <.settings_link
-                href={~p"/settings/workspace"}
+                href={~p"/app/settings/workspace"}
                 icon="hero-building-office-2"
                 label="Firm"
                 active={@active_section == :workspace}
               />
               <.settings_link
-                href={~p"/settings/users"}
+                href={~p"/app/settings/users"}
                 icon="hero-users"
                 label="Users"
                 active={@active_section == :users}
@@ -522,7 +522,7 @@ defmodule NilaWeb.Layouts do
         </button>
 
         <.link
-          navigate={~p"/settings/profile"}
+          navigate={~p"/app/settings/profile"}
           id={"#{@id_prefix}-settings-link"}
           class="nila-menu-item"
         >

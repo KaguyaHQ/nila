@@ -348,7 +348,7 @@ defmodule NilaWeb.Banking.UploadLive do
               <div class="space-y-block">
                 <h2 class="text-base-content text-h4 font-semibold">No clients yet</h2>
 
-                <.button navigate={~p"/clients/new"} id="banking-add-first-client">
+                <.button navigate={~p"/app/clients/new"} id="banking-add-first-client">
                   <.icon name="hero-plus" class="size-4" /> Add your first client
                 </.button>
               </div>

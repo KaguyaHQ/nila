@@ -157,11 +157,13 @@ defmodule NilaWeb.Gst.PurchaseReviewLiveTest do
 
     month = put_month!(context, [], [gstr2b("CARRY-1")])
 
-    {:ok, view, _html} =
-      live(context.conn, "/gst/#{context.client.id}/#{@period}/purchases")
+    body =
+      context.conn
+      |> get("/api/workspace/purchases/#{context.client.id}/#{@period}")
+      |> json_response(200)
 
-    assert has_element?(view, "#purchase-portal-totals", "1")
-    refute has_element?(view, "#purchase-books-totals")
+    assert body["inputs"]["portal"]["count"] == 1
+    refute body["inputs"]["books"]["present"]
     [line] = Resolutions.workings(month).case_lines
     assert line.origin_period == "2026-07"
     assert line.has_books?

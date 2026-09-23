@@ -56,13 +56,13 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLiveTest do
     assert_redirect(view, ~p"/gst/#{client.id}/2026-08/purchases")
     [dump] = Dumps.list(org.id, client.id, "2026-08")
     assert :ok = DumpWorker.perform(%Oban.Job{args: %{"dump_id" => dump.id}, attempt: 1})
-    {:ok, queue, _} = live(conn, ~p"/gst/#{client.id}/2026-08/purchases")
-    assert has_element?(queue, "#purchase-register-link")
 
-    {:ok, register, _} =
-      live(conn, NilaWeb.Gst.PurchaseWorkspace.list_path(client.id, "2026-08", "register", ""))
+    body =
+      conn
+      |> get("/api/workspace/purchases/#{client.id}/2026-08?filter=register")
+      |> json_response(200)
 
-    assert has_element?(register, "#purchase-source-items a", "DEMO-001")
+    assert Enum.any?(body["rows"], &(&1["number"] == "DEMO-001"))
   end
 
   test "editing mapping invalidates preview and missing GSTIN prevents import", %{

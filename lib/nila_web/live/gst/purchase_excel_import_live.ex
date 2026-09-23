@@ -39,7 +39,7 @@ defmodule NilaWeb.Gst.PurchaseExcelImportLive do
         {:ok,
          socket
          |> put_flash(:error, "You cannot import purchases for this client.")
-         |> push_navigate(to: ~p"/clients")}
+         |> push_navigate(to: ~p"/app/clients")}
     end
   end
 

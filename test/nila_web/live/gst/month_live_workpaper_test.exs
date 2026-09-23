@@ -60,8 +60,7 @@ defmodule NilaWeb.Gst.MonthLiveWorkpaperTest do
 
     assert target == "/gst/#{client.id}/#{@period}/sales"
 
-    {:ok, purchases, _html} = live(conn, "/gst/#{client.id}/#{@period}/purchases")
-    assert has_element?(purchases, "#purchases-page")
-    refute has_element?(purchases, "#month-workpaper-tab-purchases")
+    assert conn |> get("/gst/#{client.id}/#{@period}/purchases") |> redirected_to() ==
+             "/app/gst/#{client.id}/#{@period}/purchases"
   end
 end

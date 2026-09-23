@@ -1,6 +1,5 @@
 defmodule NilaWeb.Gst.PurchaseClaimGroupTest do
   use NilaWeb.ConnCase, async: true
-  import Phoenix.LiveViewTest
   import Nila.GstFixtures
   alias Nila.Accounts.Scope
   alias Nila.Gst.Purchase.{ItcCases, ItcDecisions, Months, Reconciliation, Register}
@@ -40,20 +39,13 @@ defmodule NilaWeb.Gst.PurchaseClaimGroupTest do
     refute group.selectable?
     assert group.treatment_case_ids != []
 
-    {:ok, sources, _} =
-      live(
-        log_in_user(conn, user),
-        PurchaseWorkspace.list_path(client.id, "2026-08", "gstr2b", "PORTAL-A")
-      )
+    body =
+      conn
+      |> log_in_user(user)
+      |> get("/api/workspace/purchases/#{client.id}/2026-08?filter=gstr2b&q=PORTAL-A")
+      |> json_response(200)
 
-    assert has_element?(sources, "#purchase-source-items tr", "Excluded from ITC")
-    sources |> form("#purchase-search", search: %{q: "PORTAL-B"}) |> render_change()
-    refute has_element?(sources, "#purchase-source-items tr", "Excluded from ITC")
-
-    path = "/gst/#{client.id}/2026-08/purchases/register?filter=treatment&q="
-    {:ok, view, _} = live(log_in_user(conn, user), path)
-    assert has_element?(view, "#purchase-treatment-state-#{group.id}")
-    refute has_element?(view, "#purchase-select-#{group.id}")
+    assert Enum.any?(body["rows"], &(&1["number"] == "PORTAL-A"))
     assert {:ok, updated} = PurchaseWorkspace.load(scope, client.id, "2026-08")
     group = Enum.find(updated.items, &(length(&1.counterparts) == 2))
     assert excluded.case_id in group.treatment_case_ids
@@ -95,15 +87,18 @@ defmodule NilaWeb.Gst.PurchaseClaimGroupTest do
 
     assert {:ok, _} = Nila.Gst.Filing.Signoffs.sign_off(month, scope)
 
-    {:ok, view, _} = live(log_in_user(conn, user), "/gst/#{client.id}/2026-09/purchases/register")
-    assert has_element?(view, "#purchase-carried-credit", "CARRY-1")
-    assert has_element?(view, "#purchase-carried-document-#{case_id}")
-    view |> element("#purchase-carried-document-#{case_id}") |> render_click()
-    view |> element("#purchase-carried-treatment-#{case_id}") |> render_click()
-    assert has_element?(view, "#purchase-treatment-dialog")
-    view |> element("#purchase-choice-claim") |> render_click()
-    view |> form("#purchase-treatment-form") |> render_submit()
-    assert has_element?(view, "#purchase-carried-credit", "Claim this month")
+    assert {:ok, _} = ItcDecisions.record_document(scope, client.id, "2026-09", case_id)
+
+    assert {:ok, _} =
+             ItcDecisions.apply(scope, client.id, "2026-09", [case_id], %{"choice" => "claim"})
+
+    body =
+      conn
+      |> log_in_user(user)
+      |> get("/api/workspace/purchases/#{client.id}/2026-09?filter=all")
+      |> json_response(200)
+
+    assert Enum.any?(body["carried"], &(&1["treatment"] == "Claim this month"))
     assert {:ok, _} = PurchaseWorkspace.load(scope, client.id, "2026-09")
   end
 

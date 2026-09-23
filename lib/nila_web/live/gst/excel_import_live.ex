@@ -38,7 +38,7 @@ defmodule NilaWeb.Gst.ExcelImportLive do
         {:ok,
          socket
          |> put_flash(:error, "You cannot import sales for this client.")
-         |> push_navigate(to: ~p"/clients")}
+         |> push_navigate(to: ~p"/app/clients")}
     end
   end
 
