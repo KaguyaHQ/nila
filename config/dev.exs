@@ -49,9 +49,7 @@ config :nila, NilaWeb.Endpoint,
       "node_modules/vite/bin/vite.js",
       cd: Path.expand("../frontend", __DIR__),
       env: [{"NILA_VITE_ORIGIN", "http://localhost:5173"}]
-    ],
-    esbuild: {Esbuild, :install_and_run, [:nila, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:nila, ~w(--watch)]}
+    ]
   ]
 
 # ## SSL Support
@@ -77,19 +75,6 @@ config :nila, NilaWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
-# Reload browser tabs when matching files change.
-config :nila, NilaWeb.Endpoint,
-  live_reload: [
-    web_console_logger: true,
-    patterns: [
-      # Static assets, except user uploads
-      ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"E,
-      # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/nila_web/router\.ex$"E,
-      ~r"lib/nila_web/(controllers|live|components)/.*\.(ex|heex)$"E
-    ]
-  ]
-
 # Enable development-only operational and design references
 config :nila, dev_routes: true
 
@@ -112,14 +97,6 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix_live_view,
-  # Include debug annotations and locations in rendered markup.
-  # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: true,
-  debug_attributes: true,
-  # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: true
 
 # Enable the Req-based Swoosh API client so the Resend adapter works in dev too
 # when RESEND_API_KEY is set (see config/runtime.exs). Harmless with the default

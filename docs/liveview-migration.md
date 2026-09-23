@@ -4,12 +4,12 @@ React in `frontend/` owns the product UI and authentication pages. Phoenix owns
 sessions, permissions, GST/accounting rules, persistence, jobs and HTTP APIs.
 There are no LiveView pages, components, routes or `/live` socket.
 
-Marketing, contact and legal pages use React source in `frontend/src/public/`,
-rendered into HTML during the frontend build and served by Phoenix. Error pages
-still use Phoenix controllers and HEEx. The `phoenix_live_view` dependency remains because it provides
-`Phoenix.Component` and HEEx rendering/formatting; the browser does not load its
-runtime. `assets/` serves the standalone error pages. The PDF renderer and its
-vendored PDF.js files live in `frontend/`.
+Marketing, contact, legal and error pages use React source in `frontend/src/public/`,
+rendered into HTML during the frontend build and served by Phoenix. Error documents
+work without browser JavaScript or a running frontend server; missing build files
+fall back to plain HTTP status text. LiveView, HEEx UI helpers and the old asset
+pipeline have been removed. Vite is the only frontend build. Phoenix Channels
+remain for the shelved Tally connector; they do not require LiveView.
 
 ## Retired UI
 

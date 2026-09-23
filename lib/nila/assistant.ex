@@ -14,7 +14,7 @@ defmodule Nila.Assistant do
       %{role: :user, text: "...", id: integer}
       %{role: :assistant, text: "...", attachments: [...], id: integer}
 
-  Attachments are tagged tuples ready for the LiveView to render:
+  Attachments are tagged tuples ready for the UI to render:
   `{:documents, [%{id: _, filename: _, ...}]}`.
   """
 

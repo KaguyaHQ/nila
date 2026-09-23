@@ -173,7 +173,7 @@ export function InvoiceStory() {
           <span className="story-caption-working">03 — The checked facts become your working</span>
         </div>
         <div className="story-bottom">
-          <span>Illustrative example · fictional businesses</span>
+          <span>Sample invoice</span>
           <a href="#how-it-works">
             Skip to the workflow <ArrowDown size={14} />
           </a>

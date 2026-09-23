@@ -4,6 +4,7 @@ defmodule NilaWeb.RetiredLiveviewTest do
   test "product routes contain no LiveView handlers" do
     routes = Phoenix.Router.routes(NilaWeb.Router)
     refute Enum.any?(routes, &(&1.plug == Phoenix.LiveView.Plug))
+    refute :phoenix_live_view in Application.spec(:nila, :applications)
   end
 
   test "retired screens have no routes" do

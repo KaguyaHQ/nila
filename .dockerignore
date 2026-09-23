@@ -4,7 +4,7 @@ deps/
 .elixir_ls/
 *.ez
 
-# Generated assets — rebuilt inside the image by `mix assets.deploy`
+# Generated assets — rebuilt inside the image by Vite and `mix phx.digest`
 priv/static/assets/
 priv/static/frontend/
 frontend/node_modules/

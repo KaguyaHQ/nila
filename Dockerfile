@@ -20,12 +20,12 @@ RUN npm install --global $(node -p "require('./package.json').packageManager") \
     && pnpm install --frozen-lockfile
 COPY frontend/ ./
 COPY priv/openapi/ /app/priv/openapi/
+COPY priv/static/fonts/ /app/priv/static/fonts/
 RUN pnpm run build
 
 FROM ${BUILDER_IMAGE} AS builder
 
-# install build dependencies. No Node/npm: assets are built by the esbuild and
-# tailwind Elixir wrappers, which download their own standalone binaries.
+# Backend build dependencies. Vite builds all UI assets in the frontend stage.
 RUN apt-get update -y && apt-get install -y build-essential git \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
@@ -48,14 +48,13 @@ COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
 
 COPY priv priv
-COPY assets assets
 COPY lib lib
 
 RUN mix compile
 
-# build minified, digested assets (tailwind + esbuild + phx.digest)
-RUN mix assets.deploy
+# Include frontend assets before generating Phoenix's static manifest.
 COPY --from=frontend /app/priv/static/frontend ./priv/static/frontend
+RUN mix phx.digest
 
 # runtime.exs is read at boot, not compile time — copy after compile
 COPY config/runtime.exs config/

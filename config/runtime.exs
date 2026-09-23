@@ -369,7 +369,7 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
     # Behind Caddy/Cloudflare the browser's Origin is the public host. Reject
-    # LiveView socket connections from any other origin.
+    # Phoenix Channel connections from any other origin.
     check_origin:
       Enum.uniq(
         ["https://#{host}"] ++

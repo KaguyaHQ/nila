@@ -1,9 +1,11 @@
 .public-site {
-  --public-paper: #faf9f6;
-  --public-ink: #222c27;
-  --public-muted: #647068;
-  --public-line: #dedfd7;
-  --public-accent: #536b49;
+  --public-paper: #f5f2eb;
+  --public-ink: #302437;
+  --public-muted: #756d77;
+  --public-line: #ddd5dc;
+  --public-accent: #674f70;
+  --public-highlight: #e5ed76;
+  --public-body: #514753;
   background: var(--public-paper);
   color: var(--public-ink);
   font-size: 15px;
@@ -47,7 +49,7 @@
   padding-inline: 23px;
 }
 .public-site .bg-primary:hover {
-  background: #3a4b40;
+  background: #4b3955;
 }
 .public-header .bg-primary {
   height: 39px;
@@ -436,6 +438,13 @@
 .public-contact-card button {
   width: 100%;
 }
+.public-contact-card .bg-primary {
+  background: var(--public-highlight);
+  color: var(--public-ink);
+}
+.public-contact-card .bg-primary:hover {
+  background: #d9e366;
+}
 .public-contact-card .public-small a {
   text-decoration: underline;
 }
@@ -462,7 +471,7 @@
 }
 .public-legal article {
   margin-top: 45px;
-  color: #49554c;
+  color: var(--public-body);
   font-size: 14px;
   line-height: 1.9;
 }
@@ -992,18 +1001,7 @@
   margin-left: 8px;
 }
 
-/* Homepage colour study: paper, aubergine ink, and a working-paper highlighter. */
-.public-home {
-  --public-paper: #f5f2eb;
-  --public-ink: #302437;
-  --public-muted: #756d77;
-  --public-line: #ddd5dc;
-  --public-accent: #674f70;
-  --public-highlight: #e5ed76;
-}
-.public-home .bg-primary:hover {
-  background: #4b3955;
-}
+/* Homepage illustration and closing section. */
 .public-home .invoice-story {
   background: #f0ece5;
   border-color: var(--public-line);
@@ -1122,4 +1120,70 @@
 .public-home .story-animated .story-annotation {
   position: absolute;
   margin-top: 0;
+}
+
+.error-page {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+.error-header,
+.error-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 36px 5vw;
+}
+.error-header > span {
+  color: var(--public-muted);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.error-main {
+  width: min(640px, 90%);
+  margin: auto;
+  padding: 70px 0 110px;
+}
+.error-symbol {
+  display: inline-flex;
+  background: var(--public-highlight);
+  color: var(--public-ink);
+  padding: 17px;
+  border-radius: 16px;
+  margin-bottom: 38px;
+}
+.error-main .public-eyebrow {
+  margin-bottom: 16px;
+}
+.error-main h1 {
+  font-size: clamp(42px, 4.5vw, 62px);
+  max-width: 600px;
+}
+.error-description {
+  max-width: 495px;
+  color: var(--public-body);
+  font-size: 15px;
+  line-height: 1.8;
+  margin-top: 24px;
+}
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+.error-actions > a {
+  height: 46px;
+}
+.error-footer {
+  border-top: 1px solid var(--public-line);
+  color: var(--public-muted);
+  font-size: 12px;
+  margin-inline: 5vw;
+  padding: 24px 0;
+}
+.error-footer a {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }

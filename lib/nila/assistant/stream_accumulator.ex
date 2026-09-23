@@ -5,8 +5,8 @@ defmodule Nila.Assistant.StreamAccumulator do
 
   Pure — no PubSub, no process state. `reduce/2` returns the updated
   accumulator together with any content fragments the event carried, so the
-  caller (`Nila.Assistant`) decides how to forward those deltas (e.g. to the
-  LiveView). `to_body/1` rebuilds the non-streaming `%{"choices" => [...]}`
+  caller (`Nila.Assistant`) decides how to forward those deltas to subscribers.
+  `to_body/1` rebuilds the non-streaming `%{"choices" => [...]}`
   shape the tool loop already understands, so streaming is invisible upstream.
   """
 

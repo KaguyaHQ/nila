@@ -1,6 +1,6 @@
 # Nila
 
-Nila is the AI accountant for Indian CA firms, starting with GST. A Phoenix + LiveView
+Nila is the AI accountant for Indian CA firms, starting with GST. A Phoenix + React
 monolith.
 
 **First product: sales bills → Excel workings for GSTR-1.** Nila prepares the file
@@ -14,10 +14,10 @@ exist in the repository; they do not define the current product scope.
 
 ## Stack
 
-- Phoenix 1.8, LiveView
+- Phoenix 1.8 backend; React, TypeScript, shadcn and Vite frontend
 - Ecto + PostgreSQL (source of truth)
 - Oban (extraction and derivation jobs)
-- Tailwind CSS, daisyUI token plumbing, and Nila components (see `docs/design/DESIGN.md`)
+- Tailwind CSS and shared shadcn components in `frontend/src/components/ui/`
 - Req/Jason for HTTP/JSON
 - `Nila.Storage` — local disk in dev/test, private Cloudflare R2 in production
 
@@ -117,7 +117,7 @@ Nila organisation.
 - `lib/nila/` — business contexts. `gst/` is the core: extraction, recon, flags,
   resolutions, sign-offs, dumps, returns. Plus accounts, orgs, clients, documents,
   workflows, audits, integrations, storage.
-- `lib/nila_web/` — LiveViews and web plumbing.
+- `lib/nila_web/` — controllers, APIs and web plumbing.
 - `docs/` — architecture, decisions, design system, PRD.
 
 ## Deliberately not built (yet)

@@ -3,7 +3,7 @@ defmodule Nila.Assistant.HTTPClient.Stub do
   Test HTTP client. Returns canned responses queued via `put_responses/1`.
 
   Backed by an ETS table named `:assistant_stub` so the queue is visible
-  across processes (LiveView, its `start_async` Task, the test process).
+  across callers, background tasks and the test process.
   The table is created lazily on first use.
   """
   @behaviour Nila.Assistant.HTTPClient

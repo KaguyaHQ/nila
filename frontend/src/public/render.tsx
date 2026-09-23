@@ -1,3 +1,4 @@
+import { ErrorPage } from "./error-page";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PublicPage } from "./pages";
 import { legalPages } from "./legal";
@@ -28,4 +29,8 @@ export function renderPublicPages() {
       renderPublicPage(page),
     ]),
   );
+}
+
+export function renderErrorPage(status: 404 | 500) {
+  return renderToStaticMarkup(<ErrorPage status={status} />);
 }

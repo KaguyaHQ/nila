@@ -2,8 +2,8 @@
 
 Nila is a Phoenix monolith with a React + shadcn frontend in `frontend/`.
 React owns product screens and auth. Phoenix owns business truth.
-Public pages are built from React into HTML; error pages use HEEx.
-There are no LiveView screens or sockets.
+Public and error pages are built from React into static HTML.
+There is no LiveView dependency, UI or socket.
 
 ## Product and scope
 
@@ -58,6 +58,6 @@ mix precommit
 
 - React uses current components in `frontend/src/components/ui/`, tokens in `frontend/src/index.css`, and the user's agreed screen references. Inspect component APIs before use; follow `frontend/AGENTS.md`.
 - Old `docs/design/` visual and implementation recipes are not authority for new React work. The product-principle exception for `OPINIONS.md` is explained above.
-- Public website source lives in `frontend/src/public/` and is rendered to HTML at build time. Error-page templates and assets remain in `lib/nila_web/` and `assets/`.
-- React uses Vite; error pages use the Phoenix asset build. Import dependencies through the relevant build.
+- Public website source lives in `frontend/src/public/` and is rendered to HTML at build time. Error pages use the same build and remain usable without JavaScript.
+- Vite builds all frontend assets. Phoenix serves the built files.
 - Never use the browser skill. Verify affected screens and actual interactions in the browser before calling UI work complete; builds and API tests alone do not establish visual quality.

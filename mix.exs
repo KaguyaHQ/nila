@@ -46,21 +46,8 @@ defmodule Nila.MixProject do
       {:ex_aws_s3, "~> 2.5.9"},
       {:postgrex, ">= 0.22.3"},
       {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_reload, "~> 1.2", only: :dev},
-      # Phoenix.Component/HEEx renders static public pages; no LiveView screens or socket.
-      {:phoenix_live_view, "~> 1.2.1"},
-      {:lazy_html, ">= 0.1.0", only: :test},
+      {:phoenix_template, "~> 1.0"},
       {:oban, "~> 2.22"},
-      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
-      {:canonical_tailwind, "~> 0.3.2", only: [:dev, :test], runtime: false},
-      {:heroicons,
-       github: "tailwindlabs/heroicons",
-       tag: "v2.2.0",
-       sparse: "optimized",
-       app: false,
-       compile: false,
-       depth: 1},
       {:swoosh, "~> 1.26 and >= 1.26.3"},
       {:bcrypt_elixir, "~> 3.0"},
       {:nimble_csv, "~> 1.2"},
@@ -88,25 +75,17 @@ defmodule Nila.MixProject do
       setup: [
         "deps.get",
         "ecto.setup",
-        "assets.setup",
-        "assets.build",
+        "cmd --cd frontend pnpm install --frozen-lockfile",
+        "cmd --cd frontend pnpm run build",
         "cmd git config core.hooksPath .githooks"
       ],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind nila", "esbuild nila"],
-      "assets.deploy": [
-        "tailwind nila --minify",
-        "esbuild nila --minify",
-        "phx.digest"
-      ],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
-        "nila.style_guard",
         "test"
       ]
     ]

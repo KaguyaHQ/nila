@@ -6,7 +6,6 @@ defmodule NilaWeb do
   This can be used in your application as:
 
       use NilaWeb, :controller
-      use NilaWeb, :html
 
   The definitions below will be executed for every controller,
   component, etc, so keep them short and clean, focused
@@ -17,7 +16,7 @@ defmodule NilaWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets frontend fonts images favicon.ico favicon.svg robots.txt)
+  def static_paths, do: ~w(frontend fonts images favicon.ico favicon.svg robots.txt)
 
   def router do
     quote do
@@ -41,56 +40,6 @@ defmodule NilaWeb do
 
       import Plug.Conn
 
-      unquote(verified_routes())
-    end
-  end
-
-  def html do
-    quote do
-      use Phoenix.Component
-
-      # Import convenience functions from controllers
-      import Phoenix.Controller,
-        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
-
-      # Include general helpers for rendering HTML
-      unquote(html_helpers())
-    end
-  end
-
-  defp html_helpers do
-    quote do
-      # HTML escaping functionality
-      import Phoenix.HTML
-      # Core UI components
-      import NilaWeb.Components.Button
-      import NilaWeb.Components.Input
-      import NilaWeb.Components.Flash
-      import NilaWeb.Components.Icon
-      import NilaWeb.Components.Logo
-      import NilaWeb.Components.Badge
-      import NilaWeb.Components.Card
-      import NilaWeb.Components.Typography
-
-      import Nila.Formatters,
-        only: [
-          format_display_date: 1,
-          format_display_datetime: 1,
-          format_long_display_date: 1,
-          format_money: 1,
-          format_money: 2,
-          format_time: 1,
-          humanize_label: 1,
-          human_status: 1,
-          issue_label: 1,
-          month_state_label: 1,
-          period_label: 1
-        ]
-
-      # Common modules used in templates
-      alias NilaWeb.Layouts
-
-      # Routes generation with the ~p sigil
       unquote(verified_routes())
     end
   end

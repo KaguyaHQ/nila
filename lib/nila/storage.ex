@@ -20,10 +20,8 @@ defmodule Nila.Storage do
   @doc """
   A short-lived URL the browser can `PUT` a file to directly.
 
-  Intake bills go straight from the operator's machine to the bucket. The
-  alternative — streaming them through the LiveView channel — costs one
-  serialized round trip per 64 KB chunk, which is minutes of waiting on a
-  connection whose latency, not bandwidth, is the constraint.
+  Intake bills go straight from the operator's machine to the bucket,
+  avoiding a second transfer through the application server.
   """
   def presign_put(key, opts \\ []), do: adapter().presign_put(key, opts)
 

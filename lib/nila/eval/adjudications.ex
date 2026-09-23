@@ -33,7 +33,7 @@ defmodule Nila.Eval.Adjudications do
       UI → sales_resolutions (attributed) → mix nila.eval adjudications --from-db
          → committed JSON → eval
 
-  A LiveView must never write this directory: a web process writing the repo
+  A web request must never write this directory: a web process writing the repo
   working tree is wrong on deploy, wrong on concurrency, and wrong on
   attribution — resolutions carry `decided_by_id`, a JSON file carries nobody.
   This format is interim; its end state is `sales_resolutions`.
