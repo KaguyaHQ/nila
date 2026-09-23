@@ -1,5 +1,6 @@
 @import "@fontsource-variable/inter";
 @import "tailwindcss";
+@import "./public/site.css";
 @import "tw-animate-css";
 
 @font-face {

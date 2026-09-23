@@ -232,10 +232,11 @@ defmodule NilaWeb.Router do
     post "/syncs/:id/fail", TallySyncController, :fail
   end
 
-  # Public legal & contact pages — reachable by everyone, logged in or out.
+  # Public website — reachable by everyone, logged in or out.
   scope "/", NilaWeb do
     pipe_through :browser
 
+    get "/", PageController, :home
     get "/privacy", PageController, :privacy
     get "/terms", PageController, :terms
     get "/data-deletion", PageController, :data_deletion
@@ -243,11 +244,10 @@ defmodule NilaWeb.Router do
     post "/contact/callback", PageController, :request_callback
   end
 
-  # Public marketing site — served to logged-out visitors.
+  # Authentication entry pages redirect users who are already signed in.
   scope "/", NilaWeb do
     pipe_through [:browser, :redirect_if_authenticated]
 
-    get "/", PageController, :home
     get "/users/sign_up", PageController, :signup_redirect
 
     get "/users/log_in", AuthPageController, :login

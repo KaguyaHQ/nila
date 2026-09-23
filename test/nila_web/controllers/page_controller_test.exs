@@ -6,11 +6,13 @@ defmodule NilaWeb.PageControllerTest do
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
     html = html_response(conn, 200)
-    assert html =~ "GST deadlines"
-    assert html =~ "without the late nights."
-    assert html =~ "Turn sales bills into a Tally register in minutes."
+    assert html =~ "From sales bills"
+    assert html =~ "to GST workings."
+    refute html =~ "Tally register"
+    assert html =~ ~s(type="module")
+    assert html =~ ~s(rel="canonical")
     assert html =~ "Try one client free"
-    assert html =~ "https://wa.me/918148183716"
+    assert html =~ ~s(href="/contact")
   end
 
   test "GET /privacy", %{conn: conn} do
@@ -23,6 +25,11 @@ defmodule NilaWeb.PageControllerTest do
     assert html =~ "Hyderabad, India"
     assert html =~ "Cloudflare R2"
     refute html =~ "Hetzner"
+  end
+
+  test "signed-in users can still open the public homepage", %{conn: conn} do
+    html = conn |> log_in_user(user_fixture()) |> get("/") |> html_response(200)
+    assert html =~ "From sales bills"
   end
 
   test "GET /terms", %{conn: conn} do
@@ -45,7 +52,7 @@ defmodule NilaWeb.PageControllerTest do
     conn = get(conn, ~p"/contact")
     html = html_response(conn, 200)
 
-    assert html =~ "Try Nila on one client."
+    assert html =~ "Try Nila on"
     assert html =~ "https://wa.me/918148183716"
     assert html =~ ~s(id="callback-form")
     assert html =~ "hello@nila.tax"
@@ -110,6 +117,26 @@ defmodule NilaWeb.PageControllerTest do
       })
 
     assert redirected_to(conn) == ~p"/contact"
+    refute_email_sent()
+  end
+
+  test "callback errors preserve and escape submitted values", %{conn: conn} do
+    html =
+      conn
+      |> post(~p"/contact/callback", %{
+        "callback" => %{
+          "name" => ~s|<script>alert("x")</script>|,
+          "firm" => "__NILA_CSRF__",
+          "phone" => "12"
+        }
+      })
+      |> html_response(422)
+
+    assert html =~ "&lt;script&gt;"
+    refute html =~ "<script>"
+    assert html =~ ~s(value="__NILA_CSRF__")
+    assert html =~ ~s(value="12")
+    assert html =~ ~s(name="_csrf_token")
     refute_email_sent()
   end
 

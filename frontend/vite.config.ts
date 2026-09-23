@@ -5,8 +5,38 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? "/frontend/" : "/",
-  build: { outDir: "../priv/static/frontend", emptyOutDir: true },
-  plugins: [react(), tailwindcss()],
+  build: {
+    outDir: "../priv/static/frontend",
+    emptyOutDir: true,
+    manifest: true,
+    rollupOptions: {
+      input: {
+        app: fileURLToPath(new URL("./index.html", import.meta.url)),
+        story: fileURLToPath(new URL("./src/public/animate.ts", import.meta.url)),
+      },
+    },
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "nila-public-preview",
+      configureServer(server) {
+        server.middlewares.use("/__public", async (req, res, next) => {
+          const page = req.url?.slice(1);
+          if (!page || !["home", "contact", "privacy", "terms", "data_deletion"].includes(page))
+            return next();
+          try {
+            const { renderPublicPage } = await server.ssrLoadModule("/src/public/render.tsx");
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(renderPublicPage(page)));
+          } catch (error) {
+            next(error);
+          }
+        });
+      },
+    },
+  ],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     host: "127.0.0.1",

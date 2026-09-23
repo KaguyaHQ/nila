@@ -3,7 +3,7 @@
 The user explicitly selected React + TypeScript + Vite + shadcn in this repository.
 This directory uses shadcn React components backed by Base UI (not Radix), its neutral CSS theme, and lucide icons;
 the scoped rules in `lib/nila_web/AGENTS.md` and `assets/AGENTS.md` apply to the existing
-static public pages, not this separately built React entry point.
+static error pages, not this separately built React entry point.
 
 - Sales summary, register, PDF intake, upload history and invoice review use real Phoenix data. Sample screens are development-only. Reuse the existing correction and check rules in Phoenix.
 - GSTR-1 section details and export availability come from Phoenix. Workings Excel may be a draft; do not equate its availability with permission to download GSTR-1 JSON. Downloads must show server errors in the current screen.
@@ -23,3 +23,5 @@ static public pages, not this separately built React entry point.
 - Run `pnpm run build` and `pnpm test`; inspect rendered screens at desktop widths.
 - Keep Playwright artifacts under `frontend/test-results/`. Prefer one test invocation with multiple workers. For independent concurrent runs, give every run a distinct child directory using `--output=test-results/<run>`; do not run against the parent concurrently or create sibling output folders.
 - Vite assets ship inside the Phoenix release. Do not deploy without explicit authorization.
+
+- Public website source lives in `src/public/`. `pnpm run build` also renders its HTML; production needs no Node server or browser React for these pages. The homepage has a separate Motion entry that enhances the static invoice story; contact and legal pages need no browser JavaScript. Phoenix inserts escaped form values and CSRF tokens. In development Phoenix asks Vite for fresh HTML. Build before running backend public-page tests. Keep legal wording unchanged unless explicitly requested.

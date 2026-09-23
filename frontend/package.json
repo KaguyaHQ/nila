@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run check && vite build",
+    "build": "pnpm run check && vite build && node scripts/build-public.mjs",
     "check": "pnpm run api:check && tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1 --port 5174 --strictPort",
     "test": "playwright test",
@@ -30,6 +30,7 @@
     "clsx": "2.1.1",
     "cmdk": "^1.1.1",
     "lucide-react": "1.47.0",
+    "motion": "^13.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-resizable-panels": "^4.13.2",

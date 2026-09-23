@@ -9,7 +9,7 @@ defmodule NilaWeb.PageController do
   @callback_limit 3
 
   def home(conn, _params) do
-    render(conn, :home, page_title: "Nila — it works while you sleep")
+    NilaWeb.PublicPage.render(conn, "home")
   end
 
   def signup_redirect(conn, _params) do
@@ -19,15 +19,15 @@ defmodule NilaWeb.PageController do
   end
 
   def privacy(conn, _params) do
-    render(conn, :privacy, page_title: "Privacy policy")
+    NilaWeb.PublicPage.render(conn, "privacy")
   end
 
   def terms(conn, _params) do
-    render(conn, :terms, page_title: "Terms of service")
+    NilaWeb.PublicPage.render(conn, "terms")
   end
 
   def data_deletion(conn, _params) do
-    render(conn, :data_deletion, page_title: "Request data deletion")
+    NilaWeb.PublicPage.render(conn, "data_deletion")
   end
 
   def contact(conn, _params) do
@@ -89,10 +89,7 @@ defmodule NilaWeb.PageController do
   end
 
   defp render_contact(conn, changeset) do
-    render(conn, :contact,
-      form: Phoenix.Component.to_form(changeset, as: :callback),
-      page_title: "Put Nila to the test"
-    )
+    NilaWeb.PublicPage.render(conn, "contact", changeset)
   end
 
   defp callback_bucket(request) do

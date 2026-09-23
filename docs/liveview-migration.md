@@ -4,10 +4,11 @@ React in `frontend/` owns the product UI and authentication pages. Phoenix owns
 sessions, permissions, GST/accounting rules, persistence, jobs and HTTP APIs.
 There are no LiveView pages, components, routes or `/live` socket.
 
-Static marketing, contact, legal and error pages still use Phoenix controllers
-and HEEx. The `phoenix_live_view` dependency remains because it provides
+Marketing, contact and legal pages use React source in `frontend/src/public/`,
+rendered into HTML during the frontend build and served by Phoenix. Error pages
+still use Phoenix controllers and HEEx. The `phoenix_live_view` dependency remains because it provides
 `Phoenix.Component` and HEEx rendering/formatting; the browser does not load its
-runtime. `assets/` serves the static public pages. The PDF renderer and its
+runtime. `assets/` serves the standalone error pages. The PDF renderer and its
 vendored PDF.js files live in `frontend/`.
 
 ## Retired UI

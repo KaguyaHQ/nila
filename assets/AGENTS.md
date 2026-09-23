@@ -1,6 +1,6 @@
-# Static public-page assets
+# Static error-page assets
 
-- These assets serve marketing/contact/legal pages, not the React product.
+- These assets serve standalone error pages. Marketing/contact/legal pages are built in `frontend/`.
 - Preserve their existing components and semantic tokens unless redesign is requested.
 - Preserve Tailwind v4 import/source declarations; never use `@apply`.
 - Import dependencies through the existing app.js/app.css build.
