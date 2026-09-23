@@ -181,12 +181,12 @@ defmodule NilaWeb.Settings.ProfileLive do
         socket
         |> put_flash(:info, "Your email has been updated.")
         |> assign(:current_scope, %{socket.assigns.current_scope | user: user})
-        |> push_navigate(to: ~p"/settings/profile")
+        |> redirect(to: ~p"/app/settings/profile?email=confirmed")
 
       {:error, _reason} ->
         socket
         |> put_flash(:error, "Email change link is invalid or expired.")
-        |> push_navigate(to: ~p"/settings/profile")
+        |> redirect(to: ~p"/app/settings/profile?email=invalid")
     end
   end
 

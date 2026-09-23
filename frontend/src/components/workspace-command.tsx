@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useClientContext } from "@/state/client-context";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -84,13 +85,22 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
     navigate(path);
   }
 
-  const area = pathname.includes("/purchases") ? "purchases" : "sales";
+  const selected = useClientContext();
+  const area =
+    pathname.startsWith("/clients") || pathname.startsWith("/settings")
+      ? (selected?.section ?? "sales")
+      : pathname.includes("/purchases")
+        ? "purchases"
+        : "sales";
   const destination = (clientId: number, targetPeriod: string) =>
     live && activePeriod
-      ? clientDestination(pathname, routeSearch, clientId).replace(
-          `/${activePeriod}/`,
-          `/${targetPeriod}/`,
-        )
+      ? clientDestination(
+          pathname.startsWith("/gst/")
+            ? pathname
+            : `/gst/${live.client.id}/${activePeriod}/${area}`,
+          pathname.startsWith("/gst/") ? routeSearch : "",
+          clientId,
+        ).replace(`/${activePeriod}/`, `/${targetPeriod}/`)
       : `/gst/${clientId}/${targetPeriod}/${area}`;
   const year = search.match(/\b(\d{4})\b/)?.[1] ?? activePeriod?.slice(0, 4);
   const currentMonth = new Date().toISOString().slice(0, 7);

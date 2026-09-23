@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, FileSpreadsheet, Pencil, Plus, Search, Upload } from "lucide-react";
 import { Shell } from "@/components/workspace-shell";
+import { useClientContext } from "@/state/client-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -72,13 +73,14 @@ export function ClientsLayout() {
     );
   return (
     <Directory.Provider value={query.data}>
-      <Shell firm={query.data.user} />
+      <Shell firm={query.data.user} clients={query.data.clients} />
     </Directory.Provider>
   );
 }
 
 export function ClientsPage() {
   const data = useClients();
+  const selected = useClientContext();
   const [params, setParams] = useSearchParams();
   const search = useRef<HTMLInputElement>(null);
   const query = params.get("q") ?? "";
@@ -163,7 +165,11 @@ export function ClientsPage() {
               <TableRow key={client.id}>
                 <TableCell className="py-4 pl-5">
                   <Link
-                    to={client.sales_path}
+                    to={
+                      selected
+                        ? `/gst/${client.id}/${selected.period}/${selected.section}`
+                        : client.sales_path
+                    }
                     className="font-medium whitespace-normal underline-offset-4 hover:underline"
                   >
                     {client.name}

@@ -5,6 +5,54 @@ const clients = [
   { id: 3, name: "Orchard Trading", gstin: "29BBBBB1234B1Z5" },
 ];
 const user = { name: "Accountant", org: "Test firm" };
+
+test("Clients keeps the selected workspace and firm breadcrumb", async ({ page }, testInfo) => {
+  await setup(page);
+  await page.goto("/app/gst/2/2026-06/sales");
+  const sidebar = page.getByRole("complementary", { name: "Workspace navigation" });
+  await sidebar.getByRole("link", { name: "Clients", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "Sales & GSTR-1" })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-06/sales",
+  );
+  await expect(sidebar.getByRole("link", { name: "Purchases & ITC" })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-06/purchases",
+  );
+  await expect(sidebar.getByRole("link", { name: "Clients", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Test firm");
+  await page.screenshot({ path: testInfo.outputPath("clients-context.png"), fullPage: true });
+  await sidebar.getByRole("link", { name: "Sales & GSTR-1" }).click();
+  await expect(page).toHaveURL("/app/gst/2/2026-06/sales");
+  await page.getByLabel("Switch client: Harbour Services", { exact: true }).click();
+  await page.getByRole("link", { name: "View all clients" }).click();
+  await expect(page).toHaveURL("/app/clients?period=2026-06");
+  await page.getByLabel("Switch client: Harbour Services", { exact: true }).click();
+  await page.getByRole("option", { name: /Orchard Trading/ }).click();
+  await expect(page).toHaveURL("/app/gst/3/2026-06/sales");
+});
+
+test("directory has no client navigation before selection or after access is removed", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/app/clients");
+  await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sales & GSTR-1" })).toHaveCount(0);
+  await page.goto("/app/gst/2/2026-06/sales");
+  await page.route(/\/api\/workspace\/clients(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: { clients: [], user, can_edit: true, period: "2026-06" } }),
+  );
+  await page.getByRole("complementary").getByRole("link", { name: "Clients", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Sales & GSTR-1" })).toHaveCount(0);
+});
 async function setup(page: Page) {
   await page.route("**/api/workspace/sales/*/*", (route) => {
     const parts = new URL(route.request().url()).pathname.split("/");

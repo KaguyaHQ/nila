@@ -104,7 +104,7 @@ the visual source for this frontend. Do not copy sample-data shortcuts into prod
 accounting logic: Phoenix remains authoritative for validation and saved decisions.
 
 Desktop navigation includes searchable client switching and Ctrl/Cmd+K for pages,
-clients and months. The account menu retains Phoenix settings/sign-out. See the
+clients and months. The account menu opens React settings; sign-out remains owned by Phoenix. See the
 [interaction audit](../docs/design/REACT-MIGRATION-AUDIT.md) for restored behavior
 and the remaining deliberate LiveView handoffs.
 

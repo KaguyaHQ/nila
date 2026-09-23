@@ -53,6 +53,14 @@ defmodule NilaWeb.Router do
 
   scope "/api/workspace", NilaWeb do
     pipe_through :workspace_api
+    get "/settings", SettingsWorkspaceController, :show
+    patch "/settings/name", SettingsWorkspaceController, :name
+    post "/settings/email", SettingsWorkspaceController, :email
+    post "/settings/password", SettingsWorkspaceController, :password
+    post "/settings/sessions", SettingsWorkspaceController, :sessions
+    patch "/settings/firm", SettingsWorkspaceController, :firm
+    post "/settings/invitations", SettingsWorkspaceController, :invite
+    patch "/settings/members/:id", SettingsWorkspaceController, :member
     get "/clients", ClientsWorkspaceController, :index
     post "/clients", ClientsWorkspaceController, :create
     post "/clients/import/preview", ClientsWorkspaceController, :preview_import
@@ -96,6 +104,11 @@ defmodule NilaWeb.Router do
 
   scope "/app", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
+    get "/settings", ReactAppController, :index
+    get "/settings/profile", ReactAppController, :index
+    get "/settings/security", ReactAppController, :index
+    get "/settings/workspace", ReactAppController, :index
+    get "/settings/users", ReactAppController, :index
     get "/", ReactAppController, :home
     get "/clients", ReactAppController, :index
     get "/clients/new", ReactAppController, :index

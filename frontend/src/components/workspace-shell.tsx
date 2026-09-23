@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ClientSwitcher } from "@/components/client-switcher";
 import { WorkspaceCommand } from "@/components/workspace-command";
 import { AccountMenu } from "@/components/account-menu";
+import { useClientContext } from "@/state/client-context";
 import { clientName as sampleClientName } from "@/data/sales";
 const titles: Record<string, string> = {
   "/sales": "Sales & GSTR-1",
@@ -40,7 +41,11 @@ export function Shell({
   live,
   firm,
   children,
+  clients,
+  settings,
 }: {
+  settings?: string;
+  clients?: { id: number; name: string }[];
   children?: ReactNode;
   firm?: { name: string; org: string };
   live?: {
@@ -51,6 +56,17 @@ export function Shell({
     purchases: string;
   };
 }) {
+  const selected = useClientContext();
+  const retained = firm && clients?.find((client) => client.id === selected?.clientId);
+  if (!live && retained && selected) {
+    live = {
+      client: retained,
+      clients: clients!,
+      user: firm!,
+      base: `/gst/${retained.id}/${selected.period}/sales`,
+      purchases: `/gst/${retained.id}/${selected.period}/purchases`,
+    };
+  }
   const user = live?.user ?? firm;
   const clientName = live?.client.name ?? firm?.org ?? sampleClientName;
   const salesPath = live?.base ?? "/sales";
@@ -67,17 +83,19 @@ export function Shell({
   useEffect(() => {
     localStorage.setItem("nila:rail-collapsed", String(collapsed));
   }, [collapsed]);
-  const title = firm
-    ? pathname.endsWith("/new")
-      ? "Add client"
-      : pathname.endsWith("/edit")
-        ? "Edit client"
-        : pathname.endsWith("/import")
-          ? "Import clients"
-          : "Clients"
-    : (titles[
-        live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname
-      ] ?? "Page not found");
+  const title =
+    settings ??
+    (firm
+      ? pathname.endsWith("/new")
+        ? "Add client"
+        : pathname.endsWith("/edit")
+          ? "Edit client"
+          : pathname.endsWith("/import")
+            ? "Import clients"
+            : "Clients"
+      : (titles[
+          live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname
+        ] ?? "Page not found"));
 
   useEffect(() => {
     document.title = `${title} · Nila${live || firm ? "" : " preview"}`;
@@ -97,9 +115,9 @@ export function Shell({
           <Link
             to={firm ? clientsPath : salesPath}
             aria-label={firm ? "Nila clients home" : "Nila sales home"}
-            className="text-2xl font-semibold tracking-tighter"
+            className="font-brand text-[32px] font-semibold tracking-tight"
           >
-            nila<span className="text-neutral-400">.</span>
+            nila
           </Link>
         )}
         <Button
@@ -115,7 +133,12 @@ export function Shell({
       </div>
       <div className="px-3 pt-3">
         {live ? (
-          <ClientSwitcher client={live.client} clients={live.clients} collapsed={collapsed} />
+          <ClientSwitcher
+            client={live.client}
+            clients={live.clients}
+            collapsed={collapsed}
+            workspacePath={firm && selected?.section === "purchases" ? live.purchases : live.base}
+          />
         ) : (
           <div
             className={`flex h-11 items-center rounded-md border text-sm font-medium ${collapsed ? "justify-center" : "gap-2.5 px-3"}`}
@@ -127,7 +150,7 @@ export function Shell({
         )}
       </div>
       <nav aria-label="Product" className="space-y-1 px-3 py-7">
-        {!firm && (
+        {(!firm || live) && (
           <NavigationLink
             collapsed={collapsed}
             to={salesPath}
@@ -170,7 +193,7 @@ export function Shell({
           </>
         )}
         <div
-          className={`${firm ? "pt-1" : "pt-7"} pb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground ${collapsed ? "text-center" : "pl-3"}`}
+          className={`${firm && !live ? "pt-1" : "pt-7"} pb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground ${collapsed ? "text-center" : "pl-3"}`}
         >
           {collapsed ? "···" : "Firm"}
         </div>
@@ -196,8 +219,8 @@ export function Shell({
               collapsed={collapsed}
               to={clientsPath}
               label="Clients"
-              aria-current={firm ? "page" : undefined}
-              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
+              aria-current={firm && !settings ? "page" : undefined}
+              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm && !settings ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
             >
               <Users className="size-4" />
               {!collapsed ? "Clients" : <span className="sr-only">Clients</span>}
@@ -238,9 +261,15 @@ export function Shell({
             aria-label="Breadcrumb"
             className="flex items-center gap-2 text-xs text-muted-foreground"
           >
-            <span>{clientName}</span>
+            <span>{firm?.org ?? clientName}</span>
             <ChevronRight className="size-3" />
-            {firm ? (
+            {settings ? (
+              <>
+                <Link to="/settings/profile">Settings</Link>
+                <ChevronRight className="size-3" />
+                <span className="text-foreground">{settings}</span>
+              </>
+            ) : firm ? (
               <>
                 <Link to={clientsPath} className="hover:text-foreground">
                   Clients

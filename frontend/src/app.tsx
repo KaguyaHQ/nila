@@ -1,4 +1,6 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { ClientContextProvider } from "@/state/client-context";
+import SettingsPage from "@/pages/settings";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,71 +46,78 @@ function NotFound() {
 
 export default function App() {
   return (
-    <KeyboardShortcuts>
-      <Routes>
-        <Route path="business" element={<BusinessLayout />}>
-          <Route index element={<Navigate to="invoices" replace />} />
-          <Route path="invoices" element={<BusinessInvoices />} />
-          <Route path="invoices/new" element={<BusinessInvoiceEditor />} />
-          <Route path="invoices/:invoiceId" element={<BusinessInvoiceEditor />} />
-          <Route path="quotations" element={<BusinessInvoices mode="quotation" />} />
-          <Route path="quotations/new" element={<BusinessInvoiceEditor mode="quotation" />} />
-          <Route
-            path="quotations/:invoiceId"
-            element={<BusinessInvoiceEditor mode="quotation" />}
-          />
-          <Route path="customers" element={<BusinessCustomers />} />
-          <Route path="services" element={<BusinessServices />} />
-          <Route path="settings" element={<BusinessSettings />} />
-        </Route>
-        <Route
-          path="gst/:clientId/:period/sales/invoices/:invoiceId"
-          element={<SalesInvoiceReview />}
-        />
-        <Route path="gst/:clientId/:period/purchases/review" element={<PurchaseReview />} />
-        <Route path="gst/:clientId/:period/purchases/review/:itemId" element={<PurchaseReview />} />
-        <Route path="gst/:clientId/:period/purchases" element={<LivePurchasesLayout />}>
-          <Route index element={<LivePurchasesSummary />} />
-          <Route path="register" element={<LivePurchasesRegister />} />
-        </Route>
-        <Route path="clients" element={<ClientsLayout />}>
-          <Route index element={<ClientsPage />} />
-          <Route path="new" element={<ClientForm />} />
-          <Route path=":clientId/edit" element={<ClientForm />} />
-          <Route path="import" element={<ClientsImport />} />
-        </Route>
-        <Route path="gst/:clientId/:period" element={<LiveSalesLayout />}>
-          <Route path="sales" element={<LiveSalesSummary />} />
-          <Route path="sales/register" element={<LiveSalesRegister />} />
-          <Route path="sales/checks" element={<SalesChecks />} />
-          <Route path="sales/sections/:section" element={<SalesSection />} />
-          <Route path="sales/upload" element={<LiveSalesUpload />} />
-          <Route path="sales/uploads" element={<LiveSalesUploads />} />
-        </Route>
-        {import.meta.env.DEV && (
-          <Route element={<Shell />}>
-            <Route index element={<Navigate to="/sales" replace />} />
-            <Route path="sales" element={<SalesSummary />} />
-            <Route path="sales/register" element={<SalesRegister />} />
-            <Route path="sales/upload" element={<SalesUpload />} />
-            <Route path="sales/uploads" element={<SalesUploads />} />
-            <Route path="*" element={<NotFound />} />
+    <ClientContextProvider>
+      <KeyboardShortcuts>
+        <Routes>
+          <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
+          <Route path="settings/:section" element={<SettingsPage />} />
+          <Route path="business" element={<BusinessLayout />}>
+            <Route index element={<Navigate to="invoices" replace />} />
+            <Route path="invoices" element={<BusinessInvoices />} />
+            <Route path="invoices/new" element={<BusinessInvoiceEditor />} />
+            <Route path="invoices/:invoiceId" element={<BusinessInvoiceEditor />} />
+            <Route path="quotations" element={<BusinessInvoices mode="quotation" />} />
+            <Route path="quotations/new" element={<BusinessInvoiceEditor mode="quotation" />} />
+            <Route
+              path="quotations/:invoiceId"
+              element={<BusinessInvoiceEditor mode="quotation" />}
+            />
+            <Route path="customers" element={<BusinessCustomers />} />
+            <Route path="services" element={<BusinessServices />} />
+            <Route path="settings" element={<BusinessSettings />} />
           </Route>
-        )}
-        {!import.meta.env.DEV && (
           <Route
-            path="*"
-            element={
-              <main className="p-10">
-                <h1 className="text-2xl font-semibold">Page not found</h1>
-                <a href="/clients" className="mt-4 inline-block underline">
-                  Back to clients
-                </a>
-              </main>
-            }
+            path="gst/:clientId/:period/sales/invoices/:invoiceId"
+            element={<SalesInvoiceReview />}
           />
-        )}
-      </Routes>
-    </KeyboardShortcuts>
+          <Route path="gst/:clientId/:period/purchases/review" element={<PurchaseReview />} />
+          <Route
+            path="gst/:clientId/:period/purchases/review/:itemId"
+            element={<PurchaseReview />}
+          />
+          <Route path="gst/:clientId/:period/purchases" element={<LivePurchasesLayout />}>
+            <Route index element={<LivePurchasesSummary />} />
+            <Route path="register" element={<LivePurchasesRegister />} />
+          </Route>
+          <Route path="clients" element={<ClientsLayout />}>
+            <Route index element={<ClientsPage />} />
+            <Route path="new" element={<ClientForm />} />
+            <Route path=":clientId/edit" element={<ClientForm />} />
+            <Route path="import" element={<ClientsImport />} />
+          </Route>
+          <Route path="gst/:clientId/:period" element={<LiveSalesLayout />}>
+            <Route path="sales" element={<LiveSalesSummary />} />
+            <Route path="sales/register" element={<LiveSalesRegister />} />
+            <Route path="sales/checks" element={<SalesChecks />} />
+            <Route path="sales/sections/:section" element={<SalesSection />} />
+            <Route path="sales/upload" element={<LiveSalesUpload />} />
+            <Route path="sales/uploads" element={<LiveSalesUploads />} />
+          </Route>
+          {import.meta.env.DEV && (
+            <Route element={<Shell />}>
+              <Route index element={<Navigate to="/sales" replace />} />
+              <Route path="sales" element={<SalesSummary />} />
+              <Route path="sales/register" element={<SalesRegister />} />
+              <Route path="sales/upload" element={<SalesUpload />} />
+              <Route path="sales/uploads" element={<SalesUploads />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          )}
+          {!import.meta.env.DEV && (
+            <Route
+              path="*"
+              element={
+                <main className="p-10">
+                  <h1 className="text-2xl font-semibold">Page not found</h1>
+                  <a href="/clients" className="mt-4 inline-block underline">
+                    Back to clients
+                  </a>
+                </main>
+              }
+            />
+          )}
+        </Routes>
+      </KeyboardShortcuts>
+    </ClientContextProvider>
   );
 }

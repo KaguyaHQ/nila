@@ -104,7 +104,7 @@ defmodule NilaWeb.Settings.ProfileLiveTest do
 
     assert_received {:change_email_token, token}
 
-    assert {:error, {:live_redirect, %{to: "/settings/profile"}}} =
+    assert {:error, {:redirect, %{to: "/app/settings/profile?email=confirmed"}}} =
              conn |> log_in_user(user) |> live(~p"/settings/profile/confirm_email/#{token}")
 
     assert Accounts.get_user_by_email("confirmed-live@example.com")

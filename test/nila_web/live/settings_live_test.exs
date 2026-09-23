@@ -81,7 +81,7 @@ defmodule NilaWeb.SettingsLiveTest do
     test "redirects /settings to workspace settings", %{conn: conn} do
       conn = get(conn, ~p"/settings")
 
-      assert redirected_to(conn) == ~p"/settings/workspace"
+      assert redirected_to(conn) == ~p"/app/settings/workspace"
     end
 
     test "keeps product and settings navigation in one LiveView session" do

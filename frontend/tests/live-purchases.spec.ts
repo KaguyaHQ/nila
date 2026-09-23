@@ -1,6 +1,41 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
 
+test("directory keeps purchase context for sidebar, client choices and command palette", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await page.route(/\/api\/workspace\/clients(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        clients: [
+          { id: 1, name: "Breeze Tech", gstin: null },
+          { id: 2, name: "Second client", gstin: null },
+        ],
+        user: { name: "Accountant", org: "Test firm" },
+        can_edit: true,
+        period: "2026-06",
+      },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/purchases");
+  await page.getByRole("complementary").getByRole("link", { name: "Clients", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Second client", exact: true })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-06/purchases",
+  );
+  await expect(
+    page.getByRole("complementary").getByRole("link", { name: "Purchases & ITC" }),
+  ).toHaveAttribute("href", "/app/gst/1/2026-06/purchases");
+  await page.getByRole("button", { name: "Go to page or client" }).click();
+  await page
+    .getByRole("combobox", { name: "Search pages, clients or a month" })
+    .fill("Second client");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/app/gst/2/2026-06/purchases");
+});
+
 test("command palette keeps the GSTR-2B source when changing month", async ({ page }) => {
   await page.route("**/api/workspace/purchases/*/*?*", (route) => {
     const url = new URL(route.request().url());

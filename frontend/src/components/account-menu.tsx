@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { Link } from "react-router-dom";
 import { ChevronsUpDown, LogOut, Settings, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +40,7 @@ export function AccountMenu({
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" className="min-w-48">
-          <DropdownMenuItem render={<a href="/settings/profile" />}>
+          <DropdownMenuItem render={<Link to="/settings/profile" />}>
             <Settings />
             Settings
           </DropdownMenuItem>

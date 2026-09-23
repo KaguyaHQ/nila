@@ -14,7 +14,6 @@ defmodule NilaWeb.UserAuth do
   @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
 
   def log_in_user(conn, user, params \\ %{}) do
-    token = Accounts.generate_user_session_token(user)
     user_return_to = get_session(conn, :user_return_to)
     scope = scope_for_user(user, get_session(conn, :current_client_id))
 
@@ -24,13 +23,20 @@ defmodule NilaWeb.UserAuth do
         else: user_return_to || NilaWeb.GoTo.sales_home(scope && scope.current_client)
 
     conn
-    |> renew_session()
-    |> put_token_in_session(token)
-    |> maybe_write_remember_me_cookie(token, params)
+    |> create_user_session(user, params)
     |> redirect(to: destination)
   end
 
-  def log_out_user(conn) do
+  def create_user_session(conn, user, params \\ %{}) do
+    token = Accounts.generate_user_session_token(user)
+
+    conn
+    |> renew_session()
+    |> put_token_in_session(token)
+    |> maybe_write_remember_me_cookie(token, params)
+  end
+
+  def clear_user_session(conn) do
     user_token = get_session(conn, :user_token)
     user_token && Accounts.delete_user_session_token(user_token)
 
@@ -41,14 +47,26 @@ defmodule NilaWeb.UserAuth do
     conn
     |> renew_session()
     |> delete_resp_cookie(@remember_me_cookie)
+  end
+
+  def log_out_user(conn) do
+    conn
+    |> clear_user_session()
     |> put_flash(:info, "Signed out.")
     |> redirect(to: ~p"/")
   end
 
   def log_out_all_user_sessions(conn, user) do
+    conn
+    |> clear_all_user_sessions(user)
+    |> put_flash(:info, "Signed out.")
+    |> redirect(to: ~p"/")
+  end
+
+  def clear_all_user_sessions(conn, user) do
     Accounts.delete_user_session_tokens(user)
     NilaWeb.Endpoint.broadcast(user_sessions_topic(user), "disconnect_user_sessions", %{})
-    log_out_user(conn)
+    clear_user_session(conn)
   end
 
   def fetch_current_scope_for_user(conn, _opts) do

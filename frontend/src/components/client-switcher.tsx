@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,14 +35,17 @@ export function ClientSwitcher({
   client,
   clients,
   collapsed,
+  workspacePath,
 }: {
   client: Client;
   clients: Client[];
   collapsed: boolean;
+  workspacePath?: string;
 }) {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const period = pathname.match(/\/gst\/\d+\/(\d{4}-\d{2})/)?.[1] ?? null;
+  const activePath = pathname.startsWith("/gst/") ? pathname : (workspacePath ?? pathname);
+  const period = activePath.match(/\/gst\/\d+\/(\d{4}-\d{2})/)?.[1] ?? null;
   const [open, setOpen] = useState(false);
   const directory = useQuery({
     queryKey: ["clients", period],
@@ -62,7 +65,12 @@ export function ClientSwitcher({
       itemToStringLabel={(item) => `${item.name} ${item.gstin ?? ""}`}
       isItemEqualToValue={(a, b) => a.id === b.id}
       onValueChange={(item) => {
-        if (item && item.id !== client.id) navigate(clientDestination(pathname, search, item.id));
+        if (item && (item.id !== client.id || !pathname.startsWith("/gst/"))) {
+          setOpen(false);
+          navigate(
+            clientDestination(activePath, pathname.startsWith("/gst/") ? search : "", item.id),
+          );
+        }
       }}
     >
       <ComboboxTrigger
@@ -106,6 +114,18 @@ export function ClientSwitcher({
             </ComboboxItem>
           )}
         </ComboboxList>
+        <div className="border-t p-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            nativeButton={false}
+            role="link"
+            render={<Link to={period ? `/clients?period=${period}` : "/clients"} />}
+            onClick={() => setOpen(false)}
+          >
+            View all clients
+          </Button>
+        </div>
       </ComboboxContent>
     </Combobox>
   );
