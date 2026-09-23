@@ -15,8 +15,8 @@ import {
   Inbox,
   Landmark,
   PanelLeft,
-  FileText,
-  FileSpreadsheet,
+  ReceiptText,
+  ShoppingBag,
   Users,
 } from "lucide-react";
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
@@ -161,14 +161,14 @@ export function Shell({
             label="Sales & GSTR-1"
             className={`flex h-10 items-center rounded-md text-sm ${pathname.startsWith(salesPath) ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
           >
-            <FileText className="size-4 shrink-0" />
+            <ReceiptText className="size-4 shrink-0" />
             {!collapsed ? "Sales & GSTR-1" : <span className="sr-only">Sales & GSTR-1</span>}
           </NavigationLink>
         )}
         {!live &&
           !firm &&
           [
-            { label: "Purchases & ITC", Icon: FileSpreadsheet },
+            { label: "Purchases & ITC", Icon: ShoppingBag },
             { label: "Banking", Icon: Landmark },
           ].map(({ label, Icon }) => (
             <button
@@ -190,7 +190,7 @@ export function Shell({
               label="Purchases & ITC"
               className={`flex h-10 items-center rounded-md text-sm ${inPurchases ? "bg-neutral-100 font-medium" : "text-muted-foreground hover:bg-muted"} ${collapsed ? "justify-center" : "gap-3 px-3"}`}
             >
-              <FileSpreadsheet className="size-4" />
+              <ShoppingBag className="size-4" />
               {!collapsed ? "Purchases & ITC" : <span className="sr-only">Purchases & ITC</span>}
             </NavigationLink>
           </>

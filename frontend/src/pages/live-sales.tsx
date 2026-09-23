@@ -194,7 +194,7 @@ function PeriodHeading({
             />
           </>
         ) : (
-          <h1 aria-label={data.month_label}>
+          <h1 aria-label={data.month_label} className="w-72 shrink-0">
             <MonthPicker
               large
               period={data.period}
@@ -248,6 +248,8 @@ function PeriodHeading({
 
 export function LiveSalesSummary() {
   const data = useSales();
+  const unprepared = data.invoice_count === 0 && data.rows.length === 0;
+  const emptyMonth = unprepared && data.uploads.files === 0 && !data.uploads.unfinished;
   return (
     <>
       <PeriodHeading />
@@ -270,7 +272,9 @@ export function LiveSalesSummary() {
             <p className="mt-1 text-sm text-muted-foreground">
               {data.invoice_count
                 ? `${data.review_count} invoices need review.`
-                : "Add sales bills to prepare this month's working."}
+                : emptyMonth
+                  ? "Add sales bills to prepare this month's working."
+                  : "No invoices in the working yet."}
             </p>
           </div>
           {data.review_count > 0 && (
@@ -345,11 +349,20 @@ export function LiveSalesSummary() {
           <span className="text-muted-foreground"> before downloading GSTR-1 JSON.</span>
         </p>
       )}
-      <div className="mt-8 grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div
+        className={`mt-8 grid items-start gap-7 ${emptyMonth ? "" : "xl:grid-cols-[minmax(0,1fr)_220px]"}`}
+      >
         <section aria-labelledby="gstr1-summary" className="min-w-0">
           <h2 id="gstr1-summary" className="mb-3 text-sm font-semibold">
             GSTR-1 summary
           </h2>
+          {unprepared && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              {emptyMonth
+                ? `No sales invoices added for ${data.month_label} yet.`
+                : "Sections will populate once sales invoices are prepared."}
+            </p>
+          )}
           <div className="overflow-hidden rounded-xl border bg-white">
             <Table>
               <TableHeader>
@@ -380,12 +393,16 @@ export function LiveSalesSummary() {
                         section.label
                       )}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">{section.count}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      {unprepared ? "—" : section.count}
+                    </TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">
-                      {money(section.value)}
+                      {unprepared ? "—" : money(section.value)}
                     </TableCell>
                     <TableCell>
-                      {section.status === "No entries" ? (
+                      {unprepared && section.status === "No entries" ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : section.status === "No entries" ? (
                         <span className="text-xs text-muted-foreground">No entries</span>
                       ) : (
                         <Badge
@@ -408,9 +425,11 @@ export function LiveSalesSummary() {
             </Table>
           </div>
         </section>
-        <aside className="xl:border-l xl:pl-6">
-          <SalesExports data={data} />
-        </aside>
+        {!emptyMonth && (
+          <aside className="xl:border-l xl:pl-6">
+            <SalesExports data={data} />
+          </aside>
+        )}
       </div>
     </>
   );

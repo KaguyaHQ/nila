@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Gstr2bState } from "../src/lib/gstr2b-api";
+import { review } from "./fixtures/purchase-review";
 
 const path = "/api/workspace/purchases/1/2026-06/gstr2b";
 
@@ -67,6 +68,12 @@ function state(): Gstr2bState {
   };
 }
 async function setup(page: Page) {
+  await page.route("**/api/workspace/purchases/*/*/review?*", (route) => {
+    const data = review();
+    data.books_available = false;
+    data.filter = "all";
+    return route.fulfill({ json: data });
+  });
   await page.route("**/api/workspace/purchases/*/*?*", (route) =>
     route.fulfill({
       json: {

@@ -1,3 +1,12 @@
+import {
+  Attachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentActions,
+  AttachmentAction,
+} from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -248,9 +257,11 @@ function UploadForm() {
           Your role allows viewing, not uploading.
         </p>
       )}
-      <Card className="gap-0 overflow-hidden py-0 shadow-none">
+      <Card
+        className={`gap-0 overflow-hidden py-0 shadow-none ${files.length ? "sticky top-0 z-30" : ""}`}
+      >
         <div
-          className={`m-6 flex flex-col items-center rounded-lg border border-dashed px-6 py-12 text-center ${dragging ? "bg-muted" : ""}`}
+          className={`${files.length ? "flex flex-wrap items-center justify-between gap-3 p-4" : "m-6 flex flex-col items-center rounded-lg border border-dashed px-6 py-12 text-center"} ${dragging ? "bg-muted" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
             if (!locked && !busy && data.can_upload) setDragging(true);
@@ -265,18 +276,38 @@ function UploadForm() {
             selectFiles(Array.from(event.dataTransfer.files));
           }}
         >
-          <Upload className="mb-4 size-6 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-sm font-medium">Drop your sales PDFs here</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            One bill or a combined PDF of several bills.
-          </p>
-          <Button
-            className="mt-5"
-            disabled={busy || locked || !data.can_upload}
-            onClick={() => picker.current?.click()}
-          >
-            Choose PDFs
-          </Button>
+          {files.length ? (
+            <h2 id="selected-pdfs" className="text-sm font-semibold">
+              {files.length} {files.length === 1 ? "file" : "files"} selected
+            </h2>
+          ) : (
+            <>
+              <Upload className="mb-4 size-6 text-muted-foreground" aria-hidden="true" />
+              <h2 className="text-sm font-medium">Drop your sales PDFs here</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                One bill or a combined PDF of several bills.
+              </p>
+            </>
+          )}
+          <div className={files.length ? "flex items-center gap-2" : "mt-5"}>
+            <Button
+              variant={files.length ? "outline" : "default"}
+              disabled={busy || locked || !data.can_upload}
+              onClick={() => picker.current?.click()}
+            >
+              {files.length ? "Add more" : "Choose PDFs"}
+            </Button>
+            {files.length > 0 && (
+              <Button disabled={busy || !data.can_upload} onClick={submit}>
+                {busy
+                  ? "Uploading…"
+                  : locked
+                    ? "Retry upload"
+                    : `Upload ${files.length} ${files.length === 1 ? "PDF" : "PDFs"}`}
+                <Upload />
+              </Button>
+            )}
+          </div>
           <Input
             ref={picker}
             className="hidden"
@@ -291,8 +322,13 @@ function UploadForm() {
             }}
           />
         </div>
+        {stage && (
+          <p role="status" className="border-t px-4 py-3 text-sm text-muted-foreground">
+            {stage}
+          </p>
+        )}
         <p className="border-t bg-muted/40 px-6 py-4 text-sm text-muted-foreground">
-          Up to 50 PDFs, 50 MB each. Nila reads the bills after upload.
+          Up to 50 PDFs, 50 MB each.
         </p>
       </Card>
       {displayedErrors.length > 0 && (
@@ -307,52 +343,61 @@ function UploadForm() {
       )}
       {files.length > 0 && (
         <section aria-labelledby="selected-pdfs" className="space-y-3">
-          <h2 id="selected-pdfs" className="text-sm font-semibold">
-            {files.length} {files.length === 1 ? "file" : "files"} selected
-          </h2>
-          <ul className="divide-y rounded-lg border bg-card">
+          <ul className="space-y-2">
             {files.map((file, index) => (
-              <li
-                key={`${file.name}-${file.size}-${file.lastModified}`}
-                className="flex items-center gap-3 px-4 py-3"
-              >
-                <FileText className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="break-words text-sm font-medium">{file.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB
-                    {progress[index] !== undefined && ` · ${progress[index]}% transferred`}
-                  </p>
-                  {progress[index] !== undefined && (
-                    <progress
-                      aria-label={`Upload progress for ${file.name}`}
-                      value={progress[index]}
-                      max={100}
-                      className="mt-2 h-1.5 w-full accent-foreground"
-                    />
+              <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                <Attachment
+                  className="w-full"
+                  state={
+                    completed.current.has(index)
+                      ? "done"
+                      : busy && progress[index] !== undefined
+                        ? "uploading"
+                        : "idle"
+                  }
+                >
+                  <AttachmentMedia>
+                    <FileText aria-hidden="true" />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle className="whitespace-normal break-words">
+                      {file.name}
+                    </AttachmentTitle>
+                    <AttachmentDescription>
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                      {completed.current.has(index)
+                        ? " · Transferred"
+                        : progress[index] !== undefined
+                          ? ` · ${progress[index]}% transferred`
+                          : ""}
+                    </AttachmentDescription>
+                    {progress[index] !== undefined && (
+                      <progress
+                        aria-label={`Upload progress for ${file.name}`}
+                        value={progress[index]}
+                        max={100}
+                        className="mt-2 h-1.5 w-full accent-foreground"
+                      />
+                    )}
+                  </AttachmentContent>
+                  {!locked && !busy && (
+                    <AttachmentActions>
+                      <AttachmentAction
+                        size="icon-sm"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() =>
+                          setFiles((values) => values.filter((_, position) => position !== index))
+                        }
+                      >
+                        <X />
+                      </AttachmentAction>
+                    </AttachmentActions>
                   )}
-                </div>
-                {!locked && !busy && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove ${file.name}`}
-                    onClick={() =>
-                      setFiles((values) => values.filter((_, position) => position !== index))
-                    }
-                  >
-                    <X />
-                  </Button>
-                )}
+                </Attachment>
               </li>
             ))}
           </ul>
         </section>
-      )}
-      {stage && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {stage}
-        </p>
       )}
       <div className="flex flex-wrap justify-between gap-3">
         <Button
@@ -368,10 +413,12 @@ function UploadForm() {
         >
           View uploads <ArrowRight />
         </Button>
-        <Button disabled={busy || !files.length || !data.can_upload} onClick={submit}>
-          {busy ? "Uploading…" : locked ? "Retry upload" : "Upload PDFs"}
-          <Upload />
-        </Button>
+        {!files.length && (
+          <Button disabled>
+            Upload PDFs
+            <Upload />
+          </Button>
+        )}
       </div>
     </div>
   );

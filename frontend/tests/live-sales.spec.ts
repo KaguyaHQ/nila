@@ -61,6 +61,79 @@ function month(client = 1, period = "2026-06"): SalesWorkspace {
   };
 }
 
+test("empty month retains section rows without asserting no entries or showing exports", async ({
+  page,
+}, info) => {
+  const data = month();
+  data.invoice_count = 0;
+  data.rows = [];
+  data.taxable = data.tax = "—";
+  data.uploads = { files: 0, unfinished: false };
+  const labels = [
+    "B2B",
+    "B2CL",
+    "Exports",
+    "SEZ supplies",
+    "B2C (others)",
+    "Exempt supplies",
+    "Credit/debit notes",
+    "Advances",
+    "E-commerce",
+    "HSN",
+    "Documents issued",
+  ];
+  data.sections = labels.map((label, index) => ({
+    id: String(index),
+    label,
+    count: "—",
+    value: "—",
+    status: "No entries",
+    variant: "muted",
+    path: null,
+  }));
+  await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: data }));
+  await page.goto("/app/gst/1/2026-06/sales");
+  await expect(page.getByText("No sales invoices added for June 2026 yet.")).toBeVisible();
+  await expect(page.getByRole("row")).toHaveCount(12);
+  await expect(page.getByText("No entries", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Exports", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Add invoices", exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("empty-sales-month.png"), fullPage: true });
+  data.invoice_count = 1;
+  data.rows = month().rows;
+  data.sections[0] = month().sections[0];
+  await page.reload();
+  await expect(page.getByText("No sales invoices added for June 2026 yet.")).toHaveCount(0);
+  await expect(page.getByText("No entries", { exact: true })).toHaveCount(10);
+  await expect(page.getByRole("heading", { name: "Exports", exact: true })).toBeVisible();
+});
+
+test("unfinished uploads and excluded records do not become a pristine empty month", async ({
+  page,
+}) => {
+  const data = month();
+  data.invoice_count = 0;
+  data.rows = [];
+  data.uploads = { files: 1, unfinished: true };
+  data.sections = [
+    { ...data.sections[0], count: "—", value: "—", status: "No entries", path: null },
+  ];
+  await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: data }));
+  await page.goto("/app/gst/1/2026-06/sales");
+  await expect(page.getByRole("link", { name: "Check uploads", exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sections will populate once sales invoices are prepared."),
+  ).toBeVisible();
+  await expect(page.getByText("No entries", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Exports", exact: true })).toBeVisible();
+  data.uploads = { files: 0, unfinished: false };
+  data.rows = [{ ...month().rows[0], status: "excluded", path: null }];
+  await page.reload();
+  await expect(page.getByText("No sales invoices added for June 2026 yet.")).toHaveCount(0);
+  await expect(page.getByText("No entries", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Exports", exact: true })).toBeVisible();
+});
+
 test("real workspace uses server data, changes month/client and preserves register URL", async ({
   page,
 }) => {
@@ -277,6 +350,32 @@ test("excluded sources stay visible without opening a different invoice", async 
   await page.goto("/app/gst/1/2026-06/sales/register");
   await expect(page.getByText("EXCLUDED-1", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "EXCLUDED-1" })).toHaveCount(0);
+});
+
+test("month arrows stay in place across different month name lengths", async ({ page }, info) => {
+  await page.clock.install({ time: new Date("2026-09-23T12:00:00Z") });
+  await page.route("**/api/workspace/sales/*/*", (route) => {
+    const period = new URL(route.request().url()).pathname.split("/")[5];
+    const data = month(1, period);
+    data.month_label = new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" }).format(
+      new Date(`${period}-01T12:00:00Z`),
+    );
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/app/gst/1/2026-07/sales");
+  const next = page.getByRole("button", { name: "Next month", exact: true });
+  await expect(page.getByRole("heading", { name: "July 2026", exact: true })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const start = await next.boundingBox();
+  for (const label of ["August 2026", "September 2026"]) {
+    await next.click();
+    await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+    const position = await next.boundingBox();
+    expect(position?.x).toBe(start?.x);
+    expect(position?.y).toBe(start?.y);
+  }
+  await expect(next).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("stable-month-arrows.png") });
 });
 
 test("month popover selects by year, preserves register filters and respects bounds", async ({

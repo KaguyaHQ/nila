@@ -107,12 +107,12 @@ test("failed PUT resumes remaining PDFs and uncertain commit retries the same to
   await page
     .getByLabel("Choose sales PDF files")
     .setInputFiles([pdf("first.pdf"), pdf("second.pdf")]);
-  await page.getByRole("button", { name: "Upload PDFs", exact: true }).click();
+  await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Couldn't upload second.pdf");
   await expect(
     page.getByRole("progressbar", { name: "Upload progress for first.pdf" }),
   ).toHaveAttribute("value", "100");
-  await expect(page.getByRole("button", { name: "Choose PDFs", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add more", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Connection interrupted while saving");
   await expect(page.getByRole("status")).toContainText("Retry to confirm");
@@ -157,7 +157,9 @@ test("PDF validation prevents invalid writes and switching client clears the old
   await page.getByRole("option", { name: "Second client", exact: true }).click();
   await expect(page).toHaveURL(/\/gst\/2\/2026-06\/sales\/upload$/);
   await expect(page.getByText("sales.pdf", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Upload PDFs", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }),
+  ).toBeDisabled();
   expect(writes).toEqual([]);
 });
 
@@ -267,7 +269,7 @@ test("expired storage URL renews the existing token and retries the PDF", async 
   });
   await page.goto("/app/gst/1/2026-06/sales/upload");
   await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
-  await page.getByRole("button", { name: "Upload PDFs", exact: true }).click();
+  await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
   await expect(page).toHaveURL(/\/sales\/uploads$/);
   expect(preparations).toHaveLength(2);
   expect(preparations[1]).toEqual({ token: "existing-token" });
@@ -301,14 +303,16 @@ test("rejected upload unlocks file replacement before a new preparation", async 
   });
   await page.goto("/app/gst/1/2026-06/sales/upload");
   await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
-  await page.getByRole("button", { name: "Upload PDFs", exact: true }).click();
+  await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Upload expired.");
   expect(prepares).toBe(1);
-  await expect(page.getByRole("button", { name: "Choose PDFs", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Add more", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Remove sales.pdf", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Upload PDFs", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }),
+  ).toBeDisabled();
   await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
-  await page.getByRole("button", { name: "Upload PDFs", exact: true }).click();
+  await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
   await expect(page).toHaveURL(/\/sales\/uploads$/);
   expect(prepares).toBe(2);
 });
@@ -322,11 +326,15 @@ test("view-only role cannot select or upload PDFs", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText("Your role allows viewing, not uploading.");
   await expect(page.getByRole("button", { name: "Choose PDFs", exact: true })).toBeDisabled();
   await expect(page.getByLabel("Choose sales PDF files")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Upload PDFs", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole("link", { name: "View uploads", exact: true })).toBeVisible();
 });
 
-test("selection enforces 50 files and exact 50 MB per-file limit", async ({ page }) => {
+test("selection enforces 50 files and keeps upload controls visible above attachments", async ({
+  page,
+}, info) => {
   await setup(page);
   await page.goto("/app/gst/1/2026-06/sales/upload");
   const transfer = await page.evaluateHandle(() => {
@@ -344,4 +352,29 @@ test("selection enforces 50 files and exact 50 MB per-file limit", async ({ page
   await expect(page.getByRole("alert")).toContainText("too-large.pdf: the limit is 50 MB per PDF.");
   await expect(page.getByRole("alert")).toContainText("Choose up to 50 PDFs at a time.");
   await expect(page.getByRole("heading", { name: "50 files selected", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Drop your sales PDFs here", exact: true }),
+  ).toHaveCount(0);
+  const upload = page.getByRole("button", { name: "Upload 50 PDFs", exact: true });
+  await expect(upload).toBeInViewport();
+  await expect(page.locator('[data-slot="attachment"]')).toHaveCount(50);
+  await page
+    .getByRole("button", { name: "Remove sales-49.pdf", exact: true })
+    .scrollIntoViewIfNeeded();
+  await expect(upload).toBeInViewport();
+  await page.screenshot({ path: info.outputPath("selected-pdfs-scrolled.png") });
+  await page.getByRole("button", { name: "Remove sales-49.pdf", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Upload 49 PDFs", exact: true })).toBeInViewport();
+  await page
+    .getByRole("heading", { name: "49 files selected", exact: true })
+    .dispatchEvent("drop", {
+      dataTransfer: await page.evaluateHandle(() => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(["%PDF"], "added.pdf", { type: "application/pdf" }));
+        return transfer;
+      }),
+    });
+  await expect(page.getByRole("button", { name: "Upload 50 PDFs", exact: true })).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: info.outputPath("selected-pdfs.png") });
 });
