@@ -152,7 +152,7 @@ defmodule NilaWeb.Layouts do
               current_path={@current_path}
             />
             <.rail_link
-              href={~p"/notices"}
+              href={~p"/app/notices"}
               icon="hero-inbox"
               label="Notices"
               current_path={@current_path}

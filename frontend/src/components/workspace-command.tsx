@@ -10,6 +10,7 @@ import {
   Search,
   Upload,
   Users,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,7 +88,9 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
 
   const selected = useClientContext();
   const area =
-    pathname.startsWith("/clients") || pathname.startsWith("/settings")
+    pathname.startsWith("/clients") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/notices")
       ? (selected?.section ?? "sales")
       : pathname.includes("/purchases")
         ? "purchases"
@@ -165,6 +168,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
       Icon: Users,
       keywords: ["directory"],
     },
+    { label: "Notices", path: "/notices", Icon: Inbox, keywords: ["GST", "reminders"] },
   ];
 
   return (

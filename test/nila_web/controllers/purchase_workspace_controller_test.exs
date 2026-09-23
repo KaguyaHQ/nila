@@ -85,6 +85,7 @@ defmodule NilaWeb.PurchaseWorkspaceControllerTest do
     expected = NilaWeb.Gst.PurchaseWorkspace.money(-25_000)
     assert body["inputs"]["books"]["tax"] == expected
     assert hd(body["rows"])["tax"] == expected
+    assert hd(body["rows"])["tax_paise"] == -25_000
     assert hd(body["rows"])["document_type"] == "credit_note"
     assert body["overview"]["itc"]["claim"] == NilaWeb.Gst.PurchaseWorkspace.money(0)
   end

@@ -9,6 +9,11 @@ The client directory at `/app/clients` also uses real data: search, add/edit nam
 GSTIN, and Excel preview/import. Client names open the React sales workspace; edit
 pages link to the existing GST/Tally connection settings.
 
+Notices at `/app/notices` uses React for the saved notice list, client checks, OTP
+reconnection and document reader. Phoenix retains check runs and notice history;
+opening the page does not reset what is new. PDFs use the existing authenticated
+document endpoint. Reply and closure status are not inferred from notice dates.
+
 ## Run
 
 With Node 20+ installed, install the pinned pnpm version once (`npm install --global pnpm@10.34.5`):

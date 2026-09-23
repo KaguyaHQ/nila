@@ -53,6 +53,13 @@ defmodule NilaWeb.Router do
 
   scope "/api/workspace", NilaWeb do
     pipe_through :workspace_api
+    get "/notices", NoticesWorkspaceController, :index
+    get "/notices/:id", NoticesWorkspaceController, :show
+    post "/notices/check", NoticesWorkspaceController, :check_all
+    post "/notices/retry", NoticesWorkspaceController, :retry
+    post "/notices/clients/:client_id/check", NoticesWorkspaceController, :check
+    post "/notices/clients/:client_id/otp", NoticesWorkspaceController, :otp
+    post "/notices/clients/:client_id/verify", NoticesWorkspaceController, :verify
     get "/settings", SettingsWorkspaceController, :show
     patch "/settings/name", SettingsWorkspaceController, :name
     post "/settings/email", SettingsWorkspaceController, :email
@@ -104,6 +111,8 @@ defmodule NilaWeb.Router do
 
   scope "/app", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser, :firm_browser]
+    get "/notices", ReactAppController, :index
+    get "/notices/:id", ReactAppController, :index
     get "/settings", ReactAppController, :index
     get "/settings/profile", ReactAppController, :index
     get "/settings/security", ReactAppController, :index

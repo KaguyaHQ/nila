@@ -43,8 +43,10 @@ export function Shell({
   children,
   clients,
   settings,
+  notices = false,
 }: {
   settings?: string;
+  notices?: boolean;
   clients?: { id: number; name: string }[];
   children?: ReactNode;
   firm?: { name: string; org: string };
@@ -84,7 +86,7 @@ export function Shell({
     localStorage.setItem("nila:rail-collapsed", String(collapsed));
   }, [collapsed]);
   const title =
-    settings ??
+    (notices ? "Notices" : settings) ??
     (firm
       ? pathname.endsWith("/new")
         ? "Add client"
@@ -219,19 +221,22 @@ export function Shell({
               collapsed={collapsed}
               to={clientsPath}
               label="Clients"
-              aria-current={firm && !settings ? "page" : undefined}
-              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm && !settings ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
+              aria-current={firm && !settings && !notices ? "page" : undefined}
+              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${firm && !settings && !notices ? "bg-neutral-100 font-medium" : "text-muted-foreground"}`}
             >
               <Users className="size-4" />
               {!collapsed ? "Clients" : <span className="sr-only">Clients</span>}
             </NavigationLink>
-            <a
-              href="/notices"
-              className="flex h-10 items-center gap-3 px-3 text-sm text-muted-foreground"
+            <NavigationLink
+              collapsed={collapsed}
+              label="Notices"
+              to="/notices"
+              aria-current={notices ? "page" : undefined}
+              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm ${notices ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted"}`}
             >
               <Inbox className="size-4" />
               {!collapsed ? "Notices" : <span className="sr-only">Notices</span>}
-            </a>
+            </NavigationLink>
           </>
         )}
       </nav>
@@ -263,7 +268,9 @@ export function Shell({
           >
             <span>{firm?.org ?? clientName}</span>
             <ChevronRight className="size-3" />
-            {settings ? (
+            {notices ? (
+              <span className="text-foreground">Notices</span>
+            ) : settings ? (
               <>
                 <Link to="/settings/profile">Settings</Link>
                 <ChevronRight className="size-3" />

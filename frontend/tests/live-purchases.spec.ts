@@ -110,6 +110,7 @@ function workspace(): PurchasesWorkspace {
         gstin: "33AABCT3518Q1ZF",
         document_type: "invoice",
         tax: "₹200.00",
+        tax_paise: 20000,
         status: "Matched",
         reason: "Two source entries linked during review",
         review_url: `${legacy}/review/source1`,
@@ -122,6 +123,7 @@ function workspace(): PurchasesWorkspace {
         gstin: "33AABCT3518Q1ZF",
         document_type: "credit_note",
         tax: "−₹20.00",
+        tax_paise: -2000,
         status: "Matched",
         reason: null,
         review_url: `${legacy}/review/source1`,
@@ -249,6 +251,59 @@ test("long search links use the server's supported length", async ({ page }) => 
   );
   await expect(page.getByText("No source entries match this search.")).toBeVisible();
   await expect(page.getByText("Searching source entries…")).toHaveCount(0);
+});
+
+test("register sorts signed GST, dates and vendors with compact accessible headers", async ({
+  page,
+}, info) => {
+  const data = workspace();
+  data.rows[0].vendor = "Zulu Supplies";
+  data.rows[1].vendor = "Alpha Supplies";
+  data.rows.push({
+    ...data.rows[0],
+    id: "source3",
+    number: "BIG-003",
+    vendor: "Middle Supplies",
+    date: null,
+    tax: "₹1,20,000.00",
+    tax_paise: 12000000,
+  });
+  await setup(page, data);
+  await page.goto("/app/gst/1/2026-06/purchases/register?source=gstr2b");
+  const invoices = () => page.locator("tbody tr td:first-child").allTextContents();
+  await expect.poll(invoices).toEqual(["B-001", "CN-002", "BIG-003"]);
+  await expect(page.getByText("Two source entries linked during review")).toHaveCount(0);
+  const gst = page.getByRole("button", { name: "Sort by GST", exact: true });
+  await gst.click();
+  await expect.poll(invoices).toEqual(["BIG-003", "B-001", "CN-002"]);
+  await expect(page.getByRole("columnheader", { name: "Sort by GST" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+  await gst.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(invoices).toEqual(["CN-002", "B-001", "BIG-003"]);
+  await gst.click();
+  await expect.poll(invoices).toEqual(["B-001", "CN-002", "BIG-003"]);
+  await page.getByRole("button", { name: "Sort by Date", exact: true }).click();
+  await expect.poll(invoices).toEqual(["CN-002", "B-001", "BIG-003"]);
+  await page.getByRole("button", { name: "Sort by Date", exact: true }).click();
+  await expect.poll(invoices).toEqual(["B-001", "CN-002", "BIG-003"]);
+  await page.getByRole("button", { name: "Sort by Vendor", exact: true }).click();
+  await expect.poll(invoices).toEqual(["CN-002", "BIG-003", "B-001"]);
+  await page.getByRole("button", { name: "Matched", exact: true }).first().hover();
+  await expect(page.getByText("Two source entries linked during review")).toBeVisible();
+  await page.getByRole("heading", { name: "GSTR-2B register" }).hover();
+  await page.screenshot({ path: info.outputPath("compact-register.png"), fullPage: true });
+});
+
+test("register does not claim unmatched invoices when books are missing", async ({ page }) => {
+  const data = workspace();
+  data.overview.comparison_available = false;
+  await setup(page, data);
+  await page.goto("/app/gst/1/2026-06/purchases/register?source=gstr2b");
+  await expect(page.getByRole("cell", { name: "Not compared", exact: true })).toHaveCount(2);
+  await expect(page.getByText("Import both sources", { exact: false })).toBeVisible();
 });
 
 test("GSTR-2B treatment stays available without purchase books", async ({ page }) => {

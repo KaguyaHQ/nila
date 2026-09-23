@@ -213,6 +213,7 @@ defmodule NilaWeb.Gst.PurchaseWorkspaceJson do
         gstin: row["vendor_gstin"],
         document_type: row["document_type"] || "invoice",
         tax: Workspace.money(Workspace.source_tax(row)),
+        tax_paise: Workspace.source_tax(row),
         status: if(item, do: Workspace.label(item), else: "Source record"),
         reason: if(item, do: item.reason),
         review_url: if(item, do: review_path(data.client.id, period, item.id, filter, query))
@@ -231,6 +232,7 @@ defmodule NilaWeb.Gst.PurchaseWorkspaceJson do
       gstin: row["vendor_gstin"],
       document_type: item.document_type || "invoice",
       tax: Workspace.money(item.tax_paise),
+      tax_paise: item.tax_paise,
       status: Workspace.label(item),
       reason: item.reason,
       review_url: review_path(client_id, period, item.id, filter, query)

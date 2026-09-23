@@ -1,5 +1,6 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { ClientContextProvider } from "@/state/client-context";
+import NoticesPage from "@/pages/notices";
 import SettingsPage from "@/pages/settings";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ export default function App() {
     <ClientContextProvider>
       <KeyboardShortcuts>
         <Routes>
+          <Route path="notices" element={<NoticesPage />} />
+          <Route path="notices/:noticeId" element={<NoticesPage />} />
           <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
           <Route path="settings/:section" element={<SettingsPage />} />
           <Route path="business" element={<BusinessLayout />}>

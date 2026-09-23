@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { PurchaseRegisterTable } from "@/components/purchase-register-table";
 import { Gstr2bSource } from "@/components/gstr2b-source";
 import { Shell } from "@/components/workspace-shell";
 import { Button } from "@/components/ui/button";
@@ -376,6 +377,8 @@ export function LivePurchasesSummary() {
   );
 }
 
+const emptyRegisterRows: PurchasesWorkspace["rows"] = [];
+
 export function LivePurchasesRegister() {
   const data = usePurchases();
   const [params, setParams] = useSearchParams();
@@ -396,7 +399,9 @@ export function LivePurchasesRegister() {
           {source === "gstr2b" ? "GSTR-2B register" : "Purchase register"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Original source entries, including entries already linked during reconciliation.
+          {data.overview.comparison_available
+            ? "Original records with their reconciliation status."
+            : "Import both sources to compare purchase books with GSTR-2B."}
         </p>
       </header>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -448,58 +453,10 @@ export function LivePurchasesRegister() {
         </form>
       </div>
       <div className="overflow-hidden rounded-lg border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-right">GST</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>
-                <span className="sr-only">Review</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(data.q === q ? data.rows : []).map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className="font-medium">{row.number}</TableCell>
-                <TableCell className="whitespace-nowrap">{row.date ?? "—"}</TableCell>
-                <TableCell>
-                  <div>{row.vendor}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {row.gstin ?? "GSTIN not provided"}
-                  </div>
-                </TableCell>
-                <TableCell>{row.document_type}</TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {row.tax}
-                </TableCell>
-                <TableCell>
-                  <span>{row.status}</span>
-                  {row.reason && (
-                    <p className="mt-1 max-w-64 text-xs text-muted-foreground whitespace-normal">
-                      {row.reason}
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {row.review_url && (
-                    <Link
-                      to={row.review_url}
-                      className="text-sm underline underline-offset-4"
-                      aria-label={`Review ${row.number}`}
-                    >
-                      Review
-                    </Link>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <PurchaseRegisterTable
+          rows={data.q === q ? data.rows : emptyRegisterRows}
+          comparisonAvailable={data.overview.comparison_available}
+        />
         {data.q !== q && (
           <p role="status" className="p-10 text-center text-sm text-muted-foreground">
             Searching source entries…

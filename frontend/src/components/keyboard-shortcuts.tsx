@@ -59,7 +59,7 @@ export function KeyboardShortcuts({ children }: { children: ReactNode }) {
   const opener = useRef<HTMLElement | null>(null);
   const prefix = useRef(0);
   const gst = pathname.match(/^\/gst\/(\d+)\/(\d{4}-\d{2})\/(sales|purchases)(.*)$/);
-  const active = Boolean(gst) || pathname.startsWith("/clients");
+  const active = Boolean(gst) || pathname.startsWith("/clients") || pathname.startsWith("/notices");
   const canNavigate = Boolean(
     gst && /^(|\/register|\/checks|\/uploads|\/sections\/[a-z0-9]+)$/.test(gst[4]),
   );

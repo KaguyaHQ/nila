@@ -6,7 +6,12 @@ import "../../../assets/vendor/pdfjs/text_layer.css";
 
 // The existing renderer owns this subtree until unmount. Keying by source and
 // selected pages keeps React from reconciling the canvases it manages.
-export default function SourcePdf(props: { url: string; pages: number[]; images?: string[] }) {
+export default function SourcePdf(props: {
+  url: string;
+  pages: number[];
+  images?: string[];
+  label?: string;
+}) {
   return <PdfSurface key={`${props.url}:${props.pages.join(",")}`} {...props} />;
 }
 
@@ -14,10 +19,12 @@ function PdfSurface({
   url,
   pages,
   images = [],
+  label = "Invoice",
 }: {
   url: string;
   pages: number[];
   images?: string[];
+  label?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -80,12 +87,15 @@ function PdfSurface({
       <div
         data-pdf-surface
         tabIndex={0}
-        aria-label="Invoice PDF"
+        aria-label={`${label} PDF`}
         className="min-h-0 flex-1 space-y-4 overflow-auto bg-muted/30 p-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {(pages.length ? pages : [1]).map((page) => (
           <div key={page} data-pdf-page={page} className="relative mx-auto bg-white">
-            <canvas aria-label={`Original invoice PDF page ${page}`} className="block" />
+            <canvas
+              aria-label={`Original ${label.toLowerCase()} PDF page ${page}`}
+              className="block"
+            />
             <div data-pdf-text className="nila-pdf-text-layer" />
           </div>
         ))}
