@@ -8,9 +8,30 @@ defmodule NilaWeb.ClientContextController do
 
     case Clients.get_client(org_id, client_id) do
       {:ok, client} ->
+        {conn, remembered} = NilaWeb.WorkspaceNavigation.read(conn, conn.assigns.current_scope)
+        destination = safe_return_to(params["return_to"], client)
+
+        workspace =
+          (NilaWeb.WorkspaceNavigation.from_path(URI.parse(destination).path || "") || remembered ||
+             %{"period" => NilaWeb.GoTo.period(nil, nil), "section" => "sales"})
+          |> Map.put("clientId", client.id)
+
+        workspace =
+          case NilaWeb.WorkspaceNavigation.validate(conn.assigns.current_scope, workspace) do
+            {:ok, valid} ->
+              valid
+
+            _ ->
+              %{
+                "clientId" => client.id,
+                "period" => NilaWeb.GoTo.period(nil, nil),
+                "section" => "sales"
+              }
+          end
+
         conn
-        |> put_session(:current_client_id, client.id)
-        |> redirect(to: safe_return_to(params["return_to"], client))
+        |> NilaWeb.WorkspaceNavigation.put(conn.assigns.current_scope, workspace)
+        |> redirect(to: destination)
 
       {:error, :not_found} ->
         conn

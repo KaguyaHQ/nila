@@ -7436,6 +7436,57 @@
           }
         }
       }
+    },
+    "/api/workspace/navigation": {
+      "get": {
+        "operationId": "getWorkspaceNavigation",
+        "responses": {
+          "200": {
+            "description": "Validated remembered workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceNavigationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      },
+      "put": {
+        "operationId": "rememberWorkspaceNavigation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceNavigation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated remembered workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceNavigationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "422": {
+            "description": "Unavailable workspace"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12634,6 +12685,51 @@
           "source_basis",
           "books_id",
           "action"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceNavigation": {
+        "type": "object",
+        "properties": {
+          "clientId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "period": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}$"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "sales",
+              "purchases"
+            ]
+          }
+        },
+        "required": [
+          "clientId",
+          "period",
+          "section"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceNavigationResponse": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceNavigation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "workspace"
         ],
         "additionalProperties": false
       }

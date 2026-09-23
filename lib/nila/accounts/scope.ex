@@ -5,6 +5,7 @@ defmodule Nila.Accounts.Scope do
   defstruct user: nil,
             current_org: nil,
             current_client: nil,
+            workspace_navigation: nil,
             membership: nil,
             business_client: nil
 

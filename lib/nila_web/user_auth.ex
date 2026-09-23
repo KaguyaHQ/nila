@@ -16,11 +16,12 @@ defmodule NilaWeb.UserAuth do
   def log_in_user(conn, user, params \\ %{}) do
     user_return_to = get_session(conn, :user_return_to)
     scope = scope_for_user(user, get_session(conn, :current_client_id))
+    {conn, workspace_home} = NilaWeb.WorkspaceNavigation.home(conn, scope)
 
     destination =
       if scope && scope.business_client,
         do: "/app/business/invoices",
-        else: user_return_to || NilaWeb.GoTo.sales_home(scope && scope.current_client)
+        else: user_return_to || workspace_home
 
     conn
     |> create_user_session(user, params)
@@ -73,8 +74,22 @@ defmodule NilaWeb.UserAuth do
     {user_token, conn} = ensure_user_token(conn)
     user = user_token && Accounts.get_user_by_session_token(user_token)
 
+    scope = scope_for_user(user, get_session(conn, :current_client_id))
+    {conn, workspace} = NilaWeb.WorkspaceNavigation.read(conn, scope)
+
+    conn =
+      if workspace,
+        do:
+          conn
+          |> put_session(:current_client_id, workspace["clientId"])
+          |> put_session(:workspace_navigation, workspace),
+        else: delete_session(conn, :workspace_navigation)
+
+    scope = if workspace, do: scope_for_user(user, workspace["clientId"]), else: scope
+    scope = if scope, do: %{scope | workspace_navigation: workspace}, else: scope
+
     conn
-    |> assign(:current_scope, scope_for_user(user, get_session(conn, :current_client_id)))
+    |> assign(:current_scope, scope)
     |> assign(:current_user, user)
   end
 
@@ -277,7 +292,23 @@ defmodule NilaWeb.UserAuth do
       Phoenix.Component.assign_new(socket, :current_scope, fn ->
         with token when not is_nil(token) <- session["user_token"],
              user when not is_nil(user) <- Accounts.get_user_by_session_token(token) do
-          scope_for_user(user, session["current_client_id"])
+          scope = scope_for_user(user, session["current_client_id"])
+
+          case NilaWeb.WorkspaceNavigation.validate(scope, session["workspace_navigation"]) do
+            {:ok, workspace} -> %{scope | workspace_navigation: workspace}
+            _ -> scope
+          end
+        end
+      end)
+
+    socket =
+      Phoenix.Component.assign_new(socket, :workspace_navigation, fn ->
+        case NilaWeb.WorkspaceNavigation.validate(
+               socket.assigns.current_scope,
+               session["workspace_navigation"]
+             ) do
+          {:ok, workspace} -> workspace
+          _ -> nil
         end
       end)
 
@@ -376,8 +407,11 @@ defmodule NilaWeb.UserAuth do
   defp signed_in_path(%{assigns: %{current_scope: %{business_client: %{}}}}),
     do: "/app/business/invoices"
 
-  defp signed_in_path(%{assigns: %{current_scope: %{current_client: client}}}),
-    do: NilaWeb.GoTo.sales_home(client)
+  defp signed_in_path(%Plug.Conn{} = conn),
+    do: elem(NilaWeb.WorkspaceNavigation.home(conn, conn.assigns[:current_scope]), 1)
+
+  defp signed_in_path(%{assigns: %{workspace_navigation: %{} = workspace}}),
+    do: NilaWeb.WorkspaceNavigation.path(workspace)
 
   defp signed_in_path(_conn_or_socket), do: ~p"/app/clients"
 end

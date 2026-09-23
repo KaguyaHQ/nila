@@ -1,3 +1,4 @@
+import { mockNavigation } from "./fixtures/navigation";
 import { expect, test, type Page } from "@playwright/test";
 
 const clients = [
@@ -54,6 +55,7 @@ test("directory has no client navigation before selection or after access is rem
   await expect(page.getByRole("link", { name: "Sales & GSTR-1" })).toHaveCount(0);
 });
 async function setup(page: Page) {
+  await mockNavigation(page);
   await page.route("**/api/workspace/sales/*/*", (route) => {
     const parts = new URL(route.request().url()).pathname.split("/");
     const client = clients.find((item) => item.id === Number(parts[4]))!;
@@ -89,6 +91,14 @@ async function setup(page: Page) {
     route.fulfill({ json: { clients, user, can_edit: true, period: "2026-06" } }),
   );
 }
+
+test("first client selection respects the directory's explicit month", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/clients?period=2026-04");
+  await page.getByLabel("Select client", { exact: true }).click();
+  await page.getByRole("option", { name: /Orchard Trading/ }).click();
+  await expect(page).toHaveURL("/app/gst/3/2026-04/sales");
+});
 
 test("client switch searches GSTIN, preserves period and drops another client's search", async ({
   page,
@@ -137,4 +147,55 @@ test("sign out submits Phoenix method override and CSRF", async ({ page }) => {
   expect(sent.method()).toBe("POST");
   expect(new URLSearchParams(sent.postData()!).get("_method")).toBe("delete");
   expect(new URLSearchParams(sent.postData()!).get("_csrf_token")).toBe("csrf-proof");
+});
+
+test("workspace survives directory reload, full page return and new tabs", async ({
+  page,
+}, info) => {
+  await setup(page);
+  await page.goto("/app/gst/2/2026-06/sales");
+  await page.getByRole("complementary").getByRole("link", { name: "Clients", exact: true }).click();
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sales & GSTR-1", exact: true })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-06/sales",
+  );
+  await page.goto("/app/clients");
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("restored-client.png"), fullPage: true });
+  // Context route validates the persisted preference for an independently mounted tab.
+  const tab = await page.context().newPage();
+  await tab.route(/\/api\/workspace\/clients(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: { clients, user, can_edit: true, period: "2026-06" } }),
+  );
+  await tab.goto("/app/clients");
+  await expect(tab.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await tab.close();
+});
+
+test("explicit directory month wins over memory and client-specific tabs keep their URLs", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/app/gst/2/2026-06/sales");
+  await page.getByRole("complementary").getByRole("link", { name: "Clients", exact: true }).click();
+  await page.goto("/app/clients?period=2026-04");
+  await expect(page.getByLabel("Switch client: Harbour Services", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sales & GSTR-1", exact: true })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-04/sales",
+  );
+  await expect(page.getByRole("link", { name: "Harbour Services", exact: true })).toHaveAttribute(
+    "href",
+    "/app/gst/2/2026-04/sales",
+  );
+  await page.getByRole("link", { name: "Sales & GSTR-1", exact: true }).click();
+  await page.getByRole("button", { name: "Previous month" }).click();
+  await expect(page).toHaveURL("/app/gst/2/2026-03/sales");
+  await page.goBack();
+  await expect(page).toHaveURL("/app/gst/2/2026-04/sales");
+  await page.goForward();
+  await expect(page).toHaveURL("/app/gst/2/2026-03/sales");
 });

@@ -42,8 +42,9 @@ const pathFor = (period: string, suffix = "") =>
   `/clients${suffix}?period=${encodeURIComponent(period)}`;
 
 export function ClientsLayout() {
+  const selected = useClientContext();
   const [params] = useSearchParams();
-  const period = params.get("period");
+  const period = params.get("period") ?? selected?.period ?? null;
   const query = useQuery({
     queryKey: ["clients", period],
     queryFn: ({ signal }) => fetchClients(period, signal),

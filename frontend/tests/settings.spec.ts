@@ -1,3 +1,4 @@
+import { mockNavigation } from "./fixtures/navigation";
 import { expect, test, type Page } from "@playwright/test";
 import type { SettingsData } from "../src/lib/settings-api";
 
@@ -48,6 +49,7 @@ function fixture(manage = true): SettingsData {
   };
 }
 async function setup(page: Page, manage = true) {
+  await mockNavigation(page);
   const data = fixture(manage);
   await page.route("**/api/workspace/settings", (route) => route.fulfill({ json: data }));
   await page.addInitScript(() =>

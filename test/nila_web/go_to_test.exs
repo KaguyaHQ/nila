@@ -58,4 +58,14 @@ defmodule NilaWeb.GoToTest do
 
     assert GoTo.client_path(nil, "2026-07", 9) == "/gst/9/2026-07/sales"
   end
+
+  test "React and legacy purchase paths preserve client working month and section" do
+    assert GoTo.period("/app/gst/42/2026-04/purchases", nil) == "2026-04"
+
+    assert GoTo.client_path("/app/gst/42/2026-04/purchases", nil, 9) ==
+             "/app/gst/9/2026-04/purchases"
+
+    assert GoTo.client_path("/gst/42/2026-04/purchases/invoices/123", nil, 9) ==
+             "/app/gst/9/2026-04/purchases"
+  end
 end

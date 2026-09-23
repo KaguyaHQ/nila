@@ -23,8 +23,8 @@ defmodule NilaWeb.UserAuthTest do
     {:ok, client} =
       Clients.create_client(%{org_id: org.id, name: "React client", type: "company"})
 
-    period = Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
-    destination = ~p"/app/gst/#{client.id}/#{period}/sales"
+    assert client.id
+    destination = ~p"/app/clients"
 
     assert conn |> log_in_user(user) |> get(~p"/users/log_in") |> redirected_to() == destination
     assert build_conn() |> log_in_user(user) |> get(~p"/app") |> redirected_to() == destination

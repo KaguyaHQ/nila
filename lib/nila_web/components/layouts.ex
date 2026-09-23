@@ -374,6 +374,8 @@ defmodule NilaWeb.Layouts do
       %{id: client_id} ->
         period =
           sales_period || sales_nav_period(current_path) ||
+            (current_scope && current_scope.workspace_navigation &&
+               current_scope.workspace_navigation["period"]) ||
             Nila.Gst.Filing.Calendar.closeable_period(Date.utc_today())
 
         ~p"/app/gst/#{client_id}/#{period}/sales"

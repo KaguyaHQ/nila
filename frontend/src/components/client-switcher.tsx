@@ -37,7 +37,7 @@ export function ClientSwitcher({
   collapsed,
   workspacePath,
 }: {
-  client: Client;
+  client?: Client;
   clients: Client[];
   collapsed: boolean;
   workspacePath?: string;
@@ -45,7 +45,10 @@ export function ClientSwitcher({
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const activePath = pathname.startsWith("/gst/") ? pathname : (workspacePath ?? pathname);
-  const period = activePath.match(/\/gst\/\d+\/(\d{4}-\d{2})/)?.[1] ?? null;
+  const explicitPeriod = new URLSearchParams(search).get("period");
+  const period =
+    activePath.match(/\/gst\/\d+\/(\d{4}-\d{2})/)?.[1] ??
+    (explicitPeriod && /^\d{4}-(0[1-9]|1[0-2])$/.test(explicitPeriod) ? explicitPeriod : null);
   const [open, setOpen] = useState(false);
   const directory = useQuery({
     queryKey: ["clients", period],
@@ -55,7 +58,7 @@ export function ClientSwitcher({
     retry: false,
   });
   const choices: Client[] = directory.data?.clients ?? clients;
-  const selected = choices.find((item) => item.id === client.id) ?? client;
+  const selected = choices.find((item) => item.id === client?.id) ?? client ?? null;
   return (
     <Combobox
       open={open}
@@ -65,10 +68,16 @@ export function ClientSwitcher({
       itemToStringLabel={(item) => `${item.name} ${item.gstin ?? ""}`}
       isItemEqualToValue={(a, b) => a.id === b.id}
       onValueChange={(item) => {
-        if (item && (item.id !== client.id || !pathname.startsWith("/gst/"))) {
+        if (item && (item.id !== client?.id || !pathname.startsWith("/gst/"))) {
+          const targetPeriod = period ?? directory.data?.period;
+          if (!targetPeriod) return;
           setOpen(false);
           navigate(
-            clientDestination(activePath, pathname.startsWith("/gst/") ? search : "", item.id),
+            clientDestination(
+              activePath.startsWith("/gst/") ? activePath : `/gst/${item.id}/${targetPeriod}/sales`,
+              pathname.startsWith("/gst/") ? search : "",
+              item.id,
+            ),
           );
         }
       }}
@@ -80,10 +89,14 @@ export function ClientSwitcher({
             className={collapsed ? "w-full px-1" : "w-full justify-between"}
           />
         }
-        aria-label={`Switch client: ${client.name}`}
+        aria-label={client ? `Switch client: ${client.name}` : "Select client"}
       >
         <Building2 className="shrink-0" />
-        {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{client.name}</span>}
+        {!collapsed && (
+          <span className="min-w-0 flex-1 truncate text-left">
+            {client?.name ?? "Select client"}
+          </span>
+        )}
       </ComboboxTrigger>
       <ComboboxContent className="w-72">
         <ComboboxInput

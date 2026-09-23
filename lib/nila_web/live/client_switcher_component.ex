@@ -19,6 +19,25 @@ defmodule NilaWeb.ClientSwitcherComponent do
 
   @impl true
   def update(assigns, socket) do
+    remembered = assigns.current_scope.workspace_navigation
+
+    assigns =
+      if remembered do
+        assigns
+        |> Map.put(:sales_period, assigns[:sales_period] || remembered["period"])
+        |> Map.put(
+          :current_path,
+          if(
+            String.starts_with?(assigns[:current_path] || "", "/gst/") or
+              NilaWeb.WorkspaceNavigation.from_path(assigns[:current_path] || ""),
+            do: assigns.current_path,
+            else: NilaWeb.WorkspaceNavigation.path(remembered)
+          )
+        )
+      else
+        assigns
+      end
+
     {:ok,
      socket
      |> assign(assigns)
@@ -223,6 +242,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
                   >
                     {destination.heading}
                   </p>
+
                   <.selectable_option
                     id={"#{dom_id}-link"}
                     navigate={destination.path}
@@ -243,6 +263,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
                   </.selectable_option>
                 </div>
               </div>
+
               <p
                 :if={@palette? && @client_count > 0}
                 data-command-heading="Clients"
@@ -251,6 +272,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
               >
                 Clients
               </p>
+
               <p
                 :if={@palette? || @empty?}
                 hidden={not @empty?}
@@ -262,6 +284,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
                   do: "No matching pages, clients or periods.",
                   else: "No clients match this search."}
               </p>
+
               <div id="shell-client-switcher-clients" phx-update="stream">
                 <.selectable_option
                   :for={{dom_id, client} <- @streams.clients}
@@ -292,6 +315,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
                       NilaWeb.GoTo.period(@current_path, @sales_period)
                     )}
                   </span>
+
                   <:meta :if={client.id == @active_client.id}>Current</:meta>
                 </.selectable_option>
               </div>
@@ -299,6 +323,7 @@ defmodule NilaWeb.ClientSwitcherComponent do
           </div>
         </div>
       </.modal>
+
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ClientSwitcherShortcut">
         export default {
           mounted() {

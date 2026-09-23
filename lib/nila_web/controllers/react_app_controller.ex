@@ -1,8 +1,10 @@
 defmodule NilaWeb.ReactAppController do
   use NilaWeb, :controller
 
-  def home(conn, _params),
-    do: redirect(conn, to: NilaWeb.GoTo.sales_home(conn.assigns.current_scope.current_client))
+  def home(conn, _params) do
+    {conn, path} = NilaWeb.WorkspaceNavigation.home(conn, conn.assigns.current_scope)
+    redirect(conn, to: path)
+  end
 
   def index(conn, _params) do
     case app_html() do

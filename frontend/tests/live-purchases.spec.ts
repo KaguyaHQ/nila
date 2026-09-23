@@ -1,3 +1,4 @@
+import { mockNavigation } from "./fixtures/navigation";
 import { review } from "./fixtures/purchase-review";
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
@@ -150,6 +151,7 @@ function workspace(): PurchasesWorkspace {
 }
 
 async function setup(page: Page, data = workspace()) {
+  await mockNavigation(page);
   await page.route("**/api/workspace/purchases/1/2026-06/review?*", (route) => {
     const list = review();
     list.books_available = data.inputs.books.present;

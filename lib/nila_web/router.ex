@@ -9,6 +9,7 @@ defmodule NilaWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_scope_for_user
+    plug NilaWeb.WorkspaceNavigation, :remember_path
   end
 
   pipeline :redirect_if_authenticated do
@@ -53,6 +54,8 @@ defmodule NilaWeb.Router do
 
   scope "/api/workspace", NilaWeb do
     pipe_through :workspace_api
+    get "/navigation", WorkspaceNavigationController, :show
+    put "/navigation", WorkspaceNavigationController, :update
     get "/notices", NoticesWorkspaceController, :index
     get "/notices/:id", NoticesWorkspaceController, :show
     post "/notices/check", NoticesWorkspaceController, :check_all

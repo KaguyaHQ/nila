@@ -11,7 +11,7 @@ defmodule NilaWeb.GoTo do
     uri = URI.parse(path || "")
 
     candidate =
-      case Regex.run(~r"^/gst/\d+/(\d{4}-\d{2})(?:/|$)", uri.path || "") do
+      case Regex.run(~r"^(?:/app)?/gst/\d+/(\d{4}-\d{2})(?:/|$)", uri.path || "") do
         [_, value] -> value
         _ -> URI.decode_query(uri.query || "")["period"] || fallback
       end
@@ -29,6 +29,9 @@ defmodule NilaWeb.GoTo do
     uri = URI.parse(path || "")
 
     cond do
+      Regex.match?(~r"^(?:/app)?/gst/\d+/\d{4}-\d{2}/purchases(?:/|$)", uri.path || "") ->
+        "/app/gst/#{client_id}/#{current_period}/purchases"
+
       uri.path == "/gst/upload" ->
         "/gst/upload?" <>
           URI.encode_query(%{

@@ -134,12 +134,12 @@ export function Shell({
         </Button>
       </div>
       <div className="px-3 pt-3">
-        {live ? (
+        {live || (firm && clients) ? (
           <ClientSwitcher
-            client={live.client}
-            clients={live.clients}
+            client={live?.client}
+            clients={live?.clients ?? clients!}
             collapsed={collapsed}
-            workspacePath={firm && selected?.section === "purchases" ? live.purchases : live.base}
+            workspacePath={firm && selected?.section === "purchases" ? live?.purchases : live?.base}
           />
         ) : (
           <div
