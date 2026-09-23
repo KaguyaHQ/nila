@@ -112,21 +112,45 @@ References: [shadcn](https://ui.shadcn.com/docs/installation/vite),
 [React Router](https://reactrouter.com/start/declarative/installation),
 [Vite backend integration](https://vite.dev/guide/backend-integration).
 
-## Sales API contract
+## API contract
 
-`priv/openapi/sales-workspace.json` is the Phoenix-owned OpenAPI 3.1 contract for
-the sales workspace, invoice review/corrections, monthly checks, and PDF upload
-preparation, renewal, commit and history. It is explicitly maintained alongside the
-controllers, not inferred from Elixir maps. Purchases and clients are not migrated yet.
+`priv/openapi/workspace.json` is the Phoenix-owned OpenAPI 3.1 contract for all
+React JSON APIs: sales, uploads, clients/imports, purchases/ITC, GSTR-2B and
+Business/invitations. It also documents the file downloads used by React.
+The schema is explicitly maintained alongside controllers, not inferred from Elixir maps.
 
-After changing the contract, run `pnpm run api:generate` in `frontend/` and commit
-both the contract and `src/lib/generated/sales-workspace.ts`. Do not edit the generated
-file. `pnpm run check` and the production build reject stale generated types.
+After changing a request or response, update the contract and run `pnpm run api:generate`
+in `frontend/`. Commit both the schema and `src/lib/generated/workspace.ts`.
+Do not edit generated types or duplicate DTOs in React. `pnpm run check` and the
+production build reject stale generated types.
 
-The four sales controller test suites validate real success/error responses and
-accepted request bodies against this contract with JSV. Run the sales workspace,
-review, month-checks and upload controller tests after changing the contract.
-PDF bytes sent directly to storage and statutory/export downloads are not JSON
-workspace endpoints and retain their existing checks. Native fetch, session cookies,
-error handling and TanStack Query remain unchanged; generated types do not validate
-network responses at runtime.
+`test/support/api_contract.ex` validates real controller responses and accepted
+request bodies using JSV, including multipart client imports. Tests that deliberately
+send forbidden extra fields can skip request validation while still checking the response.
+`test/nila_web/api_contract_test.exs` fails if a React API route has no operation,
+if a documented route disappears, or if operation IDs collide. Run it and the
+workspace, review, checks, upload, Business and invitation controller suites after changes.
+
+Downloads are opaque artifacts with media types and error/redirect responses;
+OpenAPI does not describe each cell in a workbook or the statutory JSON format.
+PDF PUTs to presigned storage URLs are an external storage protocol, not Phoenix
+API routes. Native fetch, session/CSRF protection, cancellation, and TanStack Query
+remain in place. Generated TypeScript is a compile-time contract, not runtime
+validation of every browser response.
+
+## Biome
+
+Biome is pinned in devDependencies and configured in `biome.json` for frontend
+source, tests and configuration. It understands Tailwind directives and excludes
+generated API types. Phoenix/LiveView assets and build/test output are outside its scope.
+
+Run from `frontend/`:
+
+- `pnpm run lint`: report code issues without editing files.
+- `pnpm run format:check`: report formatting differences without editing files.
+- `pnpm run format`: apply formatting only; no lint fixes or import reordering.
+- `pnpm run quality`: check formatting, lint and import organization without editing files.
+
+The initial formatting and lint cleanup is deferred. These commands may report existing
+findings and are deliberately not part of `check`, `build`, or deployment yet.
+Keep formatting changes separate from feature changes; inspect lint fixes individually.

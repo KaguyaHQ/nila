@@ -20,4 +20,5 @@ LiveView frontend, not this separately built React entry point.
 - Keep fixture facts in `src/data/sales.ts`, temporary PDF selections in the existing
   upload provider, and all business truth in Phoenix.
 - Run `pnpm run build` and `pnpm test`; inspect rendered screens at desktop widths.
+- Keep Playwright artifacts under `frontend/test-results/`. Prefer one test invocation with multiple workers. For independent concurrent runs, give every run a distinct child directory using `--output=test-results/<run>`; do not run against the parent concurrently or create sibling output folders.
 - Vite assets ship inside the Phoenix release. Do not deploy or replace further LiveView routes outside the requested migration scope.

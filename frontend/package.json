@@ -14,7 +14,11 @@
     "preview": "vite preview --host 127.0.0.1 --port 5174 --strictPort",
     "test": "playwright test",
     "api:generate": "openapi-typescript ../priv/openapi/workspace.json -o src/lib/generated/workspace.ts",
-    "api:check": "openapi-typescript ../priv/openapi/workspace.json -o src/lib/generated/workspace.ts --check"
+    "api:check": "openapi-typescript ../priv/openapi/workspace.json -o src/lib/generated/workspace.ts --check",
+    "lint": "biome lint .",
+    "format:check": "biome format .",
+    "format": "biome format --write .",
+    "quality": "biome check ."
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -30,6 +34,7 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@playwright/test": "^1.58.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^20.19.0",
