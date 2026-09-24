@@ -2,6 +2,7 @@ import { getDocument, GlobalWorkerOptions, TextLayer } from "../../vendor/pdfjs/
 import workerSource from "../../vendor/pdfjs/worker_source";
 
 let workerUrl;
+const textContent = new WeakMap();
 
 export const PdfViewer = {
   mount() {
@@ -70,7 +71,29 @@ export const PdfViewer = {
     });
     this.observer.observe(this.surface);
     this.controls();
-    this.loading = getDocument({ url: this.el.dataset.url, isEvalSupported: false });
+    const url = this.el.dataset.url;
+    if (this.session?.current?.url !== url) {
+      this.session?.current?.destroy();
+      if (this.session) this.session.current = null;
+    }
+    this.loading = this.session?.current?.loading ?? getDocument({ url, isEvalSupported: false });
+    if (this.session && !this.session.current) {
+      const loading = this.loading;
+      this.session.current = {
+        url,
+        loading,
+        destroy: () => {
+          void loading.destroy();
+        },
+      };
+      // A failed load must be retryable when the invoice is opened again.
+      void loading.promise.catch(() => {
+        if (this.session.current?.loading === loading) {
+          this.session.current.destroy();
+          this.session.current = null;
+        }
+      });
+    }
     this.loading.promise
       .then((pdf) => {
         if (this.dead) return;
@@ -153,6 +176,16 @@ export const PdfViewer = {
   },
   async draw() {
     if (!this.pdfPages || this.failed || this.dead) return;
+    const width = this.surface.clientWidth;
+    if (
+      this.drawWidth === width &&
+      this.drawZoom === this.zoom &&
+      this.drawReadingWidth === this.readingWidth
+    )
+      return;
+    this.drawWidth = width;
+    this.drawZoom = this.zoom;
+    this.drawReadingWidth = this.readingWidth;
     this.renderComplete = false;
     const revision = ++this.revision;
     const anchor = this.index;
@@ -214,7 +247,12 @@ export const PdfViewer = {
         await task.promise;
         if (this.dead || revision !== this.revision) return;
         try {
-          const content = await page.getTextContent();
+          if (!textContent.has(page)) {
+            const pending = page.getTextContent();
+            textContent.set(page, pending);
+            void pending.catch(() => textContent.delete(page));
+          }
+          const content = await textContent.get(page);
           if (this.dead || revision !== this.revision) return;
           const layer = new TextLayer({ textContentSource: content, container: text, viewport });
           this.layers.push(layer);
@@ -262,6 +300,6 @@ export const PdfViewer = {
     this.surface.removeEventListener("pointerdown", this.onPointer);
     this.surface.removeEventListener("scroll", this.onScroll);
     this.cancelRendering();
-    this.loading?.destroy();
+    if (!this.session) void this.loading?.destroy();
   },
 };

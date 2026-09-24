@@ -1,4 +1,5 @@
 import { InvoiceQueue } from "@/components/invoice-queue";
+import type { PdfSession } from "@/components/source-pdf";
 import { navigationShortcutBlocked, ShortcutHelpButton } from "@/components/keyboard-shortcuts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,14 @@ export default function SalesInvoiceReview() {
   const params = useSearch({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const layout = useRef<Layout>({ source: 45, details: 55 });
   const pdfZoom = useRef(1);
+  const pdfSession = useRef<PdfSession | null>(null);
+  useEffect(
+    () => () => {
+      pdfSession.current?.destroy();
+      pdfSession.current = null;
+    },
+    [],
+  );
   const key = ["sales-review", clientId, period, invoiceId];
   const query = useQuery({
     queryKey: key,
@@ -158,6 +167,7 @@ export default function SalesInvoiceReview() {
       data={query.data}
       layout={layout}
       pdfZoom={pdfZoom}
+      pdfSession={pdfSession}
       refreshing={query.isFetching}
       refresh={() => query.refetch()}
     />
@@ -168,12 +178,14 @@ function InvoiceReview({
   data,
   layout,
   pdfZoom,
+  pdfSession,
   refreshing,
   refresh,
 }: {
   data: SalesInvoiceReviewData;
   layout: React.RefObject<Layout>;
   pdfZoom: React.RefObject<number>;
+  pdfSession: React.RefObject<PdfSession | null>;
   refreshing: boolean;
   refresh: () => unknown;
 }) {
@@ -460,6 +472,7 @@ function InvoiceReview({
                     pages={data.source.pages}
                     images={data.source.images}
                     zoom={pdfZoom}
+                    session={pdfSession}
                   />
                 </Suspense>
               ) : data.source?.images.length ? (

@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { PdfViewer } from "@/lib/pdf-viewer.js";
 import "../../vendor/pdfjs/text_layer.css";
 
+// Owned by the review route, so invoice remounts can reuse one open document.
+export type PdfSession = {
+  url: string;
+  loading: { promise: Promise<unknown>; destroy(): Promise<void> };
+  destroy(): void;
+};
+
 // The existing renderer owns this subtree until unmount. Keying by source and
 // selected pages keeps React from reconciling the canvases it manages.
 export default function SourcePdf(props: {
@@ -12,6 +19,7 @@ export default function SourcePdf(props: {
   images?: string[];
   label?: string;
   zoom?: React.RefObject<number>;
+  session?: React.RefObject<PdfSession | null>;
 }) {
   return <PdfSurface key={`${props.url}:${props.pages.join(",")}`} {...props} />;
 }
@@ -22,24 +30,26 @@ function PdfSurface({
   images = [],
   label = "Invoice",
   zoom,
+  session,
 }: {
   url: string;
   pages: number[];
   images?: string[];
   label?: string;
   zoom?: React.RefObject<number>;
+  session?: React.RefObject<PdfSession | null>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!root.current) return;
-    const renderer = Object.assign({ el: root.current, zoom: 1 }, PdfViewer);
+    const renderer = Object.assign({ el: root.current, zoom: 1, session }, PdfViewer);
     renderer.mount();
     if (zoom) renderer.zoom = zoom.current;
     return () => {
       if (zoom) zoom.current = renderer.zoom;
       renderer.destroy();
     };
-  }, [zoom]);
+  }, [zoom, session]);
 
   return (
     <div

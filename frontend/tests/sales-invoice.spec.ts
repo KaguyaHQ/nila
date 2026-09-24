@@ -518,15 +518,24 @@ test("checks use a keyboard disclosure and the editor saves with Control Enter",
   await page.screenshot({ path: testInfo.outputPath("review-controls.png"), fullPage: true });
 });
 
-function previewPdf(text = "Draft invoice") {
+function previewPdf(text = "Draft invoice", secondPage = false) {
   const stream = `BT /F1 18 Tf 48 760 Td (${text.replace(/[()\\]/g, " ")}) Tj ET`;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    secondPage
+      ? "<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>"
+      : "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
   ];
+  if (secondPage) {
+    const secondStream = "BT /F1 18 Tf 48 760 Td (Second invoice page) Tj ET";
+    objects.push(
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>",
+      `<< /Length ${secondStream.length} >>\nstream\n${secondStream}\nendstream`,
+    );
+  }
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -534,12 +543,48 @@ function previewPdf(text = "Draft invoice") {
     pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
   });
   const start = pdf.length;
-  pdf += `xref\n0 6\n0000000000 65535 f \n${offsets
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets
     .slice(1)
     .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
-    .join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
+    .join("")}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
   return Buffer.from(pdf);
 }
+
+test("invoices from one PDF reuse the document and show the selected page", async ({ page }) => {
+  let loads = 0;
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const data = invoice(id);
+    data.source = {
+      name: "packet.pdf",
+      url: "/review-fixture/packet.pdf",
+      pages: [id === "one" ? 1 : 2],
+      images: [],
+    };
+    return route.fulfill({ json: data });
+  });
+  await page.route("**/review-fixture/packet.pdf", (route) => {
+    loads++;
+    return route.fulfill({
+      contentType: "application/pdf",
+      body: previewPdf("First invoice page", true),
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  const source = page.getByRole("region", { name: "Source document" });
+  await expect(source.locator("[data-pdf-text]")).toHaveText("First invoice page");
+  await page.getByRole("button", { name: "Next invoice", exact: true }).click();
+  await expect(source.locator("[data-pdf-text]")).toHaveText("Second invoice page");
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(source.locator("[data-rendered-page]")).toHaveAttribute("data-rendered-page", "2");
+  await page.getByRole("button", { name: "Previous invoice", exact: true }).click();
+  await expect(source.locator("[data-pdf-text]")).toHaveText("First invoice page");
+  expect(loads).toBe(1);
+  await page.getByRole("link", { name: "Back to register" }).click();
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await expect(source.locator("[data-pdf-text]")).toHaveText("First invoice page");
+  expect(loads).toBe(2);
+});
 
 test("four-line review keeps totals visible and preserves split and zoom between invoices", async ({
   page,
