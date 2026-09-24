@@ -1,17 +1,6 @@
-import { AccountMenu } from "@/components/account-menu";
-import { ClientSwitcher } from "@/components/client-switcher";
-import { ShortcutHelpButton } from "@/components/keyboard-shortcuts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { WorkspaceCommand } from "@/components/workspace-command";
-import { clientName as sampleClientName } from "@/data/sales";
-import { urlDestination } from "@/lib/route-url";
-import { useClientContext } from "@/state/client-context";
 import { createLink, Link, Outlet, useLocation } from "@tanstack/react-router";
 import {
   Building2,
-  ChevronRight,
   Inbox,
   Landmark,
   PanelLeft,
@@ -19,7 +8,26 @@ import {
   ShoppingBag,
   Users,
 } from "lucide-react";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
+import { AccountMenu } from "@/components/account-menu";
+import { ClientSwitcher } from "@/components/client-switcher";
+import { ShortcutHelpButton } from "@/components/keyboard-shortcuts";
+import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { WorkspaceCommand } from "@/components/workspace-command";
+import { clientName as sampleClientName } from "@/data/sales";
+import { urlDestination } from "@/lib/route-url";
+import { useClientContext } from "@/state/client-context";
+
 const titles: Record<string, string> = {
   "/sales": "Sales & GSTR-1",
   "/sales/register": "Sales register",
@@ -264,46 +272,66 @@ export function Shell({
       </aside>
       <div className={collapsed ? "md:ml-16" : "md:ml-56"}>
         <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b bg-white/80 px-6 py-3 lg:px-10">
-          <nav
-            aria-label="Breadcrumb"
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <span>{firm?.org ?? clientName}</span>
-            <ChevronRight className="size-3" />
-            {notices ? (
-              <span className="text-foreground">Notices</span>
-            ) : settings ? (
-              <>
-                <Link to="/settings/$section" params={{ section: "profile" }}>
-                  Settings
-                </Link>
-                <ChevronRight className="size-3" />
-                <span className="text-foreground">{settings}</span>
-              </>
-            ) : firm ? (
-              <>
-                <Link {...urlDestination(clientsPath)} className="hover:text-foreground">
-                  Clients
-                </Link>
-                {title !== "Clients" && (
-                  <>
-                    <ChevronRight className="size-3" />
-                    <span className="text-foreground">{title}</span>
-                  </>
-                )}
-              </>
-            ) : pathname === sectionPath ? (
-              <span className="text-foreground">{title}</span>
-            ) : (
-              <>
-                <Link {...urlDestination(sectionPath)} className="hover:text-foreground">
-                  {sectionLabel}
-                </Link>
-                <ChevronRight className="size-3" />
-                <span className="text-foreground">{title}</span>
-              </>
-            )}
-          </nav>
+          <Breadcrumb aria-label="Breadcrumb">
+            <BreadcrumbList className="gap-2 text-xs [&>[data-slot=breadcrumb-separator]>svg]:size-3">
+              <BreadcrumbItem>{firm?.org ?? clientName}</BreadcrumbItem>
+              <BreadcrumbSeparator />
+              {notices ? (
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Notices</BreadcrumbPage>
+                </BreadcrumbItem>
+              ) : settings ? (
+                <>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink
+                      render={<Link to="/settings/$section" params={{ section: "profile" }} />}
+                    >
+                      Settings
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{settings}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </>
+              ) : firm ? (
+                <>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink
+                      render={<Link {...urlDestination(clientsPath)} />}
+                      aria-current={title === "Clients" ? "page" : undefined}
+                    >
+                      Clients
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  {title !== "Clients" && (
+                    <>
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        <BreadcrumbPage>{title}</BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </>
+                  )}
+                </>
+              ) : pathname === sectionPath ? (
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{title}</BreadcrumbPage>
+                </BreadcrumbItem>
+              ) : (
+                <>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink render={<Link {...urlDestination(sectionPath)} />}>
+                      {sectionLabel}
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{title}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </>
+              )}
+            </BreadcrumbList>
+          </Breadcrumb>
           {(live || firm) && (
             <div className="ml-auto flex items-center gap-1">
               <WorkspaceCommand live={live} period={period} />

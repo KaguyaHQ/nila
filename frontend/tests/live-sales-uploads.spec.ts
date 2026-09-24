@@ -111,7 +111,7 @@ test("failed PUT resumes remaining PDFs and uncertain commit retries the same to
   await expect(page.getByRole("alert")).toContainText("Couldn't upload second.pdf");
   await expect(
     page.getByRole("progressbar", { name: "Upload progress for first.pdf" }),
-  ).toHaveAttribute("value", "100");
+  ).toHaveAttribute("aria-valuenow", "100");
   await expect(page.getByRole("button", { name: "Add more", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Connection interrupted while saving");

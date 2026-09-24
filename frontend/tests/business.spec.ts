@@ -675,7 +675,9 @@ async function mockServices(page: Page) {
   });
 }
 
-test("saved services catalogue creates, edits and removes reusable defaults", async ({ page }) => {
+test("saved services catalogue creates, edits and removes reusable defaults", async ({
+  page,
+}, testInfo) => {
   await setup(page);
   await mockServices(page);
   await page.goto("/app/business/services");
@@ -696,6 +698,16 @@ test("saved services catalogue creates, edits and removes reusable defaults", as
   await dialog.getByRole("button", { name: "Save service", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("₹14,000.00", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Annual support", exact: true }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.mouse.click(10, 10);
+  await expect(confirmation).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("remove-service.png") });
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByRole("button", { name: "Delete Annual support", exact: true }),
+  ).toBeFocused();
   await page.getByRole("button", { name: "Delete Annual support", exact: true }).click();
   await page.getByRole("button", { name: "Remove service", exact: true }).click();
   await expect(page.getByText("Annual support", { exact: true })).toHaveCount(0);

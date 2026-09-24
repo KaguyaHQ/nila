@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -34,7 +35,7 @@ import {
   useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { ArrowLeft, Download, FileText, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, Download, FileText, Plus } from "lucide-react";
 import {
   createContext,
   lazy,
@@ -1172,7 +1173,7 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
             role="status"
             className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"
           >
-            <Loader2 className="size-4 animate-spin" />
+            <Spinner aria-hidden="true" />
             {issuedId ? "Opening issued PDF…" : "Updating preview…"}
           </div>
         )}

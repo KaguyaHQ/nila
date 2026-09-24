@@ -3,12 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -337,6 +340,8 @@ function Profile({ data }: { data: SettingsData }) {
 }
 
 function Security() {
+  const cancelSignout = useRef<HTMLButtonElement>(null);
+  const signoutTrigger = useRef<HTMLButtonElement>(null);
   const params = useSearch({ from: "/settings/$section" });
   const [open, setOpen] = useState(false);
   const signout = useSettingsSave((_: void, signal) =>
@@ -383,40 +388,47 @@ function Security() {
         />
       </Panel>
       <Panel title="Sessions" description="Sign out every browser and device, including this one.">
-        <Button variant="outline" className="w-fit" onClick={() => setOpen(true)}>
+        <Button
+          ref={signoutTrigger}
+          variant="outline"
+          className="w-fit"
+          onClick={() => setOpen(true)}
+        >
           Sign out everywhere
         </Button>
       </Panel>
-      <Dialog
+      <AlertDialog
         open={open}
         onOpenChange={(value) => {
           if (!signout.isPending) setOpen(value);
         }}
       >
-        <DialogContent showCloseButton={!signout.isPending}>
-          <DialogHeader>
-            <DialogTitle>Sign out everywhere?</DialogTitle>
-            <DialogDescription>You'll need to sign in again on this device too.</DialogDescription>
-          </DialogHeader>
+        <AlertDialogContent initialFocus={cancelSignout} finalFocus={signoutTrigger}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign out everywhere?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You'll need to sign in again on this device too.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {signout.isError && (
             <p role="alert" className="text-sm text-destructive">
               {signout.error.message}
             </p>
           )}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={signout.isPending} onClick={() => setOpen(false)}>
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={cancelSignout} disabled={signout.isPending}>
               Cancel
-            </Button>
-            <Button
+            </AlertDialogCancel>
+            <AlertDialogAction
               variant="destructive"
               disabled={signout.isPending}
               onClick={() => signout.submit()}
             >
               {signout.isPending ? "Signing out…" : "Sign out everywhere"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

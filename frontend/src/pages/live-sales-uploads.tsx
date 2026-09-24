@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { urlDestination } from "@/lib/route-url";
 import { ApiError } from "@/lib/sales-api";
 import {
@@ -372,11 +373,11 @@ function UploadForm() {
                           : ""}
                     </AttachmentDescription>
                     {progress[index] !== undefined && (
-                      <progress
+                      <Progress
                         aria-label={`Upload progress for ${file.name}`}
                         value={progress[index]}
                         max={100}
-                        className="mt-2 h-1.5 w-full accent-foreground"
+                        className="mt-2 w-full [&_[data-slot=progress-track]]:h-1.5"
                       />
                     )}
                   </AttachmentContent>

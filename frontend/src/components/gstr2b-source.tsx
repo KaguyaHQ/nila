@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, MoreHorizontal, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 import { GstOtpForm } from "@/components/gst-otp-form";
 
@@ -238,7 +239,7 @@ export function Gstr2bSource({ client, period }: { client: number; period: strin
         >
           {state?.fetching ? (
             <>
-              <RefreshCw className="animate-spin" />
+              <Spinner aria-hidden="true" />
               Fetching GSTR-2B…
             </>
           ) : preparing(state) ? (

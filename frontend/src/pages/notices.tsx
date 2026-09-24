@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -224,7 +225,7 @@ export default function NoticesPage() {
               }
               onClick={() => write.act({ type: "all" })}
             >
-              <RefreshCw className={data.checking ? "animate-spin" : ""} />
+              {data.checking ? <Spinner aria-hidden="true" /> : <RefreshCw />}
               {write.isPending
                 ? "Starting check…"
                 : data.checking

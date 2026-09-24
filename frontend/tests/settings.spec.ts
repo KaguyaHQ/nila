@@ -182,7 +182,7 @@ test("firm saves and member errors never pretend a role changed", async ({ page 
 
 test("password success reloads the renewed session and sign out needs confirmation", async ({
   page,
-}) => {
+}, testInfo) => {
   await setup(page);
   await page.route("**/api/workspace/settings/password", (route) =>
     route.fulfill({
@@ -209,12 +209,16 @@ test("password success reloads the renewed session and sign out needs confirmati
   );
   await page.getByRole("button", { name: "Sign out everywhere", exact: true }).click();
   expect(calls).toBe(0);
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.getByRole("alertdialog").getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.mouse.click(10, 10);
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("signout-confirmation.png") });
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("alertdialog")).toBeHidden();
   expect(calls).toBe(0);
   await page.getByRole("button", { name: "Sign out everywhere", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Sign out everywhere", exact: true })
     .click();
   await expect(page).toHaveURL(/\/users\/log_in$/);

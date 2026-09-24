@@ -1,4 +1,14 @@
-import { useState, type FormEvent } from "react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import { useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +30,8 @@ const blank = { description: "", sac: "", unit: "service", unit_price: "", gst_r
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
 export function ServicesPage({ services }: { services: BusinessService[] }) {
   const cache = useQueryClient();
+  const cancelRemove = useRef<HTMLButtonElement>(null);
+  const removeTrigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [form, setForm] = useState(blank);
@@ -140,7 +152,8 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Delete ${service.description}`}
-                      onClick={() => {
+                      onClick={(event) => {
+                        removeTrigger.current = event.currentTarget;
                         setRemoving(service);
                         setError(null);
                       }}
@@ -268,29 +281,31 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
           </form>
         </DialogContent>
       </Dialog>
-      <Dialog
+      <AlertDialog
         open={Boolean(removing)}
         onOpenChange={(next) => {
           if (!next && !busy) setRemoving(null);
         }}
       >
-        <DialogContent showCloseButton={!busy}>
-          <DialogTitle>Remove saved service?</DialogTitle>
-          <DialogDescription>
-            Existing quotations and invoices keep their copied service details.
-          </DialogDescription>
-          <p className="text-sm font-medium">{removing?.description}</p>
+        <AlertDialogContent initialFocus={cancelRemove} finalFocus={removeTrigger}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove saved service?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove “{removing?.description}” from saved services. Existing invoices and quotations
+              stay unchanged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           {errorView}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => setRemoving(null)}>
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={cancelRemove} disabled={busy}>
               Cancel
-            </Button>
-            <Button variant="destructive" disabled={busy} onClick={remove}>
+            </AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={busy} onClick={remove}>
               {busy ? "Removing…" : "Remove service"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { urlDestination } from "@/lib/route-url";
 import type { SalesExportItem, SalesWorkspace } from "@/lib/sales-api";
 import { Link } from "@tanstack/react-router";
-import { Download, FileJson, FileSpreadsheet, LoaderCircle } from "lucide-react";
+import { Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 function downloadName(disposition: string | null) {
@@ -112,10 +113,7 @@ function ExportList({ data }: { data: SalesWorkspace }) {
                   </span>
                 </span>
                 {busy === item.id ? (
-                  <LoaderCircle
-                    className="size-4 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <Download className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 )}
