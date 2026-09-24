@@ -1,3 +1,5 @@
+import { SalesRemovalActions } from "@/components/sales-removal-actions";
+import { MoveSalesUpload } from "@/components/move-sales-upload";
 import { InvoiceQueue } from "@/components/invoice-queue";
 import type { PdfSession } from "@/components/source-pdf";
 import { navigationShortcutBlocked, ShortcutHelpButton } from "@/components/keyboard-shortcuts";
@@ -520,16 +522,35 @@ function InvoiceReview({
                     {data.invoice.date || "Date not provided"}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Edit invoice details"
-                  disabled={!canEdit}
-                  aria-describedby={!data.can_edit ? "invoice-lock" : undefined}
-                  onClick={(event) => openEditor("facts", event.currentTarget)}
-                >
-                  <Pencil />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {data.upload_ref && (
+                    <SalesRemovalActions
+                      key={data.invoice.id}
+                      clientId={data.client.id}
+                      clientName={data.client.name}
+                      period={data.period}
+                      batchRef={data.upload_ref}
+                      activeIds={[data.invoice.id]}
+                      invoiceNumber={data.invoice.number || data.invoice.id}
+                      disabled={!canEdit}
+                      afterRemoveUrl={
+                        next
+                          ? `/gst/${clientId}/${period}/sales/invoices/${encodeURIComponent(next.id)}?filter=${filter}`
+                          : `/gst/${clientId}/${period}/sales/register`
+                      }
+                    />
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Edit invoice details"
+                    disabled={!canEdit}
+                    aria-describedby={!data.can_edit ? "invoice-lock" : undefined}
+                    onClick={(event) => openEditor("facts", event.currentTarget)}
+                  >
+                    <Pencil />
+                  </Button>
+                </div>
               </div>
               <div className="border-b pb-4">
                 <p className="text-sm font-semibold">
@@ -711,6 +732,16 @@ function InvoiceReview({
                             {issue.lookup_details}
                           </CollapsibleContent>
                         </Collapsible>
+                      )}
+                      {issue.code === "seller_identity_mismatch" && data.upload_ref && canEdit && (
+                        <div className="mt-3">
+                          <MoveSalesUpload
+                            clientId={data.client.id}
+                            clientName={data.client.name}
+                            period={data.period}
+                            batchRef={data.upload_ref}
+                          />
+                        </div>
                       )}
                       {issue.can_confirm && (
                         <Button

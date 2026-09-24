@@ -1154,6 +1154,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["previewUploadMove"];
+        put?: never;
+        post: operations["moveUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove or restore invoices without deleting originals */
+        post: operations["changeSalesUploadRemoval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1340,6 +1373,7 @@ export interface components {
                 line: string[];
                 totals: string[];
             };
+            upload_ref?: string | null;
         };
         ReviewChange: {
             /** @enum {string} */
@@ -1409,6 +1443,11 @@ export interface components {
                     invoice_count: number;
                     error: string | null;
                     original_url: string | null;
+                }[];
+                active_invoice_ids?: string[];
+                removed_invoices?: {
+                    id: string;
+                    number: string;
                 }[];
             }[];
             processing: boolean;
@@ -2239,6 +2278,37 @@ export interface components {
         };
         WorkspaceNavigationResponse: {
             workspace: components["schemas"]["WorkspaceNavigation"] | null;
+        };
+        UploadMovePreview: {
+            batch_ref: string;
+            period: string;
+            invoice_count: number;
+            files: string[];
+            seller: {
+                name: string;
+                gstin: string;
+            };
+            clients: {
+                id: number;
+                name: string;
+                gstin: string | null;
+            }[];
+            basis: string;
+        };
+        MoveUpload: {
+            destination_client_id: number;
+            basis: string;
+        };
+        MovedUpload: {
+            client_id: number;
+            period: string;
+            invoice_count: number;
+            review_url: string;
+        };
+        ChangeUploadRemoval: {
+            /** @enum {string} */
+            action: "remove" | "restore";
+            source_ids: string[];
         };
     };
     responses: never;
@@ -7934,6 +8004,275 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    previewUploadMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadMovePreview"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovedUpload"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changeSalesUploadRemoval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeUploadRemoval"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommittedUpload"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

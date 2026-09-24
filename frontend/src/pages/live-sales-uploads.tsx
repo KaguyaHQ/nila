@@ -1,3 +1,9 @@
+import { SalesRemovalActions } from "@/components/sales-removal-actions";
+
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+
+import { MoveSalesUpload } from "@/components/move-sales-upload";
+
 import {
   Attachment,
   AttachmentMedia,
@@ -428,6 +434,8 @@ function UploadForm() {
 export function LiveSalesUploads() {
   const data = useSales();
   function reviewLink(batch: UploadHistory["batches"][number]) {
+    if (batch.active_invoice_ids?.length === 0) return null;
+
     const invoice = data.rows.find((row) => row.path && batch.invoice_ids?.includes(row.id));
     const content = (
       <>
@@ -529,7 +537,27 @@ export function LiveSalesUploads() {
                         timeStyle: "short",
                       })}
                     </p>
-                    {reviewLink(batch)}
+                    <div className="flex items-center gap-3">
+                      {reviewLink(batch)}
+                      {data.can_upload && (
+                        <SalesRemovalActions
+                          clientId={data.client.id}
+                          clientName={data.client.name}
+                          period={data.period}
+                          batchRef={batch.id}
+                          activeIds={batch.active_invoice_ids ?? batch.invoice_ids ?? []}
+                          removedIds={batch.removed_invoices?.map((i) => i.id)}
+                        />
+                      )}
+                      {data.can_upload && (
+                        <MoveSalesUpload
+                          clientId={data.client.id}
+                          clientName={data.client.name}
+                          period={data.period}
+                          batchRef={batch.id}
+                        />
+                      )}
+                    </div>
                   </div>
                   <ul className="divide-y">
                     {batch.files.map((file) => (
@@ -570,6 +598,38 @@ export function LiveSalesUploads() {
                       </li>
                     ))}
                   </ul>
+                  {!!batch.removed_invoices?.length && (
+                    <Collapsible className="border-t px-5 py-3">
+                      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
+                        {batch.removed_invoices.length} removed{" "}
+                        {batch.removed_invoices.length === 1 ? "invoice" : "invoices"}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2">
+                        <ul className="space-y-2">
+                          {batch.removed_invoices.map((invoice) => (
+                            <li
+                              key={invoice.id}
+                              className="flex items-center justify-between text-sm"
+                            >
+                              <span>Invoice {invoice.number} · Removed from working</span>
+                              {data.can_upload && (
+                                <SalesRemovalActions
+                                  clientId={data.client.id}
+                                  clientName={data.client.name}
+                                  period={data.period}
+                                  batchRef={batch.id}
+                                  activeIds={[]}
+                                  removedIds={[invoice.id]}
+                                  invoiceNumber={invoice.number}
+                                  restoreOnly
+                                />
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
                 </section>
               ))}
             </div>

@@ -84,9 +84,19 @@ defmodule Nila.Gst.Sales.Uploads do
       |> Enum.map(fn group ->
         group = Enum.sort_by(group, & &1.id)
         first = hd(group)
+        invoices = Enum.flat_map(group, & &1.invoices)
+
+        {active, removed} =
+          Nila.Gst.Sales.Invoice.Removals.partition_removed(org_id, client_id, invoices)
 
         %{
           id: Batch.ref(group),
+          active_invoice_ids: Enum.map(active, &Invoice.source_id/1),
+          removed_invoices:
+            Enum.map(
+              removed,
+              &%{id: Invoice.source_id(&1), number: &1["invoice_number"] || Invoice.source_id(&1)}
+            ),
           created_at: first.inserted_at,
           files: Enum.map(group, &file_row(&1, client_id, period)),
           invoice_ids:
@@ -166,11 +176,11 @@ defmodule Nila.Gst.Sales.Uploads do
     end
   end
 
+  # The upload token remains idempotent after its batch moves to another client.
   defp find_batch(payload),
     do:
       Repo.fetch_by(Batch,
         org_id: payload.org_id,
-        client_id: payload.client_id,
         import_ref: payload.import_ref
       )
 

@@ -378,3 +378,88 @@ test("selection enforces 50 files and keeps upload controls visible above attach
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: info.outputPath("selected-pdfs.png") });
 });
+
+test("remove upload keeps originals and allows individual restore from history", async ({
+  page,
+}, info) => {
+  await setup(page);
+  let removed: string[] = [];
+  let fail = true;
+  const ids = ["one", "two"];
+  await page.route("**/api/workspace/sales/*/*/uploads", (route) =>
+    route.fulfill({
+      json: {
+        processing: false,
+        batches: [
+          {
+            id: "38",
+            created_at: "2026-06-15T10:00:00Z",
+            invoice_ids: ids,
+            active_invoice_ids: ids.filter((id) => !removed.includes(id)),
+            removed_invoices: removed.map((id) => ({
+              id,
+              number: id === "one" ? "INV-001" : "INV-002",
+            })),
+            review_url: "/gst/1/2026-06/sales/register",
+            files: [
+              {
+                id: 38,
+                name: "Sales.pdf",
+                state: "extracted",
+                label: "Read",
+                invoice_count: 2,
+                original_url: "/source/38",
+                error: null,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/uploads/38/removal", (route) => {
+    if (fail) {
+      fail = false;
+      return route.fulfill({
+        status: 409,
+        json: { error: "This month is filed. Nothing was removed." },
+      });
+    }
+    const body = route.request().postDataJSON();
+    removed =
+      body.action === "remove"
+        ? body.source_ids
+        : removed.filter((id) => !body.source_ids.includes(id));
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/uploads");
+  await page.getByRole("button", { name: "Upload actions" }).click();
+  await page.getByRole("menuitem", { name: "Remove upload…" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Remove 2 invoices?" });
+  await expect(dialog).toContainText("Remove from Breeze Tech’s June 2026 working");
+  await page.screenshot({
+    path: info.outputPath("remove-upload-confirmation.png"),
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Nothing was removed");
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "2 removed invoices" }).click();
+  await expect(page.getByRole("link", { name: /Open source PDF/ })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("removed-upload.png") });
+  await page.getByRole("button", { name: "Restore invoice INV-001" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Restore invoice INV-001?" })
+    .getByRole("button", { name: "Restore", exact: true })
+    .click();
+  await expect(page.getByRole("button", { name: "1 removed invoice" })).toBeVisible();
+  await page.getByRole("button", { name: "Upload actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Restore removed invoices…" })).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("upload-actions-menu.png"),
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  expect(removed).toEqual(["two"]);
+});

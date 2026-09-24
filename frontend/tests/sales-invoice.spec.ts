@@ -702,3 +702,165 @@ test("review trims repeated labels and keeps GST lookup evidence expandable", as
     animations: "disabled",
   });
 });
+
+test("seller mismatch can move the entire upload without rereading PDFs", async ({
+  page,
+}, info) => {
+  await setup(page);
+  const current = { ...invoice(), upload_ref: "38-39" };
+  current.issues = [
+    {
+      target: "one:seller_identity_mismatch",
+      code: "seller_identity_mismatch",
+      title: "Seller differs from client",
+      message: "These bills belong to Caltech.",
+      status: "open",
+      can_confirm: true,
+      action_label: "Checked against the bill",
+    },
+  ];
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: current }),
+  );
+  await page.route("**/api/workspace/sales/2/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: { ...invoice(), client: { id: 2, name: "Caltech" }, issues: [] } }),
+  );
+  let moves = 0;
+  let releaseMove!: () => void;
+  const pendingMove = new Promise<void>((resolve) => {
+    releaseMove = resolve;
+  });
+  await page.route("**/api/workspace/sales/1/2026-06/uploads/38-39/move", async (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({
+        json: {
+          batch_ref: "38-39",
+          period: "2026-06",
+          invoice_count: 5,
+          files: ["caltech.pdf", "caltech-2.pdf"],
+          seller: { name: "Caltech", gstin: "33BPPPK1081A1ZA" },
+          clients: [
+            { id: 2, name: "Caltech", gstin: "33BPPPK1081A1ZA" },
+            { id: 3, name: "Other client", gstin: "33AEWPH4158J1Z3" },
+          ],
+          basis: "preview-basis",
+        },
+      });
+    moves++;
+    expect(route.request().postDataJSON()).toEqual({
+      destination_client_id: 2,
+      basis: "preview-basis",
+    });
+    expect(route.request().headers()["x-csrf-token"]).toBe("review-csrf");
+    await pendingMove;
+    await route.fulfill({
+      json: {
+        client_id: 2,
+        period: "2026-06",
+        invoice_count: 5,
+        review_url: "/gst/2/2026-06/sales/invoices/one",
+      },
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await page.getByRole("button", { name: "Move upload…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Move upload to another client" });
+  await expect(dialog).toContainText("5 invoices · 2 PDFs");
+  const search = dialog.getByRole("combobox", { name: "Destination client" });
+  await search.fill("Other");
+  await page.getByRole("option", { name: /Other client/ }).click();
+  await expect(dialog.getByRole("button", { name: "Move upload", exact: true })).toBeDisabled();
+  await search.fill("Caltech");
+  await page.getByRole("option", { name: /Caltech/ }).click();
+  await expect(dialog).toContainText("Move 5 invoices from Breeze Tech to Caltech · June 2026.");
+  await expect(dialog.getByRole("link", { name: "Add client in a new tab" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await page.screenshot({ path: info.outputPath("move-upload.png") });
+  await dialog.getByRole("button", { name: "Move upload", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Moving…" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseMove();
+  await expect(page).toHaveURL("http://127.0.0.1:5174/app/gst/2/2026-06/sales/invoices/one");
+  await expect(page.getByRole("heading", { name: "Invoice INV-001" })).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Moved 5 invoices", { exact: true })).toBeVisible();
+  expect(moves).toBe(1);
+});
+
+test("unmovable uploads explain the reason without offering a save", async ({ page }) => {
+  await setup(page);
+  const current = { ...invoice(), upload_ref: "38" };
+  current.issues = [
+    {
+      target: "one:seller_identity_mismatch",
+      code: "seller_identity_mismatch",
+      title: "Seller differs from client",
+      message: "Check the seller.",
+      status: "open",
+      can_confirm: false,
+      action_label: null,
+    },
+  ];
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: current }),
+  );
+  await page.route("**/uploads/38/move", (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: "These bills have different sellers. The whole upload cannot be moved together.",
+      },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await page.getByRole("button", { name: "Move upload…", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("different sellers");
+  await expect(page.getByRole("button", { name: "Move upload", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Move upload…", exact: true })).toBeFocused();
+});
+
+test("remove invoice confirms scope, prevents repeat saves and opens the next invoice", async ({
+  page,
+}, info) => {
+  await setup(page);
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: { ...invoice(), upload_ref: "38" } }),
+  );
+  let saves = 0;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/uploads/38/removal", async (route) => {
+    saves++;
+    expect(route.request().postDataJSON()).toEqual({ action: "remove", source_ids: ["one"] });
+    await pending;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await page.getByRole("button", { name: "Invoice actions" }).click();
+  await page.getByRole("menuitem", { name: "Remove invoice…" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Remove invoice INV-001?" });
+  await expect(dialog).toContainText("Remove from Breeze Tech’s June 2026 working");
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.mouse.click(10, 500);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Invoice actions" })).toBeFocused();
+  await page.getByRole("button", { name: "Invoice actions" }).click();
+  await page.getByRole("menuitem", { name: "Remove invoice…" }).click();
+
+  await page.screenshot({ path: info.outputPath("remove-invoice.png"), animations: "disabled" });
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Saving…" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(page).toHaveURL(/invoices\/two/);
+  await expect(page.getByRole("heading", { name: "Invoice INV-002" })).toBeVisible();
+  expect(saves).toBe(1);
+});

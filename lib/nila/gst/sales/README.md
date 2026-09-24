@@ -30,6 +30,9 @@ step in Nila.
   owns what each correction changes.
 - `tally/` owns Tally preparation, register input, and posting edits. Tally ledger
   requirements must not become requirements for producing GST workings.
+- `upload_moves.ex` corrects a complete upload's client assignment, retaining source IDs,
+  PDFs and corrections. It rechecks seller identity and rebuilds both workings;
+  filed months, unfinished reads and mixed sellers cannot move.
 - `batch.ex`, `imports.ex`, `month.ex`, and `months.ex` own intake grouping and
   month persistence. `output_capabilities.ex` and `output_issues.ex` describe
   shared output support boundaries.

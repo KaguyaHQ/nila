@@ -6,6 +6,9 @@ defmodule NilaWeb.SalesUploadController do
 
   def index(conn, params), do: dispatch(conn, params, :index)
   def prepare(conn, params), do: dispatch(conn, params, :prepare)
+  def move_preview(conn, params), do: dispatch(conn, params, :move_preview)
+  def move(conn, params), do: dispatch(conn, params, :move)
+  def removal(conn, params), do: dispatch(conn, params, :removal)
   def create(conn, params), do: dispatch(conn, params, :create)
 
   defp dispatch(conn, %{"client_id" => id, "period" => period} = params, action) do
@@ -29,7 +32,7 @@ defmodule NilaWeb.SalesUploadController do
         error(conn, 400, "Choose a valid client and month.")
 
       {:error, :read_only} ->
-        error(conn, 403, "Your role can view sales bills, but cannot upload them.")
+        error(conn, 403, "Your role can view sales bills, but cannot change uploads.")
 
       {:error, :not_found} ->
         error(conn, 404, "This client is not available.")
@@ -47,8 +50,75 @@ defmodule NilaWeb.SalesUploadController do
           "A file is missing, incomplete, or is not a PDF. Upload the files again."
         )
 
+      {:error, reason}
+      when reason in [
+             :same_client,
+             :wrong_seller,
+             :stale,
+             :filed,
+             :mixed_sellers,
+             :processing,
+             :posted,
+             :other_month,
+             :evidence_unavailable
+           ] ->
+        error(conn, 409, move_error(reason))
+
       {:error, _} ->
         error(conn, 503, "Nila could not finish saving these files. Please try again.")
+    end
+  end
+
+  defp move_error(:same_client), do: "Choose a different client."
+
+  defp move_error(:wrong_seller),
+    do: "The destination client's GSTIN must match the seller on these bills."
+
+  defp move_error(:stale), do: "This upload changed. Close this dialog and review it again."
+
+  defp move_error(:filed),
+    do: "A source or destination month is filed. This upload cannot be changed."
+
+  defp move_error(:mixed_sellers),
+    do:
+      "These bills have different or unverified sellers. The whole upload cannot be moved together."
+
+  defp move_error(:processing),
+    do: "Wait until every file in this upload has finished processing before changing it."
+
+  defp move_error(:posted),
+    do: "This upload is linked to accounting posting and cannot be changed."
+
+  defp move_error(:other_month),
+    do: "These bills are also used in another working month. This upload cannot be changed."
+
+  defp move_error(:evidence_unavailable),
+    do: "The source images could not be preserved. Nothing was moved. Try again."
+
+  defp perform(:removal, scope, client_id, period, params),
+    do:
+      Nila.Gst.Sales.Invoice.Removals.change_upload(
+        scope,
+        client_id,
+        period,
+        params["batch_ref"],
+        params["action"],
+        params["source_ids"]
+      )
+
+  defp perform(:move_preview, scope, client_id, period, params),
+    do: Nila.Gst.Sales.UploadMoves.preview(scope, client_id, period, params["batch_ref"])
+
+  defp perform(:move, scope, client_id, period, params) do
+    with {:ok, destination_id} <- destination_id(params["destination_client_id"]) do
+      Nila.Gst.Sales.UploadMoves.move(
+        scope,
+        client_id,
+        period,
+        params["batch_ref"],
+        destination_id,
+        params["basis"]
+      )
     end
   end
 
@@ -63,6 +133,11 @@ defmodule NilaWeb.SalesUploadController do
 
   defp perform(:create, scope, client_id, period, params),
     do: Uploads.create(scope, client_id, period, params["token"])
+
+  defp destination_id(id) when is_integer(id) and id > 0 and id <= 9_223_372_036_854_775_807,
+    do: {:ok, id}
+
+  defp destination_id(_), do: {:error, :invalid}
 
   defp access(nil), do: {:error, :unauthenticated}
   defp access(%{user: %{confirmed_at: nil}}), do: {:error, :forbidden}

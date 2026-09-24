@@ -94,6 +94,8 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
          canonical_ref <- Batch.ref(dumps),
          {:ok, pristine} <- source_invoice(dumps, source_id),
          {:ok, months} <- SourceChanges.lock(org_id, client_id, source_id),
+         # A move may have finished while this edit waited for the month lock.
+         {:ok, _owned_dumps} <- fetch_sales_batch(org_id, client_id, batch_ref),
          current <- apply_sources(org_id, client_id, [pristine]) |> hd(),
          {:ok, corrections} <- normalize_changes(current, changes) do
       events =

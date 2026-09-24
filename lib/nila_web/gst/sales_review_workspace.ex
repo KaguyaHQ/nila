@@ -116,6 +116,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
           |> Map.merge(issue_copy(issue, invoice))
         end),
       source: evidence(context),
+      upload_ref: if(context.source, do: context.source.batch_ref),
       queue:
         Enum.map(context.review.all, fn item ->
           %{

@@ -99,3 +99,47 @@ export function uploadPdf(
     xhr.send(file);
   });
 }
+
+export type UploadMovePreview = components["schemas"]["UploadMovePreview"];
+export function previewUploadMove(
+  client: number,
+  period: string,
+  batchRef: string,
+  signal: AbortSignal,
+) {
+  return request<UploadMovePreview>(
+    `${uploadPath(client, period)}/${encodeURIComponent(batchRef)}/move`,
+    signal,
+  );
+}
+export function moveUpload(
+  client: number,
+  period: string,
+  batchRef: string,
+  destination: number,
+  basis: string,
+  signal: AbortSignal,
+) {
+  return request<components["schemas"]["MovedUpload"]>(
+    `${uploadPath(client, period)}/${encodeURIComponent(batchRef)}/move`,
+    signal,
+    {
+      destination_client_id: destination,
+      basis,
+    } satisfies components["schemas"]["MoveUpload"],
+  );
+}
+
+export function changeUploadRemoval(
+  client: number,
+  period: string,
+  batchRef: string,
+  body: components["schemas"]["ChangeUploadRemoval"],
+  signal: AbortSignal,
+) {
+  return request<CommittedUpload>(
+    `${uploadPath(client, period)}/${encodeURIComponent(batchRef)}/removal`,
+    signal,
+    body,
+  );
+}
