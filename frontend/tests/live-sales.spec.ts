@@ -324,9 +324,25 @@ test("failed requests can be retried and replace the error screen", async ({ pag
   );
   await page.goto("/app/gst/1/2026-06/sales");
   await expect(page.getByRole("alert")).toHaveText("Could not load sales.");
+  await expect(page.getByRole("link", { name: "Back to clients" })).toHaveAttribute(
+    "href",
+    "/app/clients",
+  );
   fails = false;
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("heading", { name: "June 2026" })).toBeVisible();
+});
+
+test("empty filtered register can clear filters even when no invoices need review", async ({
+  page,
+}) => {
+  await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: month() }));
+  await page.goto("/app/gst/1/2026-06/sales/register?filter=needs_review");
+  const empty = page.locator('[data-slot="empty"]');
+  await expect(empty).toContainText("No invoices match");
+  await empty.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByText("REAL-101", { exact: true })).toBeVisible();
+  await expect(empty).toHaveCount(0);
 });
 
 test("excluded sources stay visible without opening a different invoice", async ({ page }) => {

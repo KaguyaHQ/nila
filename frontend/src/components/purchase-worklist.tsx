@@ -1,5 +1,14 @@
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -204,14 +213,26 @@ export function PurchaseWorklist({
         </p>
       )}
       {query.isError ? (
-        <div role="alert">
-          {query.error.message}{" "}
+        <Alert variant="destructive">
+          <AlertDescription>{query.error.message}</AlertDescription>
           <Button variant="outline" onClick={() => query.refetch()}>
             Try again
           </Button>
-        </div>
+        </Alert>
       ) : query.isPending ? (
-        <p role="status">Loading purchase list…</p>
+        <div
+          role="status"
+          aria-label="Loading purchase list"
+          aria-busy="true"
+          className="rounded-lg border p-5"
+        >
+          <span className="sr-only">Loading purchase list…</span>
+          <div aria-hidden="true" className="space-y-6">
+            {Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden [&>[data-slot=table-container]]:max-h-[52vh]">
           <Table>
@@ -311,9 +332,35 @@ export function PurchaseWorklist({
                     colSpan={data?.books_available ? 6 : 5}
                     className="py-10 text-center text-muted-foreground"
                   >
-                    {data?.queue.length
-                      ? "No purchases match these filters."
-                      : "Fetch GSTR-2B to begin."}
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyTitle>
+                          {data?.queue.length
+                            ? "No purchases match these filters."
+                            : "No purchases to review"}
+                        </EmptyTitle>
+                        <EmptyDescription>
+                          {data?.queue.length
+                            ? "Try another supplier or clear the filters."
+                            : "Fetch GSTR-2B to begin."}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      {(search || filter !== "all") && (
+                        <EmptyContent>
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              setParams({
+                                search: { ...params, q: undefined, work: undefined },
+                                resetScroll: false,
+                              })
+                            }
+                          >
+                            Clear filters
+                          </Button>
+                        </EmptyContent>
+                      )}
+                    </Empty>
                   </TableCell>
                 </TableRow>
               )}

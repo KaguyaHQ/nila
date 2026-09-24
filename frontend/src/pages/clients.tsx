@@ -1,3 +1,12 @@
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import { ListSkeleton } from "@/components/list-skeleton";
+import { WorkspaceError } from "@/components/workspace-error";
 import { BusinessInvitation } from "@/components/business-invitation";
 import { ClientGstConnection } from "@/components/client-gst-connection";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
@@ -53,26 +62,20 @@ export function ClientsLayout() {
   if (query.isPending)
     return (
       <main className="mx-auto max-w-7xl px-10 py-16">
-        <p role="status" className="text-muted-foreground">
-          Loading clients…
-        </p>
+        <ListSkeleton label="Loading clients…" />
       </main>
     );
   if (query.isError)
     return (
-      <main className="mx-auto max-w-xl px-6 py-24">
-        <h1 className="text-2xl font-semibold">Clients unavailable</h1>
-        <p role="alert" className="my-4 text-muted-foreground">
-          {query.error.message}
-        </p>
-        {query.error instanceof ApiError && query.error.status === 401 ? (
-          <a href="/users/log_in" className="underline">
-            Sign in
-          </a>
-        ) : (
-          <Button onClick={() => query.refetch()}>Try again</Button>
-        )}
-      </main>
+      <WorkspaceError
+        title="Clients unavailable"
+        message={query.error.message}
+        needsSignIn={query.error instanceof ApiError && query.error.status === 401}
+        retry={() => {
+          void query.refetch();
+        }}
+        backToClients={false}
+      />
     );
   return (
     <Directory.Provider value={query.data}>
@@ -214,24 +217,41 @@ export function ClientsPage() {
             {visible.length === 0 && (
               <TableRow>
                 <TableCell colSpan={3} className="py-14 text-center">
-                  <p className="font-medium">
-                    {data.clients.length ? "No clients match" : "No clients yet"}
-                  </p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {data.clients.length
-                      ? "Try another name or GSTIN."
-                      : "Add a client to start their sales working."}
-                  </p>
-                  {query && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-4"
-                      onClick={() => setSearch("")}
-                    >
-                      Clear search
-                    </Button>
-                  )}
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>
+                        {data.clients.length ? "No clients match" : "No clients yet"}
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        {data.clients.length
+                          ? "Try another name or GSTIN."
+                          : data.can_edit
+                            ? "Add a client to start their sales working."
+                            : "Ask your firm owner to add a client."}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      {query && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-4"
+                          onClick={() => setSearch("")}
+                        >
+                          Clear search
+                        </Button>
+                      )}
+                      {!data.clients.length && !query && data.can_edit && (
+                        <Button
+                          nativeButton={false}
+                          role="link"
+                          render={<Link to="/clients/new" search={{ period: data.period }} />}
+                        >
+                          <Plus /> Add client
+                        </Button>
+                      )}
+                    </EmptyContent>
+                  </Empty>
                 </TableCell>
               </TableRow>
             )}

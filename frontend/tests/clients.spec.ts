@@ -19,6 +19,35 @@ function directory(period = "2026-06", canEdit = true): ClientsDirectory {
   };
 }
 const rootApi = /\/api\/workspace\/clients(?:\?.*)?$/;
+
+test("empty directory offers an allowed next step and keeps loading accessible", async ({
+  page,
+}, info) => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const data = { ...directory(), clients: [] };
+  await page.route(rootApi, async (route) => {
+    await pending;
+    await route.fulfill({ json: data });
+  });
+  await page.goto("/app/clients");
+  await expect(page.getByRole("status", { name: "Loading clients…" })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("clients-loading.png") });
+  release();
+  const empty = page.locator('[data-slot="empty"]');
+  await expect(empty).toContainText("No clients yet");
+  await expect(empty.getByRole("link", { name: "Add client" })).toHaveAttribute(
+    "href",
+    "/app/clients/new?period=2026-06",
+  );
+  await page.screenshot({ path: info.outputPath("clients-empty.png") });
+  data.can_edit = false;
+  await page.reload();
+  await expect(empty).toContainText("Ask your firm owner to add a client.");
+  await expect(empty.getByRole("link", { name: "Add client" })).toHaveCount(0);
+});
 async function setup(page: Page, canEdit = true) {
   await page.route(rootApi, (route) =>
     route.fulfill({

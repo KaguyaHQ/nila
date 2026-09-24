@@ -1,3 +1,11 @@
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import { WorkspaceError } from "@/components/workspace-error";
 import { MonthPicker } from "@/components/month-picker";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { SalesExports } from "@/components/sales-exports";
@@ -63,22 +71,15 @@ export function LiveSalesLayout() {
   // Never leave another client's cached figures on screen after authorization fails.
   if (query.isError)
     return (
-      <main className="mx-auto max-w-xl px-6 py-24">
-        <h1 className="text-2xl font-semibold">Sales unavailable</h1>
-        <p role="alert" className="my-4 text-muted-foreground">
-          {query.error.message}
-        </p>
-        {query.error instanceof ApiError && query.error.status === 401 ? (
-          <a href="/users/log_in" className="underline">
-            Sign in
-          </a>
-        ) : (
-          <Button onClick={() => query.refetch()}>Try again</Button>
-        )}
-        <a href="/clients" className="ml-5 text-sm underline">
-          Back to clients
-        </a>
-      </main>
+      <WorkspaceError
+        title="Sales unavailable"
+        message={query.error.message}
+        needsSignIn={query.error instanceof ApiError && query.error.status === 401}
+        retry={() => {
+          void query.refetch();
+        }}
+        backToClients={true}
+      />
     );
 
   const loading = query.isPlaceholderData;
@@ -590,23 +591,38 @@ export function LiveSalesRegister() {
             {visible.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="py-14 text-center">
-                  <p className="font-medium">
-                    {data.rows.length ? "No invoices match" : "No sales invoices yet"}
-                  </p>
-                  <p className="mt-2 text-muted-foreground">
-                    {data.rows.length
-                      ? "Try another search or clear the filters."
-                      : "Add sales bills to build this month's register."}
-                  </p>
-                  {data.review_count > 0 && (
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => setParams({ search: {}, resetScroll: false })}
-                    >
-                      Clear filters
-                    </Button>
-                  )}
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyTitle>
+                        {data.rows.length ? "No invoices match" : "No sales invoices yet"}
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        {data.rows.length
+                          ? "Try another search or clear the filters."
+                          : "Add sales bills to build this month's register."}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      {(search || filter !== "all") && (
+                        <Button
+                          variant="outline"
+                          className="mt-4"
+                          onClick={() => setParams({ search: {}, resetScroll: false })}
+                        >
+                          Clear filters
+                        </Button>
+                      )}
+                      {!data.rows.length && !search && filter === "all" && data.can_upload && (
+                        <Button
+                          nativeButton={false}
+                          role="link"
+                          render={<Link {...urlDestination(data.links.upload)} />}
+                        >
+                          Add invoices
+                        </Button>
+                      )}
+                    </EmptyContent>
+                  </Empty>
                 </TableCell>
               </TableRow>
             )}

@@ -1,3 +1,4 @@
+import { WorkspaceError } from "@/components/workspace-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -200,15 +201,15 @@ export default function SettingsPage() {
     );
   if (query.isError)
     return (
-      <main className="mx-auto max-w-xl space-y-5 p-12">
-        <h1 className="text-2xl font-semibold">Settings unavailable</h1>
-        <p role="alert">{query.error.message}</p>
-        {query.error instanceof SettingsError && query.error.status === 401 ? (
-          <a href="/users/log_in">Sign in</a>
-        ) : (
-          <Button onClick={() => query.refetch()}>Try again</Button>
-        )}
-      </main>
+      <WorkspaceError
+        title="Settings unavailable"
+        message={query.error.message}
+        needsSignIn={query.error instanceof SettingsError && query.error.status === 401}
+        retry={() => {
+          void query.refetch();
+        }}
+        backToClients={false}
+      />
     );
   const data = query.data;
   const available = sections.filter((item) =>

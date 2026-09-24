@@ -1,3 +1,5 @@
+import { ListSkeleton } from "@/components/list-skeleton";
+import { WorkspaceError } from "@/components/workspace-error";
 import { Gstr2bSource } from "@/components/gstr2b-source";
 import { MonthPicker } from "@/components/month-picker";
 import { PurchaseRegisterTable } from "@/components/purchase-register-table";
@@ -45,28 +47,21 @@ export function LivePurchasesLayout() {
   });
   if (query.isPending)
     return (
-      <main className="px-6 py-16" aria-busy="true">
-        <p role="status">Loading purchases…</p>
+      <main className="mx-auto max-w-7xl px-10 py-16">
+        <ListSkeleton label="Loading purchases…" />
       </main>
     );
   if (query.isError)
     return (
-      <main className="mx-auto max-w-xl px-6 py-24">
-        <h1 className="text-2xl font-semibold">Purchases unavailable</h1>
-        <p role="alert" className="my-4 text-muted-foreground">
-          {query.error.message}
-        </p>
-        {query.error instanceof ApiError && query.error.status === 401 ? (
-          <a href="/users/log_in" className="underline">
-            Sign in
-          </a>
-        ) : (
-          <Button onClick={() => query.refetch()}>Try again</Button>
-        )}
-        <Link to="/clients" className="ml-5 text-sm underline">
-          Back to clients
-        </Link>
-      </main>
+      <WorkspaceError
+        title="Purchases unavailable"
+        message={query.error.message}
+        needsSignIn={query.error instanceof ApiError && query.error.status === 401}
+        retry={() => {
+          void query.refetch();
+        }}
+        backToClients={true}
+      />
     );
   const data = query.data;
   return (
