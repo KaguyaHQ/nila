@@ -188,6 +188,44 @@ test("section uses projected values and source links; HSN contributors expand wi
   ).toBe(true);
 });
 
+test("section invoice rows open review while grouped totals stay put", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ status: 404, json: { error: "Fixture review destination" } }),
+  );
+  await page.goto("/app/gst/1/2026-06/sales/sections/b2b");
+  const row = page.getByRole("row").filter({ hasText: "INV-001" });
+  await expect(row).toHaveCSS("cursor", "pointer");
+  await row.hover();
+  await page.screenshot({ path: testInfo.outputPath("b2b-clickable-row.png") });
+  const amount = row.getByRole("cell", { name: "₹7,12,393.00", exact: true });
+  await amount.evaluate((cell) => {
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  });
+  await amount.dispatchEvent("click");
+  await expect(page).toHaveURL(/\/sections\/b2b$/);
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await amount.click();
+  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+  await page.goBack();
+  const link = page.getByRole("link", { name: "Review source invoice INV-001" });
+  await link.focus();
+  await expect(link).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+  await page.goto("/app/gst/1/2026-06/sales/sections/hsn");
+  await page.getByRole("cell", { name: "₹7,12,393.00", exact: true }).click();
+  await expect(page).toHaveURL(/\/sections\/hsn$/);
+  await page.getByRole("button", { name: "Show contributing invoices for 998719" }).click();
+  await page.getByRole("cell", { name: "₹1,23,456.78", exact: true }).click();
+  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+});
+
 test("both downloads keep the page open and use the server's filenames", async ({ page }) => {
   await setup(page, (data) => {
     data.exports!.items[1].enabled = true;

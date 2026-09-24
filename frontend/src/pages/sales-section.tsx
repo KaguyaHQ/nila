@@ -1,4 +1,5 @@
 import { SalesExports } from "@/components/sales-exports";
+import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -35,9 +36,11 @@ function SectionRow({
   const [expanded, setExpanded] = useState(false);
   const children = row.children ?? [];
   const title = row.cells[columns[0]?.key] || row.id;
+  const Row = row.invoice_path && children.length === 0 ? RecordTableRow : TableRow;
+  const SourceLink = children.length === 0 ? RecordTableLink : Link;
   return (
     <>
-      <TableRow className={depth ? "bg-muted/20" : undefined}>
+      <Row className={depth ? "bg-muted/20" : undefined}>
         {columns.map((column, index) => (
           <TableCell
             key={column.key}
@@ -64,17 +67,17 @@ function SectionRow({
         {showSources && (
           <TableCell className="pr-4 text-right">
             {row.invoice_path && (
-              <Link
+              <SourceLink
                 {...urlDestination(row.invoice_path)}
                 className="inline-flex items-center gap-1 whitespace-nowrap text-sm underline-offset-4 hover:underline"
                 aria-label={`Review source invoice ${title}`}
               >
                 Review <ArrowUpRight className="size-3.5" />
-              </Link>
+              </SourceLink>
             )}
           </TableCell>
         )}
-      </TableRow>
+      </Row>
       {expanded &&
         children.map((child) => (
           <SectionRow
