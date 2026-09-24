@@ -1,3 +1,4 @@
+import { SalesUploadResult } from "@/pages/sales-upload-result";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import { Shell } from "@/components/workspace-shell";
@@ -264,6 +265,11 @@ const salesUploads = createRoute({
   path: "sales/uploads",
   component: LiveSalesUploads,
 });
+const salesUploadResult = createRoute({
+  getParentRoute: () => sales,
+  path: "sales/uploads/$batchRef",
+  component: SalesUploadResult,
+});
 const preview = createRoute({ getParentRoute: () => root, id: "preview", component: Shell });
 const previewIndex = createRoute({
   getParentRoute: () => preview,
@@ -320,6 +326,7 @@ const routeTree = root.addChildren([
     salesSection,
     salesUpload,
     salesUploads,
+    salesUploadResult,
   ]),
   ...(import.meta.env.DEV
     ? [

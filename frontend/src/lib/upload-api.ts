@@ -49,7 +49,7 @@ export function prepareUpload(client: number, period: string, files: File[], sig
 }
 
 export function commitUpload(client: number, period: string, token: string, signal: AbortSignal) {
-  return request<CommittedUpload>(uploadPath(client, period), signal, {
+  return request<components["schemas"]["UploadedSalesBatch"]>(uploadPath(client, period), signal, {
     token,
   } satisfies UploadToken);
 }
@@ -141,5 +141,28 @@ export function changeUploadRemoval(
     `${uploadPath(client, period)}/${encodeURIComponent(batchRef)}/removal`,
     signal,
     body,
+  );
+}
+
+export type UploadResult = components["schemas"]["UploadResult"];
+export function fetchUploadResult(
+  client: number,
+  period: string,
+  ref: string,
+  signal: AbortSignal,
+) {
+  return request<UploadResult>(`${uploadPath(client, period)}/${encodeURIComponent(ref)}`, signal);
+}
+export function retryUploadRead(
+  client: number,
+  period: string,
+  ref: string,
+  dumpId: number,
+  signal: AbortSignal,
+) {
+  return request<CommittedUpload>(
+    `${uploadPath(client, period)}/${encodeURIComponent(ref)}/retry`,
+    signal,
+    { dump_id: dumpId },
   );
 }

@@ -1187,6 +1187,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSalesUploadResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retrySalesUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1471,6 +1503,7 @@ export interface components {
         CommittedUpload: {
             /** @constant */
             ok: true;
+            batch_ref?: string;
         };
         ClientIdentity: {
             id: number;
@@ -2310,6 +2343,33 @@ export interface components {
             action: "remove" | "restore";
             source_ids: string[];
         };
+        UploadResult: {
+            id: string;
+            processing: boolean;
+            files: {
+                id: number;
+                name: string;
+                state: string;
+                completed: number;
+                total: number | null;
+                reviewable: number;
+                original_url: string | null;
+                message: string;
+                rows: {
+                    id: string;
+                    number: string | null;
+                    buyer: string | null;
+                    state: string;
+                    pages: number[];
+                    review_url: string | null;
+                }[];
+            }[];
+        };
+        UploadedSalesBatch: {
+            /** @constant */
+            ok: true;
+            batch_ref: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -2885,7 +2945,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommittedUpload"];
+                    "application/json": components["schemas"]["UploadedSalesBatch"];
                 };
             };
             /** @description Request could not be completed */
@@ -8199,6 +8259,177 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChangeUploadRemoval"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommittedUpload"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSalesUploadResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadResult"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    retrySalesUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dump_id: number;
+                };
             };
         };
         responses: {

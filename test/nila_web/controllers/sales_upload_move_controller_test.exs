@@ -153,7 +153,8 @@ defmodule NilaWeb.SalesUploadMoveControllerTest do
 
     assert c.conn
            |> post("/api/workspace/sales/#{c.source.id}/2025-10/uploads", %{token: token})
-           |> contract_response(200) == %{"ok" => true}
+           |> contract_response(200)
+           |> Map.fetch!("ok") == true
 
     # Retry cannot duplicate a transfer or reassign another batch.
     assert c.conn

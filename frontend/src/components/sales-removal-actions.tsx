@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
+import { MoveSalesUpload } from "@/components/move-sales-upload";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -36,6 +37,7 @@ export function SalesRemovalActions({
   afterRemoveUrl,
   restoreOnly = false,
   disabled = false,
+  allowMove = false,
 }: {
   clientId: number;
   clientName: string;
@@ -47,7 +49,9 @@ export function SalesRemovalActions({
   afterRemoveUrl?: string;
   restoreOnly?: boolean;
   disabled?: boolean;
+  allowMove?: boolean;
 }) {
+  const [moveOpen, setMoveOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const request = useRef<AbortController | null>(null);
   const cancel = useRef<HTMLButtonElement | null>(null);
@@ -57,9 +61,14 @@ export function SalesRemovalActions({
   const navigate = useNavigate();
   useEffect(() => () => request.current?.abort(), []);
   const affected = (query: { queryKey: readonly unknown[] }) =>
-    ["sales", "sales-review", "sales-invoice", "sales-uploads", "upload-move"].includes(
-      String(query.queryKey[0]),
-    );
+    [
+      "sales",
+      "sales-review",
+      "sales-invoice",
+      "sales-uploads",
+      "sales-upload-result",
+      "upload-move",
+    ].includes(String(query.queryKey[0]));
   const mutation = useMutation({
     mutationFn: (body: Selection) => {
       request.current = new AbortController();
@@ -121,7 +130,10 @@ export function SalesRemovalActions({
           >
             <MoreHorizontal />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuContent align="end" className="w-max max-w-[calc(100vw-2rem)]">
+            {allowMove && (
+              <DropdownMenuItem onClick={() => setMoveOpen(true)}>Move upload…</DropdownMenuItem>
+            )}
             <DropdownMenuItem
               variant="destructive"
               disabled={!activeIds.length}
@@ -136,6 +148,17 @@ export function SalesRemovalActions({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+      )}
+      {allowMove && (
+        <MoveSalesUpload
+          clientId={clientId}
+          clientName={clientName}
+          period={period}
+          batchRef={batchRef}
+          open={moveOpen}
+          onOpenChange={setMoveOpen}
+          finalFocus={trigger}
+        />
       )}
       <AlertDialog
         open={selection !== null}

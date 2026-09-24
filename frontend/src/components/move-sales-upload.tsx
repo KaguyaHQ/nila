@@ -31,13 +31,21 @@ export function MoveSalesUpload({
   clientName,
   period,
   batchRef,
+  open: controlledOpen,
+  onOpenChange,
+  finalFocus,
 }: {
   clientId: number;
   clientName: string;
   period: string;
   batchRef: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  finalFocus?: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [selected, setSelected] = useState<Client | null>(null);
   const guard = useRef(false);
   const request = useRef<AbortController | null>(null);
@@ -68,6 +76,7 @@ export function MoveSalesUpload({
             "sales-review",
             "sales-invoice",
             "sales-uploads",
+            "sales-upload-result",
             "upload-move",
             "clients",
           ].includes(String(query.queryKey[0])),
@@ -89,15 +98,15 @@ export function MoveSalesUpload({
   function changeOpen(value: boolean) {
     if (guard.current) return;
     setOpen(value);
-    if (value) {
-      setSelected(null);
-      mutation.reset();
-    }
+    setSelected(null);
+    mutation.reset();
   }
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>Move upload…</DialogTrigger>
-      <DialogContent showCloseButton={!mutation.isPending}>
+      {controlledOpen === undefined && (
+        <DialogTrigger render={<Button variant="outline" size="sm" />}>Move upload…</DialogTrigger>
+      )}
+      <DialogContent showCloseButton={!mutation.isPending} finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>Move upload to another client</DialogTitle>
           <DialogDescription>

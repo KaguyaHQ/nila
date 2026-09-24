@@ -97,7 +97,7 @@ test("empty month retains section rows without asserting no entries or showing e
   await expect(page.getByRole("row")).toHaveCount(12);
   await expect(page.getByText("No entries", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Exports", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Add invoices", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add invoices", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("empty-sales-month.png"), fullPage: true });
   data.invoice_count = 1;
   data.rows = month().rows;
@@ -303,7 +303,7 @@ test("month changes retain the shell and controls, hide old figures, and reuse c
   );
   await expect(page.getByRole("button", { name: "Previous month", exact: true })).toBeEnabled();
   await expect(page.getByText("₹1,000.00", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Add invoices", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add invoices", exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("sales-month-loading.png"), fullPage: true });
   releaseJuly();
   await expect(page.getByRole("status", { name: "Loading sales" })).toHaveCount(0);

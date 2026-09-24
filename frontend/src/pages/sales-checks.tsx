@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useSales } from "./live-sales";
+import { useSales } from "@/state/sales-workspace";
 
 const supportedChecks = new Set(["sequence_gaps", "pages_unaccounted", "evidence_unavailable"]);
 const changedMessage = "This check changed. Review the updated check before confirming it again.";

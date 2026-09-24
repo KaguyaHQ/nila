@@ -26,6 +26,7 @@ export function salesSearch(search: Record<string, unknown>) {
   return optional({
     q: text(search.q),
     filter: choice(search.filter, ["all", "needs_review", "ready", "excluded"] as const),
+    upload: choice(search.upload, ["invoices"] as const),
   });
 }
 export function purchaseSearch(search: Record<string, unknown>) {

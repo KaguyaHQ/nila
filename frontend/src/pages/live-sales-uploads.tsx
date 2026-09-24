@@ -2,8 +2,6 @@ import { SalesRemovalActions } from "@/components/sales-removal-actions";
 
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 
-import { MoveSalesUpload } from "@/components/move-sales-upload";
-
 import {
   Attachment,
   AttachmentMedia,
@@ -18,8 +16,16 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { urlDestination } from "@/lib/route-url";
 import { ApiError } from "@/lib/sales-api";
+import type { SalesWorkspace } from "@/lib/sales-api";
 import {
   commitUpload,
   fetchUploads,
@@ -30,8 +36,8 @@ import {
   type UploadHistory,
 } from "@/lib/upload-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, FileText, Plus, Upload, X } from "lucide-react";
+import { Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, ChevronDown, FileText, Plus, Upload, X } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -41,7 +47,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSales } from "./live-sales";
+import { useSales } from "@/state/sales-workspace";
 
 type UploadDraft = {
   files: File[];
@@ -68,11 +74,52 @@ export function LiveUploadDraftProvider({ children }: { children: ReactNode }) {
 
 export function LiveSalesUpload() {
   const data = useSales();
-  return <UploadForm key={`${data.client.id}/${data.period}`} />;
+  return (
+    <Navigate
+      to="/gst/$clientId/$period/sales"
+      params={{ clientId: String(data.client.id), period: data.period }}
+      search={{ upload: "invoices" }}
+      replace
+    />
+  );
 }
 
-function UploadForm() {
-  const data = useSales();
+export function SalesUploadDialog({
+  data,
+  open,
+  onOpenChange,
+}: {
+  data: SalesWorkspace;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={(next) => (!busy ? onOpenChange(next) : undefined)}>
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
+        showCloseButton={!busy}
+      >
+        <DialogHeader>
+          <DialogTitle>Add sales bills</DialogTitle>
+          <DialogDescription>
+            {data.client.name} · {data.month_label}. Add one bill or a combined PDF of several
+            bills.
+          </DialogDescription>
+        </DialogHeader>
+        <UploadForm key={`${data.client.id}/${data.period}`} data={data} onBusyChange={setBusy} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UploadForm({
+  data,
+  onBusyChange,
+}: {
+  data: SalesWorkspace;
+  onBusyChange?: (busy: boolean) => void;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const draftContext = useContext(UploadDrafts);
@@ -188,8 +235,7 @@ function UploadForm() {
         }
         if (current.signal.aborted) return;
         setStage("Saving upload…");
-        await commitUpload(data.client.id, data.period, ticket.token, current.signal);
-        if (current.signal.aborted) return;
+        return await commitUpload(data.client.id, data.period, ticket.token, current.signal);
       } catch (error) {
         if (!current.signal.aborted) {
           if (error instanceof ApiError && error.status === 422 && prepared.current) {
@@ -211,8 +257,8 @@ function UploadForm() {
         controller.current = null;
       }
     },
-    onSuccess: (_result, current) => {
-      if (current.signal.aborted) return;
+    onSuccess: (result, current) => {
+      if (current.signal.aborted || !result) return;
       drafts.delete(draftKey);
       void queryClient.invalidateQueries({
         queryKey: ["sales", String(data.client.id), data.period],
@@ -221,12 +267,20 @@ function UploadForm() {
         queryKey: ["sales-uploads", data.client.id, data.period],
       });
       navigate({
-        to: "/gst/$clientId/$period/sales/uploads",
-        params: { clientId: String(data.client.id), period: data.period },
+        to: "/gst/$clientId/$period/sales/uploads/$batchRef",
+        params: {
+          clientId: String(data.client.id),
+          period: data.period,
+          batchRef: result.batch_ref,
+        },
       });
     },
   });
   const busy = upload.isPending;
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const displayedErrors = upload.error ? [...errors, upload.error.message] : errors;
   function submit() {
     if (controller.current || busy || !files.length || !data.can_upload) return;
@@ -237,35 +291,14 @@ function UploadForm() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mb-4 -ml-3"
-          nativeButton={false}
-          role="link"
-          render={
-            <Link
-              to="/gst/$clientId/$period/sales"
-              params={{ clientId: String(data.client.id), period: data.period }}
-            />
-          }
-        >
-          <ArrowLeft /> Sales &amp; GSTR-1
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">Add sales bills</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {data.client.name} · {data.month_label}
-        </p>
-      </div>
+    <div className="space-y-5">
       {!data.can_upload && (
         <p role="status" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           Your role allows viewing, not uploading.
         </p>
       )}
       <Card
-        className={`gap-0 overflow-hidden py-0 shadow-none ${files.length ? "sticky top-0 z-30" : ""}`}
+        className={`gap-0 overflow-hidden py-0 shadow-none ${files.length ? "sticky top-0 z-10" : ""}`}
       >
         <div
           className={`${files.length ? "flex flex-wrap items-center justify-between gap-3 p-4" : "m-6 flex flex-col items-center rounded-lg border border-dashed px-6 py-12 text-center"} ${dragging ? "bg-muted" : ""}`}
@@ -433,24 +466,16 @@ function UploadForm() {
 
 export function LiveSalesUploads() {
   const data = useSales();
+  const navigate = useNavigate();
   function reviewLink(batch: UploadHistory["batches"][number]) {
-    if (batch.active_invoice_ids?.length === 0) return null;
-
-    const invoice = data.rows.find((row) => row.path && batch.invoice_ids?.includes(row.id));
-    const content = (
-      <>
-        Review upload <ArrowRight className="ml-1 inline size-4" />
-      </>
-    );
-    const className = "text-sm font-medium underline-offset-4 hover:underline";
-    return invoice?.path ? (
-      <Link {...urlDestination(`${invoice.path}?filter=all`)} className={className}>
-        {content}
+    return (
+      <Link
+        to="/gst/$clientId/$period/sales/uploads/$batchRef"
+        params={{ clientId: String(data.client.id), period: data.period, batchRef: batch.id }}
+        className="inline-flex items-center gap-2 text-sm font-medium hover:underline"
+      >
+        Open upload <ArrowRight className="size-4" />
       </Link>
-    ) : (
-      <a href={batch.review_url} className={className}>
-        {content}
-      </a>
     );
   }
   const query = useQuery({
@@ -484,13 +509,13 @@ export function LiveSalesUploads() {
           </p>
         </div>
         <Button
-          nativeButton={false}
-          role="link"
-          render={
-            <Link
-              to="/gst/$clientId/$period/sales/upload"
-              params={{ clientId: String(data.client.id), period: data.period }}
-            />
+          onClick={() =>
+            navigate({
+              to: "/gst/$clientId/$period/sales/uploads",
+              params: { clientId: String(data.client.id), period: data.period },
+              search: { upload: "invoices" },
+              replace: true,
+            })
           }
         >
           <Plus /> Add invoices
@@ -523,22 +548,114 @@ export function LiveSalesUploads() {
               </p>
             </div>
           ) : (
-            <div className="space-y-5">
+            <Card className="gap-0 overflow-hidden py-0 shadow-none">
               {query.data.batches.map((batch) => (
                 <section
                   key={batch.id}
-                  className="overflow-hidden rounded-xl border bg-card"
+                  className="border-b last:border-b-0"
                   aria-label={`Upload from ${new Date(batch.created_at).toLocaleString("en-IN")}`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-5 py-3">
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(batch.created_at).toLocaleString("en-IN", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </p>
-                    <div className="flex items-center gap-3">
-                      {reviewLink(batch)}
+                  <div className="flex flex-wrap items-start justify-between gap-6 px-5 py-5">
+                    <div className="min-w-0 flex-1 basis-64 space-y-4">
+                      {batch.files.map((file) => (
+                        <div key={file.id} className="flex items-start gap-3">
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted/30">
+                            <FileText className="size-5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <p className="break-words text-sm font-medium">{file.name}</p>
+                              <Badge
+                                variant="secondary"
+                                className={file.error ? "bg-amber-50 text-amber-800" : ""}
+                              >
+                                {file.label}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              <span>
+                                {file.invoice_count}{" "}
+                                {file.invoice_count === 1 ? "invoice" : "invoices"}
+                              </span>
+                              {file.original_url && (
+                                <a
+                                  href={file.original_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline underline-offset-4 hover:text-foreground"
+                                >
+                                  Open source PDF
+                                  <span className="sr-only"> for {file.name} (new tab)</span>
+                                </a>
+                              )}
+                            </div>
+                            {file.error && (
+                              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                                {file.error}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <p className="pl-13 text-xs text-muted-foreground">
+                        Uploaded{" "}
+                        {new Date(batch.created_at).toLocaleString("en-IN", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </p>
+                      {!!batch.removed_invoices?.length && (
+                        <Collapsible className="pl-13">
+                          <CollapsibleTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="group -ml-2 h-7 text-xs text-muted-foreground"
+                              />
+                            }
+                          >
+                            <ChevronDown className="size-3.5 transition-transform group-data-[panel-open]:rotate-180" />
+                            {batch.removed_invoices.length} removed{" "}
+                            {batch.removed_invoices.length === 1 ? "invoice" : "invoices"}
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="pt-2">
+                            <ul className="divide-y rounded-lg border px-3">
+                              {batch.removed_invoices.map((invoice) => (
+                                <li
+                                  key={invoice.id}
+                                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                                >
+                                  <span>Invoice {invoice.number} · Removed from working</span>
+                                  {data.can_upload && (
+                                    <SalesRemovalActions
+                                      clientId={data.client.id}
+                                      clientName={data.client.name}
+                                      period={data.period}
+                                      batchRef={batch.id}
+                                      activeIds={[]}
+                                      removedIds={[invoice.id]}
+                                      invoiceNumber={invoice.number}
+                                      restoreOnly
+                                    />
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        nativeButton={false}
+                        role="link"
+                        render={reviewLink(batch)}
+                      >
+                        Open upload <ArrowRight />
+                      </Button>
                       {data.can_upload && (
                         <SalesRemovalActions
                           clientId={data.client.id}
@@ -547,92 +664,14 @@ export function LiveSalesUploads() {
                           batchRef={batch.id}
                           activeIds={batch.active_invoice_ids ?? batch.invoice_ids ?? []}
                           removedIds={batch.removed_invoices?.map((i) => i.id)}
-                        />
-                      )}
-                      {data.can_upload && (
-                        <MoveSalesUpload
-                          clientId={data.client.id}
-                          clientName={data.client.name}
-                          period={data.period}
-                          batchRef={batch.id}
+                          allowMove
                         />
                       )}
                     </div>
                   </div>
-                  <ul className="divide-y">
-                    {batch.files.map((file) => (
-                      <li
-                        key={file.id}
-                        className="flex flex-wrap items-start justify-between gap-4 px-5 py-4"
-                      >
-                        <div className="flex min-w-0 flex-1 items-start gap-3">
-                          <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="break-words text-sm font-medium">{file.name}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {file.invoice_count}{" "}
-                              {file.invoice_count === 1 ? "invoice" : "invoices"}
-                            </p>
-                            {file.error && (
-                              <p className="mt-2 text-sm text-destructive">{file.error}</p>
-                            )}
-                            {file.original_url && (
-                              <a
-                                href={file.original_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 inline-block text-sm underline underline-offset-4"
-                              >
-                                Open source PDF
-                                <span className="sr-only"> for {file.name} (new tab)</span>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className={file.error ? "bg-amber-50 text-amber-800" : ""}
-                        >
-                          {file.label}
-                        </Badge>
-                      </li>
-                    ))}
-                  </ul>
-                  {!!batch.removed_invoices?.length && (
-                    <Collapsible className="border-t px-5 py-3">
-                      <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                        {batch.removed_invoices.length} removed{" "}
-                        {batch.removed_invoices.length === 1 ? "invoice" : "invoices"}
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pt-2">
-                        <ul className="space-y-2">
-                          {batch.removed_invoices.map((invoice) => (
-                            <li
-                              key={invoice.id}
-                              className="flex items-center justify-between text-sm"
-                            >
-                              <span>Invoice {invoice.number} · Removed from working</span>
-                              {data.can_upload && (
-                                <SalesRemovalActions
-                                  clientId={data.client.id}
-                                  clientName={data.client.name}
-                                  period={data.period}
-                                  batchRef={batch.id}
-                                  activeIds={[]}
-                                  removedIds={[invoice.id]}
-                                  invoiceNumber={invoice.number}
-                                  restoreOnly
-                                />
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )}
                 </section>
               ))}
-            </div>
+            </Card>
           )}
           <div className="mt-6 flex justify-end">
             <Button

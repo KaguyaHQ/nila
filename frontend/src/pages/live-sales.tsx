@@ -24,9 +24,11 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Shell } from "@/components/workspace-shell";
+import { SalesUploadDialog } from "@/pages/live-sales-uploads";
 import { salesSearch } from "@/lib/route-search";
 import { urlDestination } from "@/lib/route-url";
 import { ApiError, fetchSales, type SalesWorkspace } from "@/lib/sales-api";
+import { SalesWorkspaceContext, useSales } from "@/state/sales-workspace";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
@@ -38,19 +40,16 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import { createContext, useContext } from "react";
+import { useContext } from "react";
 
-const Workspace = createContext<SalesWorkspace | null>(null);
-export function useSales() {
-  const data = useContext(Workspace);
-  if (!data) throw new Error("Sales workspace is missing");
-  return data;
-}
+const Workspace = SalesWorkspaceContext;
 const money = (value: string | null) => value ?? "—";
 
 export function LiveSalesLayout() {
   const { clientId, period } = useParams({ from: "/gst/$clientId/$period" });
   const { pathname } = useLocation();
+  const search = useSearch({ from: "/gst/$clientId/$period" });
+  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["sales", clientId, period],
     queryFn: ({ signal }) => fetchSales(clientId, period, signal),
@@ -113,6 +112,19 @@ export function LiveSalesLayout() {
           </>
         ) : undefined}
       </Shell>
+      {!loading && (
+        <SalesUploadDialog
+          data={query.data}
+          open={search.upload === "invoices"}
+          onOpenChange={(open) =>
+            navigate({
+              to: pathname,
+              search: { ...search, upload: open ? "invoices" : undefined },
+              replace: true,
+            })
+          }
+        />
+      )}
     </Workspace.Provider>
   );
 }
@@ -231,13 +243,15 @@ function PeriodHeading({
       ) : (
         <Button
           variant={data.invoice_count ? "outline" : "default"}
-          nativeButton={false}
-          role="link"
-          render={
-            <Link
-              to="/gst/$clientId/$period/sales/upload"
-              params={{ clientId: String(data.client.id), period: data.period }}
-            />
+          onClick={() =>
+            navigate({
+              to: register
+                ? "/gst/$clientId/$period/sales/register"
+                : "/gst/$clientId/$period/sales",
+              params: { clientId: String(data.client.id), period: data.period },
+              search: { ...search, upload: "invoices" },
+              replace: true,
+            })
           }
         >
           <Plus /> Add invoices

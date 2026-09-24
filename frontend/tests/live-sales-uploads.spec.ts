@@ -44,6 +44,11 @@ async function setup(page: Page) {
       json: workspace(Number(new URL(route.request().url()).pathname.split("/")[4])),
     }),
   );
+
+  await page.route("**/api/workspace/sales/*/*/uploads/batch-1", (route) =>
+    route.fulfill({ json: { id: "batch-1", processing: true, files: [] } }),
+  );
+
   await page.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const meta = document.createElement("meta");
@@ -99,7 +104,7 @@ test("failed PUT resumes remaining PDFs and uncertain commit retries the same to
       await route.fulfill(
         commits.length === 1
           ? { status: 503, json: { error: "Connection interrupted while saving." } }
-          : { json: { id: "batch-1" } },
+          : { json: { ok: true, batch_ref: "batch-1" } },
       );
     } else await route.fulfill({ json: { batches: [], processing: false } });
   });
@@ -117,14 +122,16 @@ test("failed PUT resumes remaining PDFs and uncertain commit retries the same to
   await expect(page.getByRole("alert")).toContainText("Connection interrupted while saving");
   await expect(page.getByRole("status")).toContainText("Retry to confirm");
   await page.getByRole("link", { name: "View uploads", exact: true }).click();
-  await page.getByRole("link", { name: "Add invoices", exact: true }).click();
+  await page.getByRole("button", { name: "Add invoices", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry upload", exact: true })).toBeVisible();
   await page.evaluate(() => {
     (window as unknown as { sameDocument: boolean }).sameDocument = true;
   });
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
-  await expect(page).toHaveURL(/\/sales\/uploads$/);
-  await expect(page.getByText("No uploads yet", { exact: true })).toBeVisible();
+
+  await expect(page).toHaveURL(/\/sales\/uploads\/batch-1$/);
+
+  await expect(page.getByRole("heading", { name: "Upload results" })).toBeVisible();
   expect(prepares).toBe(1);
   expect(firstPuts).toBe(1);
   expect(secondPuts).toBe(2);
@@ -136,13 +143,14 @@ test("failed PUT resumes remaining PDFs and uncertain commit retries the same to
 
 test("PDF validation prevents invalid writes and switching client clears the old selection", async ({
   page,
-}) => {
+}, info) => {
   await setup(page);
   const writes: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "POST") writes.push(request.url());
   });
   await page.goto("/app/gst/1/2026-06/sales/upload");
+  await page.screenshot({ path: info.outputPath("upload-modal.png") });
   await page
     .getByLabel("Choose sales PDF files")
     .setInputFiles([
@@ -153,14 +161,71 @@ test("PDF validation prevents invalid writes and switching client clears the old
   await expect(page.getByRole("alert")).toContainText("this file is empty");
   await expect(page.getByRole("alert")).toContainText("choose a PDF file");
   await expect(page.getByRole("heading", { name: "1 file selected" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
   await page.getByRole("option", { name: "Second client", exact: true }).click();
-  await expect(page).toHaveURL(/\/gst\/2\/2026-06\/sales\/upload$/);
+  await page.getByRole("button", { name: "Add invoices", exact: true }).click();
+  await expect(page).toHaveURL(/\/gst\/2\/2026-06\/sales\?upload=invoices$/);
   await expect(page.getByText("sales.pdf", { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }),
   ).toBeDisabled();
   expect(writes).toEqual([]);
+});
+
+test("outside click and Escape close the upload dialog without reopening it", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/gst/1/2026-06/sales");
+  const dialog = page.getByRole("dialog", { name: "Add sales bills" });
+  const add = page.getByRole("button", { name: "Add invoices", exact: true });
+
+  await add.click();
+  await expect(dialog).toBeVisible();
+  const backdrop = page.locator('[data-slot="dialog-overlay"]');
+  await expect(backdrop).toBeVisible();
+  const durations = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+    const popup = document.querySelector('[data-slot="dialog-content"]');
+    return [overlay, popup].map((element) =>
+      element ? getComputedStyle(element).animationDuration : null,
+    );
+  });
+  expect(durations).toEqual(["0.2s", "0.2s"]);
+  await page.evaluate(() => {
+    const states: string[] = [];
+    const observer = new MutationObserver(() => {
+      const popup = document.querySelector('[data-slot="dialog-content"]');
+      states.push(popup?.getAttribute("data-open") !== null && popup !== null ? "open" : "closed");
+    });
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+    (
+      window as unknown as { uploadCloseStates: string[]; uploadCloseObserver: MutationObserver }
+    ).uploadCloseStates = states;
+    (window as unknown as { uploadCloseObserver: MutationObserver }).uploadCloseObserver = observer;
+  });
+  await page.mouse.click(1100, 460);
+  await expect(dialog).not.toBeVisible();
+  await expect(page).not.toHaveURL(/upload=invoices/);
+  await expect(add).toBeVisible();
+  await page.waitForTimeout(250);
+  const closeStates = await page.evaluate(() => {
+    const state = window as unknown as {
+      uploadCloseStates: string[];
+      uploadCloseObserver: MutationObserver;
+    };
+    state.uploadCloseObserver.disconnect();
+    return state.uploadCloseStates;
+  });
+  const firstClosed = closeStates.indexOf("closed");
+  expect(firstClosed).toBeGreaterThanOrEqual(0);
+  expect(closeStates.slice(firstClosed)).not.toContain("open");
+
+  await add.click();
+  await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await add.click();
+  await expect(dialog.getByText("sales.pdf", { exact: true })).toBeVisible();
 });
 
 test("history polls processing, retains failed sources and links to review and React register", async ({
@@ -210,11 +275,29 @@ test("history polls processing, retains failed sources and links to review and R
   await expect(
     page.getByRole("link", { name: "Open source PDF for Damaged bill.pdf (new tab)" }),
   ).toHaveAttribute("href", "/source/file-2");
-  await expect(page.getByRole("link", { name: "Review upload" })).toHaveAttribute(
+
+  await expect(page.getByRole("link", { name: "Open upload" })).toHaveAttribute(
     "href",
-    /review\/sales\?batch=/,
+
+    /sales\/uploads\/batch-1$/,
   );
   await page.screenshot({ path: testInfo.outputPath("uploads-desktop.png"), fullPage: true });
+  await page.route("**/uploads/batch-1/move", (route) =>
+    route.fulfill({
+      status: 422,
+      json: { error: "These bills have different sellers." },
+    }),
+  );
+  await expect(page.getByRole("button", { name: "Move upload…" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Upload actions" }).click();
+  await page.getByRole("menuitem", { name: "Move upload…", exact: true }).click();
+  const moveDialog = page.getByRole("dialog", { name: "Move upload to another client" });
+  await expect(moveDialog).toBeVisible();
+  await expect(moveDialog).toContainText("These bills have different sellers.");
+  await page.keyboard.press("Escape");
+  await expect(moveDialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload actions" })).toBeFocused();
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
@@ -263,14 +346,17 @@ test("expired storage URL renews the existing token and retries the PDF", async 
   await page.route("**/api/workspace/sales/*/*/uploads", (route) => {
     if (route.request().method() === "POST") {
       expect(route.request().postDataJSON()).toEqual({ token: "existing-token" });
-      return route.fulfill({ json: { ok: true } });
+
+      return route.fulfill({ json: { ok: true, batch_ref: "batch-1" } });
     }
     return route.fulfill({ json: { batches: [], processing: false } });
   });
   await page.goto("/app/gst/1/2026-06/sales/upload");
   await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
   await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
-  await expect(page).toHaveURL(/\/sales\/uploads$/);
+
+  await expect(page).toHaveURL(/\/sales\/uploads\/batch-1$/);
+
   expect(preparations).toHaveLength(2);
   expect(preparations[1]).toEqual({ token: "existing-token" });
 });
@@ -296,7 +382,7 @@ test("rejected upload unlocks file replacement before a new preparation", async 
       return route.fulfill(
         commits === 1
           ? { status: 422, json: { error: "Upload expired." } }
-          : { json: { ok: true } },
+          : { json: { ok: true, batch_ref: "batch-1" } },
       );
     }
     return route.fulfill({ json: { batches: [], processing: false } });
@@ -313,7 +399,9 @@ test("rejected upload unlocks file replacement before a new preparation", async 
   ).toBeDisabled();
   await page.getByLabel("Choose sales PDF files").setInputFiles(pdf("sales.pdf"));
   await page.getByRole("button", { name: /^Upload (?:\d+ )?PDFs?$/, exact: true }).click();
-  await expect(page).toHaveURL(/\/sales\/uploads$/);
+
+  await expect(page).toHaveURL(/\/sales\/uploads\/batch-1$/);
+
   expect(prepares).toBe(2);
 });
 
@@ -430,7 +518,8 @@ test("remove upload keeps originals and allows individual restore from history",
       body.action === "remove"
         ? body.source_ids
         : removed.filter((id) => !body.source_ids.includes(id));
-    return route.fulfill({ json: { ok: true } });
+
+    return route.fulfill({ json: { ok: true, batch_ref: "batch-1" } });
   });
   await page.goto("/app/gst/1/2026-06/sales/uploads");
   await page.getByRole("button", { name: "Upload actions" }).click();
@@ -462,4 +551,116 @@ test("remove upload keeps originals and allows individual restore from history",
   });
   await page.keyboard.press("Escape");
   expect(removed).toEqual(["two"]);
+});
+
+test("upload results show partial invoices, retry reading and keep completed reviews available", async ({
+  page,
+}, info) => {
+  await setup(page);
+
+  let state = "failed";
+
+  let calls = 0;
+
+  let release: () => void = () => {};
+
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await page.route("**/api/workspace/sales/1/2026-06/uploads/37", (route) =>
+    route.fulfill({
+      json: {
+        id: "37",
+        processing: state === "extracting",
+        files: [
+          {
+            id: 37,
+            name: "breeze-2026-05.pdf",
+            state,
+
+            completed: state === "extracted" ? 3 : 2,
+            total: 3,
+            reviewable: 2,
+            original_url: "/source/37",
+
+            message:
+              "Reading stopped. Completed invoices are saved; retry resumes the remaining read.",
+
+            rows: [
+              {
+                id: "one",
+                number: "25/2026-27",
+                buyer: "Vishnu MK",
+                pages: [1],
+                state: "ready",
+                review_url: "/gst/1/2026-06/sales/invoices/one",
+              },
+
+              {
+                id: "two",
+                number: "26/2026-27",
+                buyer: "National Traders",
+                pages: [2],
+                state: "ready",
+                review_url: "/gst/1/2026-06/sales/invoices/two",
+              },
+
+              {
+                id: "three",
+                number: "27/2026-27",
+                buyer: null,
+                pages: [6],
+                state:
+                  state === "extracted" ? "ready" : state === "extracting" ? "reading" : "failed",
+                review_url: state === "extracted" ? "/gst/1/2026-06/sales/invoices/three" : null,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.route("**/uploads/37/retry", async (route) => {
+    calls++;
+
+    expect(route.request().postDataJSON()).toEqual({ dump_id: 37 });
+
+    await waiting;
+
+    state = "extracting";
+
+    await route.fulfill({ json: { ok: true } });
+  });
+
+  await page.goto("/app/gst/1/2026-06/sales/uploads/37");
+
+  await expect(page.getByRole("status")).toHaveText("2 of 3 invoices read");
+
+  await expect(page.getByRole("row").filter({ hasText: "27/2026-27" })).toContainText(
+    "Could not read",
+  );
+
+  await expect(page.getByRole("link", { name: "Review", exact: true })).toHaveCount(2);
+
+  await page.screenshot({ path: info.outputPath("partial-upload.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "Retry reading" }).click();
+
+  await expect(page.getByRole("button", { name: "Starting…" })).toBeDisabled();
+
+  expect(calls).toBe(1);
+
+  release();
+
+  await expect(page.getByRole("row").filter({ hasText: "27/2026-27" })).toContainText("Reading…");
+
+  state = "extracted";
+
+  await expect(page.getByRole("status")).toHaveText("3 of 3 invoices read", { timeout: 8000 });
+
+  await expect(page.getByRole("link", { name: "Review", exact: true })).toHaveCount(3);
+
+  await expect(page.getByRole("button", { name: "Retry reading" })).toHaveCount(0);
 });

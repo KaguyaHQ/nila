@@ -31,8 +31,8 @@ defmodule Nila.Gst.Sales.Uploads do
   def create(scope, client_id, period, token) when is_binary(token) do
     with {:ok, payload} <- verify(scope, client_id, period, token, :infinity) do
       case find_batch(payload) do
-        {:ok, _batch} ->
-          {:ok, %{ok: true}}
+        {:ok, batch} ->
+          committed(batch)
 
         {:error, :not_found} ->
           with {:ok, fresh} <- verify(scope, client_id, period, token) do
@@ -162,7 +162,7 @@ defmodule Nila.Gst.Sales.Uploads do
       case result do
         {:ok, _} ->
           Enum.each(payload.files, &Storage.delete(&1.key))
-          {:ok, %{ok: true}}
+          committed_payload(payload)
 
         error ->
           error
@@ -170,10 +170,25 @@ defmodule Nila.Gst.Sales.Uploads do
     else
       {:error, reason} ->
         case find_batch(payload) do
-          {:ok, _batch} -> {:ok, %{ok: true}}
+          {:ok, batch} -> committed(batch)
           {:error, :not_found} -> {:error, reason}
         end
     end
+  end
+
+  defp committed_payload(payload) do
+    with {:ok, batch} <- find_batch(payload), do: committed(batch)
+  end
+
+  defp committed(batch) do
+    import Ecto.Query
+
+    dumps =
+      Repo.all(
+        from d in Nila.Gst.Intake.Dump, where: d.sales_batch_id == ^batch.id, order_by: d.id
+      )
+
+    {:ok, %{ok: true, batch_ref: Batch.ref(dumps)}}
   end
 
   # The upload token remains idempotent after its batch moves to another client.
@@ -264,7 +279,12 @@ defmodule Nila.Gst.Sales.Uploads do
       invoice_count: length(dump.invoices),
       error:
         if(dump.status == "failed",
-          do: "Nila could not read this file. Open the upload in the month to try again."
+          do:
+            if(dump.invoices == [],
+              do: "Reading failed. Open this upload to try again.",
+              else:
+                "Reading stopped. Completed invoices are saved. Open this upload to retry the remaining read."
+            )
         ),
       original_url:
         if(dump.file_keys != [], do: "/gst/#{client_id}/#{period}/original/#{dump.id}/0")
@@ -277,6 +297,7 @@ defmodule Nila.Gst.Sales.Uploads do
 
   defp label(%{status: "received"}), do: "Queued"
   defp label(%{status: "extracting"}), do: "Reading bills"
+  defp label(%{status: "failed", invoices: [_ | _]}), do: "Reading stopped"
   defp label(%{status: "failed"}), do: "Could not read"
   defp label(%{status: "held"}), do: "Held for review"
   defp label(%{status: "needs_confirmation"}), do: "Confirm the month"

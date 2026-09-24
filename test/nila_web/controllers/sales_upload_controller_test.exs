@@ -44,13 +44,11 @@ defmodule NilaWeb.SalesUploadControllerTest do
 
     for file <- prepared["files"], do: put_file(file, bytes)
 
-    assert conn |> post(path, %{token: prepared["token"]}) |> contract_response(200) == %{
-             "ok" => true
-           }
+    assert %{"ok" => true, "batch_ref" => _} =
+             conn |> post(path, %{token: prepared["token"]}) |> contract_response(200)
 
-    assert conn |> post(path, %{token: prepared["token"]}) |> contract_response(200) == %{
-             "ok" => true
-           }
+    assert %{"ok" => true, "batch_ref" => _} =
+             conn |> post(path, %{token: prepared["token"]}) |> contract_response(200)
 
     {:ok, payload} =
       Phoenix.Token.verify(NilaWeb.Endpoint, "sales PDF upload", prepared["token"], max_age: 3600)
@@ -60,7 +58,9 @@ defmodule NilaWeb.SalesUploadControllerTest do
         signed_at: System.system_time(:second) - 7200
       )
 
-    assert conn |> post(path, %{token: expired}) |> contract_response(200) == %{"ok" => true}
+    assert %{"ok" => true, "batch_ref" => _} =
+             conn |> post(path, %{token: expired}) |> contract_response(200)
+
     dumps = Dumps.list(org.id, client.id, "2026-06")
     assert length(dumps) == 2
     assert length(Enum.uniq_by(dumps, & &1.sales_batch_id)) == 1
@@ -102,6 +102,7 @@ defmodule NilaWeb.SalesUploadControllerTest do
         |> contract_response(200)
 
       put_file(hd(prepared["files"]), bytes)
+
       assert conn |> post(path, %{token: prepared["token"]}) |> contract_response(422)
     end
 
@@ -205,9 +206,7 @@ defmodule NilaWeb.SalesUploadControllerTest do
     assert upload_key(hd(refreshed["files"])) == upload_key(hd(prepared["files"]))
     put_file(hd(refreshed["files"]), "%PDF-test")
 
-    assert conn |> post(path, %{token: prepared["token"]}) |> contract_response(200) == %{
-             "ok" => true
-           }
+    assert conn |> post(path, %{token: prepared["token"]}) |> contract_response(200)
   end
 
   test "history preserves failed and partial states without leaking internal errors", %{

@@ -106,7 +106,7 @@ export function Shell({
             : "Clients"
       : (titles[
           live ? pathname.replace(sectionPath, inPurchases ? "/purchases" : "/sales") : pathname
-        ] ?? "Page not found"));
+        ] ?? (pathname.includes("/sales/uploads/") ? "Upload results" : "Page not found")));
 
   useEffect(() => {
     document.title = `${title} · Nila${live || firm ? "" : " preview"}`;

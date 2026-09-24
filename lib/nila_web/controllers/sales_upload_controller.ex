@@ -4,6 +4,9 @@ defmodule NilaWeb.SalesUploadController do
   alias Nila.Clients
   alias Nila.Gst.Sales.Uploads
 
+  def show(conn, params), do: dispatch(conn, params, :show)
+  def retry(conn, params), do: dispatch(conn, params, :retry)
+
   def index(conn, params), do: dispatch(conn, params, :index)
   def prepare(conn, params), do: dispatch(conn, params, :prepare)
   def move_preview(conn, params), do: dispatch(conn, params, :move_preview)
@@ -122,6 +125,25 @@ defmodule NilaWeb.SalesUploadController do
     end
   end
 
+  defp perform(:show, scope, client_id, period, params),
+    do:
+      Nila.Gst.Sales.UploadResults.load(
+        scope.current_org.id,
+        client_id,
+        period,
+        params["batch_ref"]
+      )
+
+  defp perform(:retry, scope, client_id, period, params),
+    do:
+      Nila.Gst.Sales.UploadResults.retry(
+        scope,
+        client_id,
+        period,
+        params["batch_ref"],
+        params["dump_id"]
+      )
+
   defp perform(:index, scope, client_id, period, _),
     do: {:ok, Uploads.history(scope.current_org.id, client_id, period)}
 
@@ -144,7 +166,7 @@ defmodule NilaWeb.SalesUploadController do
   defp access(%{current_org: nil}), do: {:error, :forbidden}
   defp access(_), do: :ok
 
-  defp authorize(_scope, :index), do: :ok
+  defp authorize(_scope, action) when action in [:index, :show], do: :ok
 
   defp authorize(scope, _action) do
     if Nila.Accounts.Policy.can?(scope, :edit_records), do: :ok, else: {:error, :read_only}

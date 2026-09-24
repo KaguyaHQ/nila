@@ -14,7 +14,7 @@ import type { SalesSectionDetail, SalesSectionRow } from "@/lib/sales-api";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { useSales } from "./live-sales";
+import { useSales } from "@/state/sales-workspace";
 
 type SectionGroup = SalesSectionDetail["groups"][number];
 
