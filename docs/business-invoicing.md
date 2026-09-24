@@ -1,5 +1,20 @@
 # Business invoicing
 
+## Local demo login
+
+Run `mix run priv/repo/seeds.exs`, then open `/users/log_in` and click
+**Dev Business** under Development quick login. Sign out of your firm account
+first, or use a private window. The account (`business@nila.test`) opens
+Demo Business Services, linked to Nila Dev CA, with a customer, saved service,
+two draft invoices and one issued invoice with its PDF and CA sales entry.
+
+These business seeds run only in development and preserve existing records.
+To add them to an already-seeded local database, run
+`mix run priv/repo/business_seeds.exs`. The issued invoice needs the configured
+Typst executable, just like normal invoice issuance.
+
+## Workflow
+
 The first business portal serves GST-registered domestic service businesses.
 The CA invites a business owner from the React client edit page. The owner sets
 business details, confirms with their CA that e-invoicing does not apply, adds

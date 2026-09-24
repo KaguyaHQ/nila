@@ -39,3 +39,7 @@ owner =
 _membership =
   Repo.get_by(Membership, org_id: org.id, user_id: owner.id) ||
     elem(Orgs.add_user(org, owner.id, "owner"), 1)
+
+if Mix.env() == :dev do
+  Code.eval_file("business_seeds.exs", __DIR__)
+end

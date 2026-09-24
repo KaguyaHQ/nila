@@ -139,6 +139,31 @@ export function BusinessLayout() {
           <a className="underline" href="/users/log_in">
             Sign in
           </a>
+        ) : query.error instanceof BusinessApiError && query.error.status === 403 ? (
+          <>
+            <p className="text-sm text-muted-foreground">
+              If you use Nila for your CA firm, return to your firm workspace. To open a business,
+              sign out and use the account invited by your CA.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button nativeButton={false} role="link" render={<a href="/app" />}>
+                Go to firm workspace
+              </Button>
+              <form action="/users/log_out" method="post">
+                <Input type="hidden" name="_method" value="delete" />
+                <Input
+                  type="hidden"
+                  name="_csrf_token"
+                  value={
+                    document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? ""
+                  }
+                />
+                <Button type="submit" variant="outline">
+                  Sign out
+                </Button>
+              </form>
+            </div>
+          </>
         ) : (
           <Button onClick={() => query.refetch()}>Try again</Button>
         )}
