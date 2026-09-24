@@ -1,26 +1,44 @@
 # React frontend
 
-The user explicitly selected React + TypeScript + Vite + shadcn in this repository.
-This directory uses shadcn React components backed by Base UI (not Radix), its neutral CSS theme, and lucide icons;
-Phoenix controller rules live in `lib/nila_web/AGENTS.md`.
+React + TypeScript, Vite, shadcn/Base UI, Tailwind and Lucide. Follow the
+[root scope](../AGENTS.md); product details live in
+[purchase review](../docs/purchase-review.md) and
+[Business invoicing](../docs/business-invoicing.md).
 
-- Sales summary, register, PDF intake, upload history and invoice review use real Phoenix data. Sample screens are development-only. Reuse the existing correction and check rules in Phoenix.
-- GSTR-1 section details and export availability come from Phoenix. Workings Excel may be a draft; do not equate its availability with permission to download GSTR-1 JSON. Downloads must show server errors in the current screen.
-- Month-check confirmations use the server's current evidence basis. A stale response requires a fresh review, never an automatic retry with a new basis. Unsupported or blocking findings cannot be dismissed.
-- Clients, identity add/edit, Excel import and GST connection management use Phoenix APIs in React. Client GST verification only connects the account; month-specific fetching stays in Purchases. Tally is outside the React migration.
-- GST migration scope is GST automation: workings Excel and GSTR-1 JSON. Banking, Tally workflows and Winman Excel exports remain outside that migration. Nila Business is separately approved work; follow the root scope and `docs/business-invoicing.md`.
-- Purchases overview and source registers use Phoenix data. Purchase review and ITC decisions use Phoenix APIs with fresh evidence tokens. Sales/purchase Excel import UI is retired; backend import engines and existing data remain. The purchase worklist supports eligible bulk treatment; audited source corrections and suggested-pair decisions stay in React review. GSTR-2B fetching and OTP connection stay in React. The old GSTR-3B screen is retired; backend calculations remain. Source document counts differ from grouped reconciliation items; matching never means claimed ITC. Preserve source tax, including credit-note signs and any legacy cess, without adding routine cess controls.
-- Use shared components in `src/components/ui`, not copied control classes in pages.
-- For tables whose rows open a record, use `RecordTableRow` with one visible `RecordTableLink` inside it. The link owns the destination and keyboard access; other controls keep their actions. Keep breakdowns and multi-action management rows as ordinary `TableRow`s.
-- Before building a generic control, check the official shadcn Base UI registry. Use its existing component when it covers the interaction; keep custom code for Nila's data, routes and accounting behavior. Do not port LiveView DOM hooks when the React primitive already owns that behavior.
-- Nila is a desktop application. Do not expand migration work into mobile navigation or mobile-specific layouts unless requested.
-- Use TanStack Router within migrated screens. Keep route/search contracts typed; TanStack Query owns server-data fetching and caching. Use normal same-origin links for downloads and static public pages.
-- Do not claim an upload, review, export, or accounting decision was saved when it was not.
-- Use TanStack `useMutation` for server writes: derive pending/errors from the mutation, update caches only from confirmed responses, and invalidate affected queries. Keep `retry: false` and `networkMode: "always"` so failed/offline saves require an explicit retry. Preserve request cancellation and synchronous duplicate-submit guards; local validation, upload progress and downloads may keep local state.
-- Keep fixture facts in `src/data/sales.ts`, temporary PDF selections in the existing
-  upload provider, and all business truth in Phoenix.
-- Run `pnpm run build` and `pnpm test`; inspect rendered screens at desktop widths.
-- Keep Playwright artifacts under `frontend/test-results/`. Prefer one test invocation with multiple workers. For independent concurrent runs, give every run a distinct child directory using `--output=test-results/<run>`; do not run against the parent concurrently or create sibling output folders.
-- Vite assets ship inside the Phoenix release. Do not deploy without explicit authorization.
+## Implementation
 
-- Public website source lives in `src/public/`. `pnpm run build` also renders its HTML; production needs no Node server or browser React for these pages. Error pages are built into standalone HTML with shadcn-styled links; Phoenix reads them without Vite or database access. The homepage has a separate Motion entry that enhances the static invoice story; contact and legal pages need no browser JavaScript. Phoenix inserts escaped form values and CSRF tokens. In development Phoenix asks Vite for fresh HTML. Build before running backend public-page tests. Keep legal wording unchanged unless explicitly requested.
+- Reuse `src/components/ui` and shared tokens. Before building a generic control,
+  check the official shadcn Base UI registry. Nila is desktop-first; no mobile work unless requested.
+- Use TanStack Router with typed routes/search, and TanStack Query for server data.
+  Use normal links for downloads and static pages; show download errors in the current screen.
+- Use `RecordTableRow` with a visible `RecordTableLink` when a row opens a record.
+  Keep other row controls independent; use ordinary rows for breakdowns and management tables.
+- Use `useMutation` for writes with `retry: false` and `networkMode: "always"`.
+  Derive pending/errors from it, guard duplicate submits, preserve cancellation,
+  and invalidate affected caches after confirmed saves. Keep temporary PDF selections
+  in the existing upload provider.
+- Phoenix owns rules, validation, export readiness and evidence tokens. Never silently
+  retry a stale confirmation with fresh evidence; require another review. Draft Excel
+  availability does not imply GSTR-1 JSON readiness; reconciliation does not imply claimed ITC.
+- Preserve source tax signs and values. Sample data is development-only. Retired import
+  and GSTR-3B screens must not return merely because their backend code remains.
+
+## Validation
+
+- Run affected specs locally: `pnpm exec playwright test tests/sales-invoice.spec.ts`.
+  Inspect the affected UI at desktop widths. Leave the full suite to CI unless explicitly
+  requested or investigating a suite-wide failure.
+- One local browser test run at a time, at most two workers. Check for an existing
+  Playwright runner before starting; coordinate or wait. Separate output folders do not
+  prevent resource contention.
+- Use `pnpm run check` during development. Build once for combined changes before
+  handoff, or for asset/build/public-page changes; each agent should not repeat the build.
+- Keep artifacts in `frontend/test-results/`. Verify your runner exits; investigate leftover
+  browsers without killing the user's browser or another agent's run.
+
+## Public pages and deployment
+
+- `src/public/` renders to HTML at build time. Public and error pages must work without
+  JavaScript; error pages must also work without a database. Build before backend
+  public-page tests. Keep legal wording unchanged unless requested.
+- Vite assets ship in the Phoenix release. No deployment without explicit authorization.

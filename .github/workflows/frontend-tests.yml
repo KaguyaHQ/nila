@@ -1,0 +1,51 @@
+name: Frontend tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "priv/openapi/workspace.json"
+      - ".github/workflows/frontend-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "priv/openapi/workspace.json"
+      - ".github/workflows/frontend-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chrome
+      - run: pnpm run build
+      - run: pnpm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-test-results
+          path: frontend/test-results/
+          retention-days: 7
