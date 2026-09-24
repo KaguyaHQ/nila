@@ -1,9 +1,7 @@
 # Nila Agent Notes
 
 Nila is a Phoenix monolith with a React + shadcn frontend in `frontend/`.
-React owns product screens and auth. Phoenix owns business truth.
-Public and error pages are built from React into static HTML.
-There is no LiveView dependency, UI or socket.
+React owns all UI; Phoenix owns business truth. LiveView is removed.
 
 ## Product and scope
 
@@ -12,15 +10,18 @@ review → Excel workings for GSTR-1. Reduce manual preparation while preserving
 source evidence, tax checks, and totals a senior can verify and retain.
 See [the product objective and customer evidence](docs/prd.md#current-objective).
 
+Purchases & ITC is also core GST work: GSTR-2B fetching, purchase review,
+reconciliation, ITC decisions and purchase workings.
+
 **Nila Business is also approved work:** small domestic service businesses create
 sales documents and give their CA continuous access to structured sales data.
 Its current scope includes customers, saved services, invoices, quotations,
 credit notes, and downloadable PDFs. See `docs/business-invoicing.md` for the
 implemented workflow. This does not authorize a full accounting or inventory suite.
 
-Keep each task within the user's agreed scope. Existing purchases, Tally and
-WhatsApp features are not reasons to expand a task. New purchase-side work needs
-an explicit request. In GSTR-1 discussions, RCM means outward RCM (Table 4B).
+Keep each task within the user's agreed scope. Banking, Tally and messaging
+integrations are shelved; retained backend code is not a reason to rebuild their UI.
+In GSTR-1 discussions, RCM means outward RCM (Table 4B).
 
 ## Complexity rule
 
@@ -36,7 +37,8 @@ its product-scope statements yield to the approved scope above and user instruct
 - Oban handles background jobs. External processors return structured artifacts only.
 - Humans resolve extraction exceptions before Phoenix commits business state.
 - Contexts belong in `lib/nila/`; web code belongs in `lib/nila_web/`.
-- Backend, web, test and asset details live in scoped `AGENTS.md` files.
+- Follow scoped instructions in `lib/AGENTS.md`, `lib/nila_web/AGENTS.md`,
+  `test/AGENTS.md` and `frontend/AGENTS.md` when working in those areas.
 
 ## Commands and safety
 
@@ -52,12 +54,13 @@ mix precommit
 - Production access uses `./scripts/prod-console` (AWS Systems Manager). Production is read-only unless explicitly authorized.
 - Pause before schema/data migrations, dependency/build/CI/precommit changes, mass rewrites, or deletion of material data unless already authorized in the session.
 - Use Conventional Commits for commit messages.
-- Save temporary generated PDFs, screenshots, comparisons and workbooks under root `outputs/`. Both `/outputs/` and `/output/` are Git-ignored; use `outputs/` consistently. Keep tool-specific test artifacts in their configured locations.
+- Push to `main` auto-deploys. Watch that run and check production health.
+- Save temporary artifacts under root `outputs/`. Keep test artifacts in their configured locations.
 
 ## UI guidance
 
-- React uses current components in `frontend/src/components/ui/`, tokens in `frontend/src/index.css`, and the user's agreed screen references. Inspect component APIs before use; follow `frontend/AGENTS.md`.
+- Use shared components in `frontend/src/components/ui/`, tokens in `frontend/src/index.css`, and the user's agreed screen references. Inspect component APIs before use.
 - Old `docs/design/` visual and implementation recipes are not authority for new React work. The product-principle exception for `OPINIONS.md` is explained above.
-- Public website source lives in `frontend/src/public/` and is rendered to HTML at build time. Error pages use the same build and remain usable without JavaScript.
-- Vite builds all frontend assets. Phoenix serves the built files.
+- Vite builds all frontend assets; Phoenix serves them. Public and error pages
+  in `frontend/src/public/` render to HTML at build time and work without JavaScript.
 - Never use the browser skill. Verify affected screens and actual interactions in the browser before calling UI work complete; builds and API tests alone do not establish visual quality.
