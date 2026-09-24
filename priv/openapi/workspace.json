@@ -11006,6 +11006,13 @@
           },
           "gst_rate": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "goods",
+              "service"
+            ]
           }
         },
         "required": [
@@ -11014,7 +11021,8 @@
           "sac",
           "unit",
           "unit_price",
-          "gst_rate"
+          "gst_rate",
+          "kind"
         ],
         "additionalProperties": false
       },
@@ -11038,6 +11046,13 @@
           },
           "gst_rate": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "goods",
+              "service"
+            ]
           }
         },
         "required": [
@@ -11337,6 +11352,9 @@
           },
           "domestic_services_only": {
             "type": "boolean"
+          },
+          "domestic_goods_and_services_only": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -11344,7 +11362,8 @@
           "address",
           "state_code",
           "e_invoice_not_applicable",
-          "domestic_services_only"
+          "domestic_services_only",
+          "domestic_goods_and_services_only"
         ],
         "additionalProperties": false
       },
@@ -11812,6 +11831,13 @@
           },
           "gst_rate": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "goods",
+              "service"
+            ]
           }
         },
         "required": [
@@ -11838,6 +11864,9 @@
             "type": "boolean"
           },
           "domestic_services_only": {
+            "type": "boolean"
+          },
+          "domestic_goods_and_services_only": {
             "type": "boolean"
           }
         },
@@ -11931,6 +11960,13 @@
           },
           "igst_paise": {
             "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "goods",
+              "service"
+            ]
           }
         },
         "required": [
@@ -11981,6 +12017,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "goods",
+                        "service"
                       ]
                     }
                   },
@@ -12364,6 +12407,13 @@
               },
               "gst_rate": {
                 "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "goods",
+                  "service"
+                ]
               }
             },
             "required": [],
@@ -12429,6 +12479,9 @@
                 "type": "boolean"
               },
               "domestic_services_only": {
+                "type": "boolean"
+              },
+              "domestic_goods_and_services_only": {
                 "type": "boolean"
               }
             },

@@ -50,6 +50,37 @@ defmodule Nila.Business.PdfTest do
       refute text =~ "Issued"
     end
 
+    test "goods quotation prints HSN, unit, customer state and ship-to address" do
+      data =
+        Map.merge(snapshot(), %{
+          "document_type" => "quotation",
+          "number" => "QT/2627/0002",
+          "delivery_address" => "Parvathi Hospital, Chennai"
+        })
+
+      [line] = data["lines"]
+
+      data =
+        Map.put(data, "lines", [
+          Map.merge(line, %{
+            "description" => "Refrigerant gas",
+            "kind" => "goods",
+            "sac" => "290339",
+            "unit" => "KGS"
+          })
+        ])
+
+      assert {:ok, bytes} = Pdf.render(data)
+      text = pdf_text(bytes)
+      assert text =~ "Refrigerant gas"
+      assert text =~ "HSN/SAC"
+      assert text =~ "290339"
+      assert text =~ "KGS"
+      assert text =~ "State 33"
+      assert text =~ "SHIP TO"
+      assert text =~ "Parvathi Hospital, Chennai"
+    end
+
     test "renders optional reference, delivery address and amount words" do
       data =
         Map.merge(snapshot(), %{

@@ -8,6 +8,7 @@ defmodule Nila.Business.Profile do
     field :state_code, :string
     field :e_invoice_not_applicable, :boolean, default: false
     field :domestic_services_only, :boolean, default: false
+    field :domestic_goods_and_services_only, :boolean, default: false
     timestamps()
   end
 
@@ -18,7 +19,8 @@ defmodule Nila.Business.Profile do
       :address,
       :state_code,
       :e_invoice_not_applicable,
-      :domestic_services_only
+      :domestic_services_only,
+      :domestic_goods_and_services_only
     ])
     |> validate_required([:legal_name, :address, :state_code])
     |> validate_length(:legal_name, max: 200)

@@ -3,9 +3,10 @@
 // apps/dashboard/src/components/forms/customer-form.tsx.
 // Retains search -> create with the search text -> select saved customer without
 // leaving the invoice. Nila supplies domestic GST fields and its Phoenix API.
-import { useRef, useState, type FormEvent } from "react";
+
 import { useQueryClient } from "@tanstack/react-query";
-import { PlusIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -15,7 +16,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog as Sheet,
   DialogContent as SheetContent,
@@ -24,14 +24,15 @@ import {
   DialogTitle as SheetTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   BusinessApiError,
-  businessRequest,
   type BusinessBootstrap,
   type BusinessCustomer,
+  businessRequest,
 } from "@/lib/business-api";
+import { StateCombobox } from "./state-combobox";
 
 type Props = {
   customers: BusinessCustomer[];
@@ -123,15 +124,16 @@ export function CustomerPicker({ customers, states, value, onSelect, disabled }:
             render={
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 disabled={disabled}
-                className="h-auto min-w-0 justify-start rounded-sm px-0 py-1 text-left whitespace-normal font-medium hover:bg-transparent hover:underline"
+                className="h-9 min-w-0 max-w-sm flex-1 justify-between rounded-sm border-border/70 bg-muted/30 px-3 text-left font-medium hover:border-ring/60 hover:bg-accent/50"
               />
             }
             aria-label="Select customer"
             aria-expanded={open}
           >
-            {selected?.name ?? "Select customer"}
+            <span className="min-w-0 truncate">{selected?.name ?? "Select customer"}</span>
+            <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
           </PopoverTrigger>
           <PopoverContent
             align="start"
@@ -267,19 +269,13 @@ export function CustomerPicker({ customers, states, value, onSelect, disabled }:
                 <label className="text-sm font-medium" htmlFor="invoice-customer-state">
                   State
                 </label>
-                <NativeSelect
+                <StateCombobox
                   id="invoice-customer-state"
+                  states={states}
                   value={form.state_code}
+                  onChange={(state) => setForm({ ...form, state_code: state })}
                   required
-                  onChange={(event) => setForm({ ...form, state_code: event.target.value })}
-                >
-                  <option value="">Select state</option>
-                  {states.map((state) => (
-                    <option key={state.code} value={state.code}>
-                      {state.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                />
               </div>
             </fieldset>
             {error && (

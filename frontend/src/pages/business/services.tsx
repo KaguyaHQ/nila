@@ -1,21 +1,20 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useRef, useState, type FormEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -24,9 +23,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BusinessApiError, businessRequest, type BusinessService } from "@/lib/business-api";
+import { Textarea } from "@/components/ui/textarea";
+import { BusinessApiError, type BusinessService, businessRequest } from "@/lib/business-api";
 
-const blank = { description: "", sac: "", unit: "service", unit_price: "", gst_rate: "18" };
+const blank: Omit<BusinessService, "id"> = {
+  description: "",
+  kind: "service",
+  sac: "",
+  unit: "service",
+  unit_price: "",
+  gst_rate: "18",
+};
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
 export function ServicesPage({ services }: { services: BusinessService[] }) {
   const cache = useQueryClient();
@@ -44,6 +51,7 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
       service
         ? {
             description: service.description,
+            kind: service.kind,
             sac: service.sac,
             unit: service.unit ?? "",
             unit_price: service.unit_price,
@@ -101,13 +109,13 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Services</h1>
+          <h1 className="text-2xl font-semibold">Items</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Save service details to reuse in quotations and invoices.
+            Save goods and services to reuse in quotations and invoices.
           </p>
         </div>
         <Button onClick={() => edit()}>
-          <Plus /> Add service
+          <Plus /> Add item
         </Button>
       </div>
       <div className="overflow-hidden rounded-lg border">
@@ -115,7 +123,8 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>Description</TableHead>
-              <TableHead>SAC</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>HSN/SAC</TableHead>
               <TableHead>Unit</TableHead>
               <TableHead className="text-right">Rate</TableHead>
               <TableHead className="text-right">GST</TableHead>
@@ -130,6 +139,7 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                 <TableCell className="max-w-sm whitespace-pre-line font-medium">
                   {service.description}
                 </TableCell>
+                <TableCell>{service.kind === "goods" ? "Goods" : "Service"}</TableCell>
                 <TableCell>{service.sac}</TableCell>
                 <TableCell>{service.unit || "—"}</TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -166,8 +176,8 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
             ))}
             {services.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-14 text-center text-muted-foreground">
-                  No saved services yet. Add a service you bill for regularly.
+                <TableCell colSpan={7} className="py-14 text-center text-muted-foreground">
+                  No saved items yet. Add goods or services you bill for regularly.
                 </TableCell>
               </TableRow>
             )}
@@ -184,12 +194,32 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
           className="inset-y-0 right-0 left-auto flex h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-y-auto rounded-none sm:max-w-md"
           showCloseButton={!busy}
         >
-          <DialogTitle>{editing ? "Edit service" : "New service"}</DialogTitle>
+          <DialogTitle>{editing ? "Edit item" : "New item"}</DialogTitle>
           <DialogDescription>
-            These defaults are copied into a line when you choose this service.
+            These defaults are copied into a line when you choose this item.
           </DialogDescription>
           <form id="business-service-form" onSubmit={save} className="flex flex-1 flex-col gap-5">
             <fieldset disabled={busy} className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="service-kind" className="text-sm font-medium">
+                  Type
+                </label>
+                <NativeSelect
+                  id="service-kind"
+                  value={form.kind}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      kind: e.target.value as "goods" | "service",
+                      sac: "",
+                      unit: e.target.value === "goods" ? "NOS" : "service",
+                    })
+                  }
+                >
+                  <option value="service">Service</option>
+                  <option value="goods">Goods</option>
+                </NativeSelect>
+              </div>
               <div className="space-y-2">
                 <label htmlFor="service-description" className="text-sm font-medium">
                   Description
@@ -205,13 +235,13 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label htmlFor="service-sac" className="text-sm font-medium">
-                    SAC
+                    HSN/SAC
                   </label>
                   <Input
                     id="service-sac"
                     required
-                    pattern="99[0-9]{4}"
-                    maxLength={6}
+                    pattern={form.kind === "goods" ? "(?!99)[0-9]{6}([0-9]{2})?" : "99[0-9]{4}"}
+                    maxLength={form.kind === "goods" ? 8 : 6}
                     inputMode="numeric"
                     value={form.sac}
                     onChange={(e) => setForm({ ...form, sac: e.target.value })}
@@ -221,14 +251,28 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                   <label htmlFor="service-unit" className="text-sm font-medium">
                     Unit
                   </label>
-                  <Input
-                    id="service-unit"
-                    required
-                    maxLength={30}
-                    placeholder="e.g. hour"
-                    value={form.unit}
-                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  />
+                  {form.kind === "goods" ? (
+                    <NativeSelect
+                      id="service-unit"
+                      value={form.unit}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    >
+                      {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  ) : (
+                    <Input
+                      id="service-unit"
+                      required
+                      maxLength={30}
+                      placeholder="e.g. hour"
+                      value={form.unit}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    />
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -275,7 +319,7 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                 Cancel
               </Button>
               <Button type="submit" disabled={busy}>
-                {busy ? "Saving…" : "Save service"}
+                {busy ? "Saving…" : "Save item"}
               </Button>
             </div>
           </form>
@@ -289,9 +333,9 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
       >
         <AlertDialogContent initialFocus={cancelRemove} finalFocus={removeTrigger}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove saved service?</AlertDialogTitle>
+            <AlertDialogTitle>Remove saved item?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove “{removing?.description}” from saved services. Existing invoices and quotations
+              Remove “{removing?.description}” from saved items. Existing invoices and quotations
               stay unchanged.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -301,7 +345,7 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={busy} onClick={remove}>
-              {busy ? "Removing…" : "Remove service"}
+              {busy ? "Removing…" : "Remove item"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

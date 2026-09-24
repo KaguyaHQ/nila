@@ -15,7 +15,7 @@ Typst executable, just like normal invoice issuance.
 
 ## Workflow
 
-The first business portal serves GST-registered domestic service businesses.
+The business portal serves GST-registered domestic goods and service businesses.
 The CA invites a business owner from the React client edit page. The owner sets
 business details, confirms with their CA that e-invoicing does not apply, adds
 customers, saves drafts, then issues invoices and downloads PDFs.
@@ -23,7 +23,7 @@ customers, saves drafts, then issues invoices and downloads PDFs.
 The invoice editor adapts Midday's editable document composition, inline fields,
 line-item table, and customer picker/create/edit flow. The document is visible
 before fields are complete. Phoenix calculates displayed amounts from the current
-quantity, price, GST rate and place of supply; missing description or SAC does not
+quantity, price, GST rate and place of supply; missing description or HSN/SAC does not
 hide the document. Save and issue still validate the complete invoice.
 
 An explicit Preview PDF action renders the current unsaved values without saving
@@ -36,11 +36,19 @@ Delivery address does not infer place of supply.
 Source comments identify the Midday components and pinned revision adapted to
 Nila's APIs and Base UI shadcn controls.
 
-Saved services live at `/app/business/services`. Each business keeps its own
-description, SAC, unit, default price and GST rate. Invoice and quotation lines
-copy these defaults when selected; they remain editable and independent of the
-catalogue. Editing or deleting a saved service never rewrites an existing draft,
-issued snapshot or retained PDF. Ad hoc service lines remain supported.
+Saved items live at `/app/business/services`. Each business keeps its own
+description, goods/service type, HSN/SAC, unit, default price and GST rate.
+Goods require a 6 or 8 digit HSN and a supported unit (NOS, KGS, LTR, MTR,
+BOX or SET); services retain six-digit SAC starting 99 and their free-text
+unit. Invoice and quotation lines copy these defaults when selected; they remain
+editable and independent of the catalogue. Editing or deleting a saved item
+never rewrites an existing draft, issued snapshot or retained PDF. Ad hoc items
+remain supported. There is no stock tracking.
+
+Before issuing a goods invoice, the business must confirm in Business details
+that it will use Nila only for domestic taxable goods and services. Existing
+services-only confirmations continue to allow service invoices, but do not
+authorize goods invoices. Quotations can be finalized before that confirmation.
 
 The portal is `/app/business/invoices`. Business users have a separate client
 access record and no firm membership. One business per user is supported.
@@ -50,7 +58,7 @@ Quotations live at `/app/business/quotations` and use the same editor and PDF
 template. They have a separate QT number series and an optional valid-until date.
 Finalizing retains the quotation PDF; the business can mark it accepted or
 declined. Accepted quotations convert into an invoice draft with the customer,
-services, prices, place of supply, notes and references copied. Conversion keeps
+items, prices, place of supply, notes and references copied. Conversion keeps
 a link to that invoice and retries return the same invoice. The invoice date is
 today; quotation validity does not become a payment due date.
 
@@ -64,7 +72,7 @@ holding the business/invoice locks. Issuing saves a snapshot, the PDF reference
 and SHA-256 hash, and a sales source for the CA's existing working. Drafts stay
 out of the working. Filed months reject new issues. Issued documents cannot be
 edited; linked credit notes preserve the original document and cap credited
-amounts by original SAC/rate and tax amounts.
+amounts by original item type, HSN/SAC, rate and tax amounts.
 
 Typst renders the snapshot using the bundled template and fonts: Switzer for
 document text, with a size-matched Inter rupee symbol. Both business
@@ -90,5 +98,5 @@ the allowed LiveView origin. DNS/TLS/production deployment are separate operatio
 
 Scope excludes exports, SEZ, reverse charge, composition/exempt billing,
 e-invoice IRNs, inventory, payment collection and automatic email/WhatsApp sending.
-Place of supply is explicit because some services have special rules; the CA
+Place of supply is explicit because some supplies have special rules; the CA
 must confirm the applicable place and tax rate. Existing CA checks remain active.

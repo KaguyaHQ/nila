@@ -42,7 +42,7 @@ unless Repo.get_by(Profile, client_id: client.id) do
       legal_name: client.name,
       address: client.address,
       state_code: "33",
-      domestic_services_only: true,
+      domestic_goods_and_services_only: true,
       e_invoice_not_applicable: true
     })
 end

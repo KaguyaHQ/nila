@@ -13,7 +13,7 @@ See [the product objective and customer evidence](docs/prd.md#current-objective)
 Purchases & ITC is also core GST work: GSTR-2B fetching, purchase review,
 reconciliation, ITC decisions and purchase workings.
 
-**Nila Business is also approved work:** small domestic service businesses create
+**Nila Business is also approved work:** small domestic goods and service businesses create
 sales documents and give their CA continuous access to structured sales data.
 Its current scope includes customers, saved services, invoices, quotations,
 credit notes, and downloadable PDFs. See `docs/business-invoicing.md` for the

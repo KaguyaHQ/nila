@@ -177,13 +177,14 @@ defmodule NilaWeb.BusinessController do
         :address,
         :state_code,
         :e_invoice_not_applicable,
-        :domestic_services_only
+        :domestic_services_only,
+        :domestic_goods_and_services_only
       ])
 
   defp service_json(service),
     do:
       service
-      |> Map.take([:id, :description, :sac, :unit])
+      |> Map.take([:id, :description, :sac, :kind, :unit])
       |> Map.put(:unit_price, Decimal.to_string(Decimal.normalize(service.unit_price), :normal))
       |> Map.put(:gst_rate, Decimal.to_string(Decimal.normalize(service.gst_rate), :normal))
 

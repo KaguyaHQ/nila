@@ -5,10 +5,10 @@
  * Nila adaptation: controlled decimal strings, shared shadcn inputs, accessible
  * placeholders instead of hidden fields; Phoenix remains the arithmetic owner.
  */
-import { useState, type ComponentProps } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { type ComponentProps, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export function InlineInput({
@@ -24,8 +24,8 @@ export function InlineInput({
       {...props}
       autoComplete="off"
       className={cn(
-        "h-8 rounded-none border-0 border-b border-transparent bg-transparent px-0 py-1 text-sm shadow-none focus-visible:border-ring focus-visible:ring-0 disabled:opacity-100 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-        isPlaceholder && "border-dashed border-border",
+        "h-8 rounded-sm border border-border/70 bg-muted/30 px-2 py-1 text-sm shadow-none hover:border-ring/60 hover:bg-accent/50 focus-visible:border-ring focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/30 disabled:border-transparent disabled:bg-transparent disabled:opacity-100 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+        isPlaceholder && "border-dashed",
         className,
       )}
       onFocus={(event) => {
@@ -45,7 +45,7 @@ export function InlineSelect({ className, ...props }: ComponentProps<typeof Nati
     <NativeSelect
       {...props}
       className={cn(
-        "h-8 rounded-none border-0 border-b border-transparent bg-transparent px-0 text-sm shadow-none focus-visible:border-ring focus-visible:ring-0 disabled:opacity-100",
+        "h-8 w-full border-0 bg-transparent p-0 text-sm shadow-none disabled:opacity-100 [&_select]:rounded-sm [&_select]:border-border/70 [&_select]:bg-muted/30 [&_select]:pl-2 [&_select]:pr-6 [&_select]:hover:border-ring/60 [&_select]:hover:bg-accent/50 [&_select]:focus-visible:border-ring [&_select]:focus-visible:bg-background [&_select]:focus-visible:ring-2 [&_select]:focus-visible:ring-ring/30 [&_select:disabled]:border-transparent [&_select:disabled]:bg-transparent",
         className,
       )}
     />
@@ -58,7 +58,7 @@ export function InlineTextarea({ className, ...props }: ComponentProps<typeof Te
       {...props}
       rows={1}
       className={cn(
-        "field-sizing-content min-h-8 resize-none overflow-hidden rounded-none border-0 border-b border-transparent bg-transparent px-0 py-1 text-sm leading-6 shadow-none focus-visible:border-ring focus-visible:ring-0 disabled:bg-transparent disabled:opacity-100",
+        "field-sizing-content min-h-8 resize-none overflow-hidden rounded-sm border border-border/70 bg-muted/30 px-2 py-1 text-sm leading-6 shadow-none hover:border-ring/60 hover:bg-accent/50 focus-visible:border-ring focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/30 disabled:border-transparent disabled:bg-transparent disabled:opacity-100",
         className,
       )}
     />

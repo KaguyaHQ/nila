@@ -5,6 +5,7 @@ defmodule Nila.Business.Service do
     belongs_to :client, Nila.Clients.Client
     field :description, :string
     field :sac, :string
+    field :kind, :string, default: "service"
     field :unit, :string, default: "service"
     field :unit_price, :decimal
     field :gst_rate, :decimal
@@ -13,11 +14,13 @@ defmodule Nila.Business.Service do
 
   def changeset(service, attrs) do
     service
-    |> cast(attrs, [:description, :sac, :unit, :unit_price, :gst_rate])
-    |> validate_required([:description, :sac, :unit, :unit_price, :gst_rate])
+    |> cast(attrs, [:description, :sac, :kind, :unit, :unit_price, :gst_rate])
+    |> validate_required([:description, :sac, :kind, :unit, :unit_price, :gst_rate])
+    |> validate_inclusion(:kind, ~w(goods service))
     |> validate_length(:description, max: 1000)
     |> validate_length(:unit, max: 30)
-    |> validate_format(:sac, ~r/^99\d{4}$/)
+    |> validate_code()
+    |> validate_unit()
     |> validate_number(:unit_price, greater_than: 0, less_than_or_equal_to: 1_000_000_000)
     |> validate_number(:gst_rate, greater_than: 0, less_than_or_equal_to: 40)
     |> validate_decimal(:unit_price, 2)
@@ -27,6 +30,25 @@ defmodule Nila.Business.Service do
         do: [],
         else: [gst_rate: "must be a supported GST rate"]
     end)
+  end
+
+  defp validate_code(changeset) do
+    case {get_field(changeset, :kind), get_field(changeset, :sac)} do
+      {"service", code} when is_binary(code) ->
+        validate_format(changeset, :sac, ~r/^99\d{4}$/)
+
+      {"goods", code} when is_binary(code) ->
+        validate_format(changeset, :sac, ~r/^(?!99)\d{6}(\d{2})?$/)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_unit(changeset) do
+    if get_field(changeset, :kind) == "goods",
+      do: validate_inclusion(changeset, :unit, ~w(NOS KGS LTR MTR BOX SET)),
+      else: changeset
   end
 
   defp validate_decimal(changeset, field, places) do

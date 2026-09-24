@@ -1,5 +1,5 @@
 defmodule Nila.Business.Invoicing do
-  @moduledoc "Domestic service billing for an already-authorized business client."
+  @moduledoc "Domestic taxable goods and service billing for an authorized business client."
   import Ecto.Query
   import Ecto.Changeset
   alias Nila.Business.{Customer, Invoice, Profile, Service}
@@ -190,7 +190,7 @@ defmodule Nila.Business.Invoicing do
 
         with {:ok, invoice} <- locked_invoice(current_client, id),
              :ok <- draft?(invoice),
-             {:ok, profile} <- ready_profile(current_client, invoice.document_type),
+             {:ok, profile} <- ready_profile(current_client, invoice),
              {:ok, customer} <-
                Repo.fetch_by(Customer, id: invoice.customer_id, client_id: current_client.id),
              :ok <- open_document_month(current_client, invoice),
@@ -352,19 +352,24 @@ defmodule Nila.Business.Invoicing do
   defp draft?(%Invoice{status: "draft"}), do: :ok
   defp draft?(_), do: {:error, :already_issued}
 
-  defp ready_profile(client, document_type) do
+  defp ready_profile(client, invoice) do
     profile = get_profile(client)
 
     cond do
       not Nila.Gstin.valid?(client.gstin) ->
         {:error, :seller_gstin_required}
 
-      document_type == "quotation" and not Profile.changeset(profile, %{}).valid? ->
+      invoice.document_type == "quotation" and not Profile.changeset(profile, %{}).valid? ->
         {:error, :profile_incomplete}
 
-      document_type != "quotation" and
+      invoice.document_type != "quotation" and
           (is_nil(profile.id) or not profile.e_invoice_not_applicable or
-             not profile.domestic_services_only) ->
+             not (profile.domestic_services_only or profile.domestic_goods_and_services_only)) ->
+        {:error, :profile_incomplete}
+
+      invoice.document_type != "quotation" and
+        Enum.any?(invoice.lines, &(line_kind(string_keys(&1)) == "goods")) and
+          not profile.domestic_goods_and_services_only ->
         {:error, :profile_incomplete}
 
       profile.state_code != Nila.Gst.StateCodes.from_gstin(client.gstin) ->
@@ -476,7 +481,7 @@ defmodule Nila.Business.Invoicing do
 
   defp buckets(lines) do
     Enum.reduce(lines, %{}, fn line, buckets ->
-      key = {line["sac"], line["gst_rate"]}
+      key = {line["kind"] || "service", line["sac"], line["gst_rate"]}
       amounts = Map.take(line, ~w(taxable_paise cgst_paise sgst_paise igst_paise))
       Map.update(buckets, key, amounts, &Map.merge(&1, amounts, fn _, a, b -> a + b end))
     end)
@@ -517,7 +522,7 @@ defmodule Nila.Business.Invoicing do
     end)
   end
 
-  def calculate_lines(_, _), do: {:error, "add between 1 and 100 service lines"}
+  def calculate_lines(_, _), do: {:error, "add between 1 and 100 lines"}
 
   defp calculate_line(line, intra?) when is_map(line) do
     line = string_keys(line)
@@ -525,15 +530,35 @@ defmodule Nila.Business.Invoicing do
     description =
       if is_binary(line["description"]), do: String.trim(line["description"]), else: ""
 
+    kind = line_kind(line)
+
     with true <- description != "" and String.length(description) <= 1000,
-         true <- is_binary(line["sac"]) and Regex.match?(~r/^99\d{4}$/, line["sac"]) do
-      calculate_amounts(Map.put(line, "description", description), intra?)
+         true <- valid_code?(kind, line["sac"]),
+         true <- valid_unit?(kind, line["unit"]) do
+      line
+      |> Map.put("description", description)
+      |> Map.put("kind", kind)
+      |> calculate_amounts(intra?)
     else
-      _ -> {:error, "each service needs a description and six-digit SAC starting 99"}
+      _ -> {:error, "each line needs a description, valid HSN/SAC and unit"}
     end
   end
 
-  defp calculate_line(_, _), do: {:error, "invalid service line"}
+  defp calculate_line(_, _), do: {:error, "invalid line"}
+
+  defp line_kind(line), do: line["kind"] || "service"
+  defp valid_code?("service", code), do: is_binary(code) and Regex.match?(~r/^99\d{4}$/, code)
+
+  defp valid_code?("goods", code),
+    do: is_binary(code) and Regex.match?(~r/^(?!99)\d{6}(\d{2})?$/, code)
+
+  defp valid_code?(_, _), do: false
+  defp valid_unit?("goods", unit), do: unit in ~w(NOS KGS LTR MTR BOX SET)
+
+  defp valid_unit?("service", unit),
+    do: is_nil(unit) or (is_binary(unit) and String.length(unit) <= 30)
+
+  defp valid_unit?(_, _), do: false
 
   defp calculate_amounts(line, intra?) when is_map(line) do
     line = string_keys(line)
@@ -566,6 +591,7 @@ defmodule Nila.Business.Invoicing do
         {:ok,
          %{
            "description" => line["description"],
+           "kind" => line_kind(line),
            "sac" => line["sac"],
            "unit" => line["unit"],
            "quantity" => decimal_string(quantity),
@@ -581,12 +607,11 @@ defmodule Nila.Business.Invoicing do
       end
     else
       _ ->
-        {:error,
-         "each service needs a description, six-digit SAC starting 99, positive quantity and price, and a supported GST rate"}
+        {:error, "each line needs a positive quantity and price, and a supported GST rate"}
     end
   end
 
-  defp calculate_amounts(_, _), do: {:error, "invalid service line"}
+  defp calculate_amounts(_, _), do: {:error, "invalid line"}
 
   defp positive_decimal(value, places) when is_binary(value) do
     if byte_size(value) <= 24 and Regex.match?(~r/^\d+(\.\d+)?$/, value) do
@@ -710,7 +735,7 @@ defmodule Nila.Business.Invoicing do
             "description" => line["description"],
             "hsn_sac" => line["sac"],
             "quantity" => Decimal.to_float(Decimal.new(line["quantity"])),
-            "uom" => "OTH",
+            "uom" => if(line["kind"] == "goods", do: line["unit"], else: "OTH"),
             "printed_unit_price" => Decimal.to_float(Decimal.new(line["unit_price"])),
             "printed_taxable_value" => rupees.(line["taxable_paise"]),
             "cgst_rate" => if(intra?, do: rate / 2, else: 0),

@@ -1,5 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { BusinessBootstrap, BusinessInvoice } from "../src/lib/business-api";
+
 const bootstrap: BusinessBootstrap = {
   services: [],
   business: { id: 1, address: "Chennai", name: "Breeze Services", gstin: "33AABCT3518Q1ZF" },
@@ -8,6 +9,7 @@ const bootstrap: BusinessBootstrap = {
     address: "Chennai",
     state_code: "33",
     domestic_services_only: true,
+    domestic_goods_and_services_only: false,
     e_invoice_not_applicable: true,
   },
   customers: [{ id: 4, name: "Harbour Labs", gstin: null, address: "Chennai", state_code: "33" }],
@@ -99,6 +101,84 @@ async function chooseCustomer(page: Page, name: string) {
   await page.getByRole("combobox", { name: "Search customers" }).fill(name);
   await page.getByRole("option", { name, exact: true }).click();
 }
+async function chooseState(page: Page, trigger: string, label = "State") {
+  await page.locator(trigger).click();
+  await page.getByRole("combobox", { name: `Search ${label.toLowerCase()}` }).fill("Tamil");
+  await page.getByRole("option", { name: "Tamil Nadu", exact: true }).click();
+}
+
+test("business dates allow typing, normalizing, Tab navigation and calendar selection", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await page.goto("/app/business/invoices/new");
+  await page.locator("#invoice-date").fill("24/9/26");
+  await page.locator("#invoice-date").press("Tab");
+  await expect(page.locator("#invoice-date")).toHaveValue("24/09/2026");
+  await expect(page.locator("#invoice-due")).toBeFocused();
+
+  await page.locator("#invoice-due").fill("23/09/2026");
+  await expect
+    .poll(() =>
+      page.locator("#invoice-due").evaluate((field: HTMLInputElement) => field.validity.valid),
+    )
+    .toBe(false);
+  await page.locator("#invoice-due").fill("");
+  await page.locator("#invoice-due").fill("26/09/2026");
+  await page.locator("#invoice-due").press("Tab");
+  await page.locator("#invoice-date").fill("27/09/2026");
+  await page.locator("#invoice-date").press("Tab");
+  await expect
+    .poll(() =>
+      page.locator("#invoice-due").evaluate((field: HTMLInputElement) => field.validity.valid),
+    )
+    .toBe(false);
+  await page.locator("#invoice-date").fill("24/09/2026");
+  await page.locator("#invoice-date").press("Tab");
+  await page.locator("#invoice-due").fill("");
+
+  await page.getByRole("button", { name: "Choose due date" }).click();
+  const dueCalendar = page.locator('[data-slot="calendar"]:visible');
+  await expect(dueCalendar.locator("button[data-day]").filter({ hasText: /^23$/ })).toBeDisabled();
+  await expect(dueCalendar.locator("button[data-day]").filter({ hasText: /^24$/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(dueCalendar).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Choose invoice date" }).click();
+  const invoiceCalendar = page.locator('[data-slot="calendar"]:visible');
+  await expect(invoiceCalendar).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("business-calendar.png") });
+  await invoiceCalendar.locator("button[data-day]").filter({ hasText: /^25$/ }).click();
+  await expect(page.locator("#invoice-date")).toHaveValue("25/09/2026");
+  await expect(invoiceCalendar).toHaveCount(0);
+
+  await page.locator("#invoice-date").focus();
+  await page.locator("#invoice-date").press("Alt+ArrowDown");
+  await expect(invoiceCalendar).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(invoiceCalendar).toHaveCount(0);
+});
+
+test("required place of supply stays required with searchable state picker", async ({ page }) => {
+  await setup(page);
+  let writes = 0;
+  await page.route(/\/api\/business\/invoices$/, (route) => {
+    writes++;
+    return route.fulfill({ json: { invoice } });
+  });
+  await page.goto("/app/business/invoices/new");
+  await chooseCustomer(page, "Harbour Labs");
+  await page.locator("#line-0-description").fill("Consulting");
+  await page.locator("#line-0-sac").fill("998313");
+  await page.locator("#line-0-price").fill("1000");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  expect(writes).toBe(0);
+  await expect(page.locator("#invoice-pos")).toBeFocused();
+  await chooseState(page, "#invoice-pos", "Place of supply");
+  await expect(page.locator("#invoice-pos")).toContainText("Tamil Nadu");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => writes).toBe(1);
+});
 
 test("draft save then issue is explicit; PDF failures stay visible", async ({ page }, testInfo) => {
   await setup(page);
@@ -123,7 +203,7 @@ test("draft save then issue is explicit; PDF failures stay visible", async ({ pa
   await page.goto("/app/business/invoices/new");
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeDisabled();
   await chooseCustomer(page, "Harbour Labs");
-  await page.locator("#invoice-pos").selectOption("33");
+  await chooseState(page, "#invoice-pos", "Place of supply");
   await page.locator("#line-0-description").fill("Consulting");
   await page.locator("#line-0-sac").fill("998313");
   await page.locator("#line-0-price").fill("1000");
@@ -196,7 +276,7 @@ test("customer saves scoped and business profile confirms save", async ({ page }
   await page.getByRole("button", { name: "Add customer", exact: true }).click();
   await page.getByLabel("Customer name").fill("New customer");
   await page.getByLabel("Billing address").fill("Chennai");
-  await page.getByLabel("State", { exact: true }).selectOption("33");
+  await chooseState(page, "#customer-state");
   await page.getByRole("button", { name: "Save customer" }).click();
   await expect(page.locator("#business-customer-form")).toHaveCount(0);
   await page.route(/\/api\/business\/profile$/, (route) => {
@@ -346,7 +426,7 @@ test("empty document is editable immediately and totals come from Phoenix withou
   await expect(page.locator("#line-0-description")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator("canvas")).toHaveCount(0);
-  await page.locator("#invoice-pos").selectOption("33");
+  await chooseState(page, "#invoice-pos", "Place of supply");
   await page.locator("#line-0-price").fill("1000");
   await expect(page.getByText("₹12,345.67", { exact: true })).toBeVisible();
   expect(calculations).toBeGreaterThan(0);
@@ -391,7 +471,7 @@ test("new customer sheet keeps draft lines and selects saved customer", async ({
   await page.getByRole("option", { name: /^Create/ }).click();
   await expect(page.locator("#invoice-customer-name")).toHaveValue("New buyer");
   await page.locator("#invoice-customer-address").fill("Chennai");
-  await page.locator("#invoice-customer-state").selectOption("33");
+  await chooseState(page, "#invoice-customer-state");
   await page.locator("#business-save-customer").click();
   await expect(page.locator("#business-customer-sheet")).toHaveCount(0);
   await expect(page.locator("#business-customer")).toContainText("New buyer");
@@ -533,6 +613,45 @@ test("quotation list separates quotations from issued invoices", async ({ page }
   await expect(page.getByRole("link", { name: "QUO/2627/0001", exact: true })).toHaveCount(0);
 });
 
+test("goods quotation shows Bill to and Ship to together and saves HSN with unit", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  const saved = { ...quotation, id: 21 };
+  let submitted: Record<string, unknown> = {};
+  await page.route(/\/api\/business\/invoices$/, (route) => {
+    submitted = route.request().postDataJSON().invoice;
+    return route.fulfill({ json: { invoice: { ...saved, ...submitted } } });
+  });
+  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+    route.fulfill({ json: { invoice: { ...saved, ...submitted } } }),
+  );
+  await page.goto("/app/business/quotations/new");
+  await chooseCustomer(page, "Harbour Labs");
+  const billTo = page.getByText("Bill to").locator("..");
+  await expect(billTo).toContainText("Tamil Nadu · 33");
+  await billTo.getByRole("button", { name: "Add ship-to address" }).click();
+  await page.locator("#invoice-delivery").fill("Parvathi Hospital, Chennai");
+  await expect(billTo).toContainText("Parvathi Hospital, Chennai");
+  await chooseState(page, "#invoice-pos", "Place of supply");
+  await page.getByRole("combobox", { name: "Item type 1" }).selectOption("goods");
+  await page.locator("#line-0-description").fill("Refrigerant gas");
+  await page.locator("#line-0-sac").fill("290339");
+  await page.locator("#line-0-unit").selectOption("KGS");
+  await page.locator("#line-0-price").fill("500");
+  await expect(page.getByText("₹1,180.00", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("goods-quotation.png"), fullPage: true });
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page).toHaveURL(/\/quotations\/21$/);
+  expect((submitted.lines as Array<Record<string, unknown>>)[0]).toMatchObject({
+    kind: "goods",
+    description: "Refrigerant gas",
+    sac: "290339",
+    unit: "KGS",
+  });
+  expect(submitted.delivery_address).toBe("Parvathi Hospital, Chennai");
+});
+
 test("quotation builder finalizes explicitly, accepts, and converts to one invoice draft with fields retained", async ({
   page,
 }, testInfo) => {
@@ -594,9 +713,9 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     page.getByRole("button", { name: "Finalize quotation", exact: true }),
   ).toBeDisabled();
   await chooseCustomer(page, "Harbour Labs");
-  await page.locator("#invoice-pos").selectOption("33");
-  await page.locator("#invoice-date").fill("2026-09-22");
-  await page.getByLabel("Valid until", { exact: false }).fill("2026-10-10");
+  await chooseState(page, "#invoice-pos", "Place of supply");
+  await page.locator("#invoice-date").fill("22/09/2026");
+  await page.locator("#quotation-valid-until").fill("10/10/2026");
   await page.locator("#line-0-description").fill("Quoted consulting");
   await page.locator("#line-0-sac").fill("998313");
   await page.locator("#line-0-price").fill("1000");
@@ -681,21 +800,21 @@ test("saved services catalogue creates, edits and removes reusable defaults", as
   await setup(page);
   await mockServices(page);
   await page.goto("/app/business/services");
-  await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Add service", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Items", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
   let dialog = page.getByRole("dialog");
   await dialog.getByLabel("Description", { exact: true }).fill("Annual support");
-  await dialog.getByLabel("SAC", { exact: true }).fill("998313");
+  await dialog.getByLabel("HSN/SAC", { exact: true }).fill("998313");
   await dialog.getByLabel("Unit", { exact: false }).fill("year");
   await dialog.getByLabel("Rate", { exact: false }).fill("12000");
   await dialog.getByLabel("GST", { exact: false }).selectOption("18");
-  await dialog.getByRole("button", { name: "Save service", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("Annual support", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit Annual support", exact: true }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Rate", { exact: false }).fill("14000");
-  await dialog.getByRole("button", { name: "Save service", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("₹14,000.00", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Delete Annual support", exact: true }).click();
@@ -709,7 +828,7 @@ test("saved services catalogue creates, edits and removes reusable defaults", as
     page.getByRole("button", { name: "Delete Annual support", exact: true }),
   ).toBeFocused();
   await page.getByRole("button", { name: "Delete Annual support", exact: true }).click();
-  await page.getByRole("button", { name: "Remove service", exact: true }).click();
+  await page.getByRole("button", { name: "Remove item", exact: true }).click();
   await expect(page.getByText("Annual support", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Monthly consulting", { exact: true })).toBeVisible();
 });
@@ -727,8 +846,8 @@ for (const document of ["invoices", "quotations"])
     });
     await page.goto(`/app/business/${document}/new`);
     await page.locator("#line-0-quantity").fill("3.5");
-    await page.getByRole("button", { name: "Select saved service 1", exact: true }).click();
-    await page.getByRole("combobox", { name: "Search services" }).fill("consulting");
+    await page.getByRole("button", { name: "Select saved item 1", exact: true }).click();
+    await page.getByRole("combobox", { name: "Search items" }).fill("consulting");
     await page.getByRole("option", { name: /Monthly consulting/ }).click();
     await expect(page.locator("#line-0-description")).toHaveValue("Monthly consulting");
     await expect(page.locator("#line-0-sac")).toHaveValue("998313");
@@ -755,7 +874,7 @@ test("saved invoice lines stay unchanged after catalogue edits", async ({ page }
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Description", { exact: true }).fill("Repriced consulting");
   await dialog.getByLabel("Rate", { exact: false }).fill("9999");
-  await dialog.getByRole("button", { name: "Save service", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.goto("/app/business/invoices/9");
   await expect(page.locator("#line-0-description")).toHaveValue("Monthly consulting");

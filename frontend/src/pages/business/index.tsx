@@ -1,4 +1,27 @@
-import { InvoiceDocument, type InvoiceCalculation } from "@/components/business/invoice-document";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Link,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
+import { ArrowLeft, Download, FileText, Plus } from "lucide-react";
+import {
+  createContext,
+  type FormEvent,
+  lazy,
+  type ReactNode,
+  Suspense,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { type InvoiceCalculation, InvoiceDocument } from "@/components/business/invoice-document";
+import { StateCombobox } from "@/components/business/state-combobox";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,37 +39,15 @@ import {
 } from "@/components/ui/table";
 import {
   BusinessApiError,
-  businessRequest,
-  downloadInvoice,
-  fetchInvoicePdf,
   type BusinessBootstrap,
   type BusinessCustomer,
   type BusinessInvoice,
   type BusinessLine,
+  businessRequest,
+  downloadInvoice,
+  fetchInvoicePdf,
   type InvoiceInput,
 } from "@/lib/business-api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Link,
-  Navigate,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearch,
-} from "@tanstack/react-router";
-import { ArrowLeft, Download, FileText, Plus } from "lucide-react";
-import {
-  createContext,
-  lazy,
-  Suspense,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
 import { ServicesPage } from "./services";
 
 const SourcePdf = lazy(() => import("@/components/source-pdf"));
@@ -92,29 +93,13 @@ function StateSelect({
   id,
   value,
   onChange,
-  required = true,
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
-  required?: boolean;
 }) {
   const data = useBusiness();
-  return (
-    <NativeSelect
-      id={id}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      required={required}
-    >
-      <option value="">Choose state</option>
-      {data.states.map((state) => (
-        <option key={state.code} value={state.code}>
-          {state.name}
-        </option>
-      ))}
-    </NativeSelect>
-  );
+  return <StateCombobox id={id} states={data.states} value={value} onChange={onChange} required />;
 }
 export function BusinessLayout() {
   const location = useLocation();
@@ -155,7 +140,8 @@ export function BusinessLayout() {
                   type="hidden"
                   name="_csrf_token"
                   value={
-                    document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? ""
+                    document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ??
+                    ""
                   }
                 />
                 <Button type="submit" variant="outline">
@@ -205,7 +191,7 @@ export function BusinessLayout() {
                 ["/business/invoices", "Invoices"],
                 ["/business/quotations", "Quotations"],
                 ["/business/customers", "Customers"],
-                ["/business/services", "Services"],
+                ["/business/services", "Items"],
                 ["/business/settings", "Business details"],
               ] as const
             ).map(([path, title]) => (
@@ -500,6 +486,7 @@ export function BusinessSettings() {
     state_code: data.profile?.state_code ?? data.business.gstin?.slice(0, 2) ?? "",
     e_invoice_not_applicable: data.profile?.e_invoice_not_applicable ?? false,
     domestic_services_only: data.profile?.domestic_services_only ?? false,
+    domestic_goods_and_services_only: data.profile?.domestic_goods_and_services_only ?? false,
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -571,17 +558,28 @@ export function BusinessSettings() {
             }}
           />
         </Field>
-        <Field label="Services covered" id="business-domestic">
+        <Field label="Sales covered" id="business-domestic">
           <NativeSelect
             id="business-domestic"
-            value={form.domestic_services_only ? "yes" : "no"}
+            value={
+              form.domestic_goods_and_services_only
+                ? "goods"
+                : form.domestic_services_only
+                  ? "services"
+                  : "no"
+            }
             onChange={(e) => {
               setSaved(false);
-              setForm({ ...form, domestic_services_only: e.target.value === "yes" });
+              setForm({
+                ...form,
+                domestic_services_only: e.target.value === "services",
+                domestic_goods_and_services_only: e.target.value === "goods",
+              });
             }}
           >
             <option value="no">Not confirmed</option>
-            <option value="yes">I will use Nila only for domestic services</option>
+            <option value="services">Domestic taxable services only</option>
+            <option value="goods">Domestic taxable goods and services</option>
           </NativeSelect>
         </Field>
         <Field label="E-invoicing applicability" id="business-einvoice">
@@ -680,6 +678,7 @@ export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" |
 }
 const newLine = (): BusinessLine => ({
   description: "",
+  kind: "service",
   sac: "",
   quantity: "1",
   unit_price: "",
@@ -709,6 +708,7 @@ function InvoiceForm({
     place_of_supply: invoice?.place_of_supply ?? original?.place_of_supply ?? "",
     lines: (invoice?.lines ?? original?.lines)?.map((line) => ({
       description: line.description ?? "",
+      kind: line.kind ?? "service",
       sac: line.sac ?? "",
       unit: line.unit ?? "",
       quantity: line.quantity,
@@ -738,7 +738,10 @@ function InvoiceForm({
       data.profile?.address &&
       data.profile?.state_code &&
       (quotation ||
-        (data.profile?.e_invoice_not_applicable && data.profile?.domestic_services_only)),
+        (data.profile?.e_invoice_not_applicable &&
+          (data.profile?.domestic_goods_and_services_only ||
+            (data.profile?.domestic_services_only &&
+              form.lines.every((line) => line.kind !== "goods"))))),
   );
   function change(next: Partial<InvoiceInput>) {
     setForm({ ...form, ...next });
@@ -848,8 +851,8 @@ function InvoiceForm({
     }
   }
   return (
-    <div className="mx-auto max-w-[1000px] space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-[1080px] space-y-5">
+      <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-background/95 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/85">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -1005,15 +1008,20 @@ function InvoiceForm({
         />
       </form>
       {calculation.error && (
-        <p role="alert" className="mx-auto max-w-[840px] text-sm text-destructive">
+        <p role="alert" className="mx-auto max-w-[920px] text-sm text-destructive">
           {calculation.error}
         </p>
       )}
-      <p id="issue-help" className="mx-auto max-w-[840px] text-sm text-muted-foreground">
+      <p
+        id="issue-help"
+        className={
+          quotation && !issued ? "sr-only" : "mx-auto max-w-[920px] text-sm text-muted-foreground"
+        }
+      >
         {quotation
           ? issued
             ? "The finalized quotation is locked. Record the customer’s response before converting it to an invoice."
-            : "Save your draft before finalizing. Quotations are not sales invoices."
+            : "Finalizing locks this quotation and creates its PDF."
           : issued
             ? "Issued documents are locked. Use a credit note to reduce or reverse an invoice."
             : dirty || !saved

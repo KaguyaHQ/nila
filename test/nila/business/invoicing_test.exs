@@ -383,6 +383,87 @@ defmodule Nila.Business.InvoicingTest do
     end
   end
 
+  test "goods quote converts to an invoice with HSN, unit and tax in CA sales", ctx do
+    goods = %{
+      "description" => "Refrigerant gas",
+      "kind" => "goods",
+      "sac" => "290339",
+      "unit" => "KGS",
+      "quantity" => "2",
+      "unit_price" => "500",
+      "gst_rate" => "18"
+    }
+
+    {:ok, saved_item} =
+      Invoicing.create_service(ctx.client, %{
+        description: goods["description"],
+        kind: "goods",
+        sac: goods["sac"],
+        unit: goods["unit"],
+        unit_price: "500",
+        gst_rate: "18"
+      })
+
+    assert saved_item.kind == "goods"
+    {:ok, quote} = draft(ctx, %{"document_type" => "quotation", "lines" => [goods]})
+    assert {:ok, quote} = issue(ctx, quote)
+    assert hd(quote.snapshot["lines"])["kind"] == "goods"
+    assert hd(quote.snapshot["lines"])["unit"] == "KGS"
+    assert quote.dump_id == nil
+
+    {:ok, _} = Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, "accepted")
+
+    assert {:ok, %{invoice: invoice}} =
+             Invoicing.convert_quotation(ctx.client, quote.id, ctx.actor)
+
+    assert hd(invoice.lines)["kind"] == "goods"
+    assert {:error, :profile_incomplete} = issue(ctx, invoice)
+
+    {:ok, _} =
+      Invoicing.save_profile(ctx.client, %{domestic_goods_and_services_only: true})
+
+    assert {:ok, issued} = issue(ctx, invoice)
+    assert issued.totals["total_paise"] == 118_000
+    dump = Repo.get!(Nila.Gst.Intake.Dump, issued.dump_id)
+    [line] = hd(dump.invoices)["line_items"]
+    assert line["hsn_sac"] == "290339"
+    assert line["uom"] == "KGS"
+
+    {:ok, credit} =
+      draft(ctx, %{
+        "document_type" => "credit_note",
+        "original_invoice_id" => issued.id,
+        "invoice_date" => Date.to_iso8601(Date.utc_today()),
+        "lines" => [Map.put(goods, "unit_price", "200")]
+      })
+
+    assert {:ok, _} = issue(ctx, credit)
+  end
+
+  test "goods lines require a valid HSN and goods unit", ctx do
+    base = %{
+      "description" => "Refrigerant gas",
+      "kind" => "goods",
+      "sac" => "290339",
+      "unit" => "KGS",
+      "quantity" => "1",
+      "unit_price" => "500",
+      "gst_rate" => "18"
+    }
+
+    for {field, value} <- [
+          {"sac", "998313"},
+          {"sac", "2903"},
+          {"sac", "12345"},
+          {"unit", "hour"},
+          {"kind", "stock"}
+        ] do
+      assert {:error, %Ecto.Changeset{}} = draft(ctx, %{"lines" => [Map.put(base, field, value)]})
+    end
+
+    assert {:ok, _} = draft(ctx, %{"lines" => [Map.put(base, "sac", "29033990")]})
+  end
+
   test "credit notes reduce CA totals and cannot cumulatively overcredit the original", ctx do
     {:ok, original} = draft(ctx)
     {:ok, original} = issue(ctx, original)

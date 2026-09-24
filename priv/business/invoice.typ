@@ -61,6 +61,10 @@
     #text(weight: "semibold")[#data.customer.name]
     #v(4pt)
     #value(data.customer.address)
+    #if data.customer.at("state_code", default: none) not in (none, "") [
+      #v(4pt)
+      State #data.customer.state_code
+    ]
     #if data.customer.at("gstin", default: none) != none and data.customer.gstin != "" [
       #v(4pt)
       GSTIN #data.customer.gstin
@@ -86,18 +90,18 @@
 )
 #if data.at("delivery_address", default: none) not in (none, "") [
   #v(14pt)
-  #label("DELIVERY ADDRESS")
+  #label("SHIP TO")
   #v(5pt)
   #data.delivery_address
 ]
 #v(20pt)
 
 #table(
-  columns: (1fr, 43pt, 31pt, 64pt, 35pt, 74pt),
+  columns: (1fr, 52pt, 31pt, 64pt, 35pt, 74pt),
   inset: (x: 5pt, y: 9pt),
   stroke: (top: none, left: none, right: none, bottom: 0.4pt + rule),
   align: (left, left, right, right, right, right),
-  table.header(..("Service", "SAC", "Qty", "Rate", "GST", "Amount").map(s => text(size: 8pt, fill: muted)[#s])),
+  table.header(..("Item", "HSN/SAC", "Qty", "Rate", "GST", "Amount").map(s => text(size: 8pt, fill: muted)[#s])),
   ..data.lines.map(item => (
     [#item.description],
     text(size: 8pt)[#item.sac],

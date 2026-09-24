@@ -1814,6 +1814,8 @@ export interface components {
             unit: string;
             unit_price: string;
             gst_rate: string;
+            /** @enum {string} */
+            kind: "goods" | "service";
         };
         BusinessLine: {
             unit?: string;
@@ -1822,6 +1824,8 @@ export interface components {
             quantity: string;
             unit_price: string;
             gst_rate: string;
+            /** @enum {string} */
+            kind?: "goods" | "service";
         };
         InvoiceInput: {
             customer_id: string | number;
@@ -1867,6 +1871,7 @@ export interface components {
             state_code: string | null;
             e_invoice_not_applicable: boolean;
             domestic_services_only: boolean;
+            domestic_goods_and_services_only: boolean;
         };
         BusinessBootstrap: {
             business: {
@@ -1976,6 +1981,8 @@ export interface components {
             unit?: string;
             unit_price: string;
             gst_rate: string;
+            /** @enum {string} */
+            kind?: "goods" | "service";
         };
         BusinessProfileInput: {
             legal_name: string;
@@ -1983,6 +1990,7 @@ export interface components {
             state_code: string;
             e_invoice_not_applicable: boolean;
             domestic_services_only: boolean;
+            domestic_goods_and_services_only?: boolean;
         };
         BusinessTotals: {
             taxable_paise: number;
@@ -2002,6 +2010,8 @@ export interface components {
             cgst_paise: number;
             sgst_paise: number;
             igst_paise: number;
+            /** @enum {string} */
+            kind?: "goods" | "service";
         };
         CalculateInvoice: {
             invoice: {
@@ -2013,6 +2023,8 @@ export interface components {
                     description?: string;
                     sac?: string;
                     unit?: string | null;
+                    /** @enum {string} */
+                    kind?: "goods" | "service";
                 }[];
             };
         };
@@ -2092,6 +2104,8 @@ export interface components {
                 unit?: string;
                 unit_price?: string;
                 gst_rate?: string;
+                /** @enum {string} */
+                kind?: "goods" | "service";
             };
         };
         BusinessCustomerPatch: {
@@ -2109,6 +2123,7 @@ export interface components {
                 state_code?: string;
                 e_invoice_not_applicable?: boolean;
                 domestic_services_only?: boolean;
+                domestic_goods_and_services_only?: boolean;
             };
         };
         BusinessInvoicePatch: {

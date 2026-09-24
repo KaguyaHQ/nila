@@ -6,6 +6,10 @@
  * Nila adaptation: controlled React state replaces RHF; GST/SAC fields replace
  * template settings, and every calculated amount comes from Phoenix.
  */
+
+import { Link } from "@tanstack/react-router";
+import { Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type {
   BusinessBootstrap,
@@ -13,12 +17,11 @@ import type {
   BusinessLine,
   InvoiceInput,
 } from "@/lib/business-api";
-import { Link } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
 import { CustomerPicker } from "./customer-picker";
+import { BusinessDateField } from "./date-field";
 import { InlineInput, InlineSelect, InlineTextarea } from "./inline-input";
 import { ServicePicker } from "./service-picker";
+import { StateCombobox } from "./state-combobox";
 
 export type InvoiceCalculation =
   import("@/lib/generated/workspace").components["schemas"]["InvoiceCalculation"];
@@ -27,7 +30,7 @@ const amount = (value?: number) =>
   typeof value === "number"
     ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value / 100)
     : "—";
-const columns = "sm:grid-cols-[minmax(0,1fr)_68px_48px_80px_60px_94px_24px]";
+const columns = "lg:grid-cols-[minmax(0,1fr)_72px_110px_84px_64px_90px_24px]";
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
 
 export function InvoiceDocument({
@@ -77,7 +80,7 @@ export function InvoiceDocument({
   return (
     <article
       aria-label="Editable invoice"
-      className="relative mx-auto flex min-h-[900px] w-full max-w-[840px] flex-col border bg-background px-5 py-7 sm:px-10 sm:py-9"
+      className="relative mx-auto flex min-h-[900px] w-full max-w-[920px] flex-col border bg-background px-5 py-7 sm:px-10 sm:py-9"
     >
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0 flex-1">
@@ -102,27 +105,26 @@ export function InvoiceDocument({
             <label htmlFor="invoice-date" className="text-muted-foreground">
               {quotation ? "Quotation date" : credit ? "Credit note date" : "Invoice date"}
             </label>
-            <InlineInput
+            <BusinessDateField
               id="invoice-date"
-              type="date"
+              label={quotation ? "Quotation date" : credit ? "Credit note date" : "Invoice date"}
               required
               disabled={disabled}
               value={value.invoice_date}
-              onChange={(e) => onChange({ invoice_date: e.target.value })}
+              onChange={(date) => onChange({ invoice_date: date })}
             />
             {!credit && !quotation && (
               <>
                 <label htmlFor="invoice-due" className="text-muted-foreground">
                   Due date
                 </label>
-                <InlineInput
+                <BusinessDateField
                   id="invoice-due"
-                  aria-label="Due date (optional)"
-                  type="date"
+                  label="Due date"
                   disabled={disabled}
                   min={value.invoice_date}
                   value={value.due_date || ""}
-                  onChange={(e) => onChange({ due_date: e.target.value })}
+                  onChange={(date) => onChange({ due_date: date })}
                 />
               </>
             )}
@@ -131,13 +133,13 @@ export function InvoiceDocument({
                 <label htmlFor="quotation-valid-until" className="text-muted-foreground">
                   Valid until
                 </label>
-                <InlineInput
+                <BusinessDateField
                   id="quotation-valid-until"
-                  type="date"
+                  label="Valid until"
                   disabled={disabled}
                   min={value.invoice_date}
                   value={value.valid_until || ""}
-                  onChange={(e) => onChange({ valid_until: e.target.value })}
+                  onChange={(date) => onChange({ valid_until: date })}
                 />
               </>
             )}
@@ -158,13 +160,12 @@ export function InvoiceDocument({
                 <label htmlFor="invoice-reference-date" className="text-muted-foreground">
                   Reference date
                 </label>
-                <InlineInput
+                <BusinessDateField
                   id="invoice-reference-date"
-                  aria-label="Reference date (optional)"
+                  label="Reference date"
                   disabled={disabled}
-                  type="date"
                   value={value.purchase_order_date || ""}
-                  onChange={(e) => onChange({ purchase_order_date: e.target.value })}
+                  onChange={(date) => onChange({ purchase_order_date: date })}
                 />
               </>
             )}
@@ -227,68 +228,72 @@ export function InvoiceDocument({
             <>
               <p className="whitespace-pre-line text-muted-foreground">{customer.address}</p>
               <p className="text-muted-foreground">
+                {business.states.find((state) => state.code === customer.state_code)?.name ??
+                  customer.state_code}{" "}
+                {customer.state_code && `· ${customer.state_code}`}
+              </p>
+              <p className="text-muted-foreground">
                 {customer.gstin ? `GSTIN ${customer.gstin}` : "Unregistered customer"}
               </p>
             </>
           )}
+          {showDelivery ? (
+            <div className="pt-3">
+              <label
+                htmlFor="invoice-delivery"
+                className="mb-1 block text-sm text-muted-foreground"
+              >
+                Ship to (optional)
+              </label>
+              <InlineTextarea
+                id="invoice-delivery"
+                disabled={disabled}
+                maxLength={2000}
+                placeholder="Address, if different from billing"
+                value={value.delivery_address || ""}
+                onChange={(e) => onChange({ delivery_address: e.target.value })}
+              />
+            </div>
+          ) : (
+            !issued && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                className="-ml-2 mt-2 w-fit text-muted-foreground"
+                onClick={() => setShowDelivery(true)}
+              >
+                <Plus /> Add ship-to address
+              </Button>
+            )
+          )}
         </div>
       </section>
-      {showDelivery ? (
-        <div className="mb-5 max-w-sm">
-          <label htmlFor="invoice-delivery" className="mb-1 block text-sm text-muted-foreground">
-            Delivery address (optional)
-          </label>
-          <InlineTextarea
-            id="invoice-delivery"
-            disabled={disabled}
-            maxLength={2000}
-            placeholder="Address, if different from billing"
-            value={value.delivery_address || ""}
-            onChange={(e) => onChange({ delivery_address: e.target.value })}
-          />
-        </div>
-      ) : (
-        !issued && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            className="-ml-2 mb-4 w-fit text-muted-foreground"
-            onClick={() => setShowDelivery(true)}
-          >
-            <Plus /> Add delivery address
-          </Button>
-        )
-      )}
 
       <div className="mb-7 flex max-w-sm items-center gap-4 text-sm">
         <label htmlFor="invoice-pos" className="shrink-0 text-muted-foreground">
           Place of supply
         </label>
-        <InlineSelect
+        <StateCombobox
           id="invoice-pos"
-          required
+          states={business.states}
           disabled={disabled}
           value={value.place_of_supply}
-          onChange={(e) => onChange({ place_of_supply: e.target.value })}
-        >
-          <option value="">Choose state</option>
-          {business.states.map((state) => (
-            <option key={state.code} value={state.code}>
-              {state.name}
-            </option>
-          ))}
-        </InlineSelect>
+          onChange={(state) => onChange({ place_of_supply: state })}
+          label="Place of supply"
+          inline
+          required
+        />
       </div>
 
-      <section aria-label="Services" className="space-y-3">
+      <section aria-label="Items" className="space-y-3">
         <div
-          className={`hidden gap-3 border-b pb-3 text-xs text-muted-foreground sm:grid ${columns}`}
+          className={`hidden gap-2 border-b pb-3 text-xs text-muted-foreground lg:grid ${columns}`}
         >
           <span>Description</span>
-          <span>SAC</span>
-          <span className="text-right">Qty</span>
+          <span>HSN/SAC</span>
+          <span>Qty / unit</span>
           <span className="text-right">Rate (₹)</span>
           <span className="text-right">GST %</span>
           <span className="text-right">Amount</span>
@@ -297,107 +302,160 @@ export function InvoiceDocument({
         {value.lines.map((line, index) => (
           <div
             key={index}
-            className={`group grid grid-cols-2 items-start gap-x-3 gap-y-2 border-b pb-3 text-sm ${columns}`}
+            className={`group grid grid-cols-2 items-start gap-x-2 gap-y-2 border-b pb-3 text-sm ${columns}`}
           >
-            <div className="col-span-2 min-w-0 sm:col-span-1">
+            <div className="col-span-2 min-w-0 lg:col-span-1">
               <label
-                className="text-xs text-muted-foreground sm:sr-only"
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-description`}
               >
                 Description
               </label>
-              <div className="flex min-w-0 items-start gap-1">
-                <InlineTextarea
-                  id={`line-${index}-description`}
-                  required
-                  disabled={disabled}
-                  maxLength={1000}
-                  placeholder="Service description"
-                  value={line.description}
-                  onChange={(e) => lineChange(index, "description", e.target.value)}
-                />
-                {!issued && (
-                  <ServicePicker
-                    index={index}
+              <div className="flex min-w-0 items-start gap-2">
+                {issued ? (
+                  <span className="pt-2 text-xs text-muted-foreground lg:hidden">
+                    {line.kind === "goods" ? "Goods" : "Service"}
+                  </span>
+                ) : (
+                  <InlineSelect
+                    aria-label={`Item type ${index + 1}`}
                     disabled={disabled}
-                    services={business.services ?? []}
-                    onSelect={(service) =>
+                    value={line.kind ?? "service"}
+                    className="w-24 shrink-0 text-xs"
+                    onChange={(e) =>
                       onChange({
                         lines: value.lines.map((entry, i) =>
                           i === index
                             ? {
                                 ...entry,
-                                description: service.description,
-                                sac: service.sac,
-                                unit: service.unit,
-                                unit_price: service.unit_price,
-                                gst_rate: service.gst_rate,
+                                kind: e.target.value as "goods" | "service",
+                                sac: "",
+                                unit: e.target.value === "goods" ? "NOS" : "",
                               }
                             : entry,
                         ),
                       })
                     }
-                  />
+                  >
+                    <option value="service">Service</option>
+                    <option value="goods">Goods</option>
+                  </InlineSelect>
                 )}
+                <div className="relative min-w-0 flex-1">
+                  <InlineTextarea
+                    id={`line-${index}-description`}
+                    required
+                    disabled={disabled}
+                    maxLength={1000}
+                    placeholder="What are you selling?"
+                    className={!issued ? "pr-9" : undefined}
+                    value={line.description}
+                    onChange={(e) => lineChange(index, "description", e.target.value)}
+                  />
+                  {!issued && (
+                    <span className="absolute right-1 top-1">
+                      <ServicePicker
+                        index={index}
+                        disabled={disabled}
+                        services={business.services ?? []}
+                        onSelect={(service) =>
+                          onChange({
+                            lines: value.lines.map((entry, i) =>
+                              i === index
+                                ? {
+                                    ...entry,
+                                    description: service.description,
+                                    kind: service.kind,
+                                    sac: service.sac,
+                                    unit: service.unit,
+                                    unit_price: service.unit_price,
+                                    gst_rate: service.gst_rate,
+                                  }
+                                : entry,
+                            ),
+                          })
+                        }
+                      />
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="min-w-0">
               <label
-                className="text-xs text-muted-foreground sm:sr-only"
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-sac`}
               >
-                SAC
+                HSN/SAC
               </label>
               <InlineInput
                 id={`line-${index}-sac`}
                 required
                 disabled={disabled}
                 inputMode="numeric"
-                pattern="99[0-9]{4}"
-                maxLength={6}
-                placeholder="998313"
+                pattern={line.kind === "goods" ? "(?!99)[0-9]{6}([0-9]{2})?" : "99[0-9]{4}"}
+                maxLength={line.kind === "goods" ? 8 : 6}
+                placeholder={line.kind === "goods" ? "6 or 8 digits" : "998313"}
                 value={line.sac}
                 onChange={(e) => lineChange(index, "sac", e.target.value)}
               />
             </div>
             <div className="min-w-0">
               <label
-                className="text-xs text-muted-foreground sm:sr-only"
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-quantity`}
               >
                 Quantity
               </label>
-              <InlineInput
-                id={`line-${index}-quantity`}
-                required
-                disabled={disabled}
-                type="number"
-                min="0.0001"
-                step="0.0001"
-                value={line.quantity}
-                className="tabular-nums sm:text-right"
-                onChange={(e) => lineChange(index, "quantity", e.target.value)}
-              />
-              {(!issued || line.unit) && (
-                <>
-                  <label className="sr-only" htmlFor={`line-${index}-unit`}>
-                    Unit (optional)
-                  </label>
-                  <InlineInput
-                    id={`line-${index}-unit`}
-                    disabled={disabled}
-                    maxLength={30}
-                    placeholder="unit"
-                    value={line.unit ?? ""}
-                    className="h-6 text-xs text-muted-foreground sm:text-right"
-                    onChange={(e) => lineChange(index, "unit", e.target.value)}
-                  />
-                </>
-              )}
+              <div className="flex min-w-0 items-center gap-1">
+                <InlineInput
+                  id={`line-${index}-quantity`}
+                  required
+                  disabled={disabled}
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                  value={line.quantity}
+                  className="w-12 shrink-0 tabular-nums text-right"
+                  onChange={(e) => lineChange(index, "quantity", e.target.value)}
+                />
+                {(!issued || line.unit) && (
+                  <>
+                    <label className="sr-only" htmlFor={`line-${index}-unit`}>
+                      Unit (optional)
+                    </label>
+                    {line.kind === "goods" ? (
+                      <InlineSelect
+                        id={`line-${index}-unit`}
+                        disabled={disabled}
+                        value={line.unit ?? "NOS"}
+                        className="min-w-0 flex-1 text-xs"
+                        onChange={(e) => lineChange(index, "unit", e.target.value)}
+                      >
+                        {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </InlineSelect>
+                    ) : (
+                      <InlineInput
+                        id={`line-${index}-unit`}
+                        disabled={disabled}
+                        maxLength={30}
+                        placeholder="unit"
+                        value={line.unit ?? ""}
+                        className="min-w-0 flex-1 text-xs text-muted-foreground"
+                        onChange={(e) => lineChange(index, "unit", e.target.value)}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
             </div>
             <div className="min-w-0">
               <label
-                className="text-xs text-muted-foreground sm:sr-only"
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-price`}
               >
                 Rate (₹)
@@ -417,7 +475,7 @@ export function InvoiceDocument({
             </div>
             <div className="min-w-0">
               <label
-                className="text-xs text-muted-foreground sm:sr-only"
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-gst`}
               >
                 GST %
@@ -439,8 +497,8 @@ export function InvoiceDocument({
                 ))}
               </InlineSelect>
             </div>
-            <div className="flex min-h-8 items-center justify-between sm:justify-end">
-              <span className="text-xs text-muted-foreground sm:hidden">Amount</span>
+            <div className="flex min-h-8 items-center justify-between lg:justify-end">
+              <span className="text-xs text-muted-foreground lg:hidden">Amount</span>
               <span className="whitespace-nowrap tabular-nums">
                 {amount(calculation?.lines[index]?.taxable_paise)}
               </span>
@@ -453,7 +511,7 @@ export function InvoiceDocument({
                   size="icon-sm"
                   className="size-7"
                   disabled={disabled || value.lines.length === 1}
-                  aria-label={`Remove service ${index + 1}`}
+                  aria-label={`Remove item ${index + 1}`}
                   onClick={() => onChange({ lines: value.lines.filter((_, i) => i !== index) })}
                 >
                   <Trash2 className="size-3.5" />
@@ -473,12 +531,19 @@ export function InvoiceDocument({
               onChange({
                 lines: [
                   ...value.lines,
-                  { description: "", sac: "", quantity: "1", unit_price: "", gst_rate: "18" },
+                  {
+                    description: "",
+                    kind: "service",
+                    sac: "",
+                    quantity: "1",
+                    unit_price: "",
+                    gst_rate: "18",
+                  },
                 ],
               })
             }
           >
-            <Plus /> Add service
+            <Plus /> Add item
           </Button>
         )}
       </section>

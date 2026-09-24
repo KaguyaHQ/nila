@@ -2,10 +2,10 @@
 // at 51587319f26a0ffaa9dfccab1920373cb65689b7: copy saved defaults into one
 // editable line. Bigcapital ItemsSelect supplies the searchable catalogue pattern.
 // Nila deliberately does not auto-save line edits into the catalogue.
-import { useState } from "react";
+
 import { Search } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
@@ -14,6 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { BusinessService } from "@/lib/business-api";
 
 export function ServicePicker({
@@ -33,7 +34,7 @@ export function ServicePicker({
       <PopoverTrigger
         type="button"
         disabled={disabled}
-        aria-label={`Select saved service ${index + 1}`}
+        aria-label={`Select saved item ${index + 1}`}
         render={
           <Button
             type="button"
@@ -48,10 +49,10 @@ export function ServicePicker({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-96 max-w-[calc(100vw-2rem)] p-0">
         <Command>
-          <CommandInput placeholder="Search services…" aria-label="Search services" />
+          <CommandInput placeholder="Search items…" aria-label="Search items" />
           <CommandList>
             <CommandEmpty className="p-4 text-sm text-muted-foreground">
-              No saved services found. You can still type a service directly into the document.
+              No saved items found. You can still type an item directly into the document.
             </CommandEmpty>
             <CommandGroup>
               {services.map((service) => (
@@ -68,7 +69,7 @@ export function ServicePicker({
                       {service.description}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      SAC {service.sac}
+                      {service.kind === "goods" ? "HSN" : "SAC"} {service.sac}
                       {service.unit ? ` · ${service.unit}` : ""} · GST {Number(service.gst_rate)}%
                     </span>
                   </div>
