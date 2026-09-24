@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { SalesWorkspace } from "../src/lib/sales-api";
 
 function workspace(client = 1): SalesWorkspace {
@@ -190,7 +190,7 @@ test("outside click and Escape close the upload dialog without reopening it", as
       element ? getComputedStyle(element).animationDuration : null,
     );
   });
-  expect(durations).toEqual(["0.2s", "0.2s"]);
+  expect(durations).toEqual(["0.1s", "0.1s"]);
   await page.evaluate(() => {
     const states: string[] = [];
     const observer = new MutationObserver(() => {

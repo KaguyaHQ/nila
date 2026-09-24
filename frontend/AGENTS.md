@@ -7,8 +7,9 @@ React + TypeScript, Vite, shadcn/Base UI, Tailwind and Lucide. Follow the
 
 ## Implementation
 
-- Reuse `src/components/ui` and shared tokens. Before building a generic control,
-  check the official shadcn Base UI registry. Nila is desktop-first; no mobile work unless requested.
+- Reuse `src/components/ui` and shared tokens. Add or refresh shared controls with
+  the shadcn CLI from `frontend/`; do not copy components from another shadcn style
+  or registry. Nila is desktop-first; no mobile work unless requested.
 - Use TanStack Router with typed routes/search, and TanStack Query for server data.
   Use normal links for downloads and static pages; show download errors in the current screen.
 - Use `RecordTableRow` with a visible `RecordTableLink` when a row opens a record.

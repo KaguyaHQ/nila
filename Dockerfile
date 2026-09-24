@@ -13,7 +13,7 @@ ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-$
 # Match the builder's Debian family, with Python >=3.10 for native PDF tables.
 ARG RUNNER_IMAGE="python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae34498d60c965f1241e39cd6a85a8859bdf84"
 
-FROM node:22-bookworm-slim AS frontend
+FROM node:24-bookworm-slim AS frontend
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN npm install --global $(node -p "require('./package.json').packageManager") \
