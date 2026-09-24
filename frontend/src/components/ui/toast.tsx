@@ -1,10 +1,8 @@
 "use client";
 
-// shadcn/ui base-nova toast; registry aliases and icons resolved for Nila.
-
 import * as React from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { cn } from "@/lib/utils";
+import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
 import {
