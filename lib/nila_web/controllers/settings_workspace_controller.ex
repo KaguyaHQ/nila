@@ -50,6 +50,7 @@ defmodule NilaWeb.SettingsWorkspaceController do
   def sessions(conn, _params) do
     conn
     |> UserAuth.clear_all_user_sessions(conn.assigns.current_scope.user)
+    |> put_session(:auth_notice, "Signed out everywhere.")
     |> json(%{message: "Signed out everywhere.", redirect_to: "/users/log_in"})
   end
 

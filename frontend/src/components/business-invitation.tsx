@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 
 type Invitation = import("@/lib/generated/workspace").components["schemas"]["Invitation"];
 
@@ -77,6 +78,7 @@ export function BusinessInvitation({ clientId }: { clientId: number }) {
     try {
       await navigator.clipboard.writeText(result.invitation_url);
       setCopied(true);
+      toast.add({ title: "Invitation link copied.", type: "success" });
     } catch {
       link.current?.focus();
       link.current?.select();

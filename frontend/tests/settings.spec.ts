@@ -88,7 +88,7 @@ test("profile uses React navigation, serif wordmark and saves only after server 
   await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled();
   expect(writes).toBe(1);
   release();
-  await expect(page.getByRole("status")).toHaveText("Name updated.");
+  await expect(page.locator('[data-slot="toast-title"]')).toHaveText("Name updated.");
   await expect(page.getByRole("heading", { name: "New name", exact: true })).toBeVisible();
   await page.evaluate(() => {
     document.body.dataset.retained = "yes";
@@ -127,7 +127,9 @@ test("validation retains input and email remains unchanged until confirmed", asy
   succeeds = true;
   await page.getByLabel("Current password").fill("correct-password");
   await page.getByRole("button", { name: "Send confirmation link" }).click();
-  await expect(page.getByRole("status")).toHaveText("A confirmation link has been sent.");
+  await expect(page.locator('[data-slot="toast-title"]')).toHaveText(
+    "A confirmation link has been sent.",
+  );
   await expect(page.getByText("vasanth@example.test", { exact: true })).toBeVisible();
 });
 
@@ -150,7 +152,7 @@ test("firm saves and member errors never pretend a role changed", async ({ page 
   await page.goto("/app/settings/workspace");
   await page.getByLabel("Firm name").fill("New firm");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toHaveText("Firm details saved.");
+  await expect(page.locator('[data-slot="toast-title"]')).toHaveText("Firm details saved.");
   await page
     .getByRole("navigation", { name: "Settings" })
     .getByRole("link", { name: "Users", exact: true })

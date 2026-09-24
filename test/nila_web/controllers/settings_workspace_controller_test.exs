@@ -102,6 +102,11 @@ defmodule NilaWeb.SettingsWorkspaceControllerTest do
     assert contract_response(result, 200)["redirect_to"] == "/users/log_in"
     refute get_session(result, :user_token)
     refute Accounts.get_user_by_session_token(token)
+    login = result |> recycle() |> get("/users/log_in")
+    assert html_response(login, 200) =~ "Signed out everywhere."
+
+    refute login |> recycle() |> get("/users/log_in") |> html_response(200) =~
+             "Signed out everywhere."
   end
 
   test "email requires password and stays unchanged until confirmation", %{conn: conn, user: user} do

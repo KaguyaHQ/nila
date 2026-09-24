@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useToastManager } from "@/components/ui/toast";
 
 export type AuthPageData = {
   kind: "login" | "forgot" | "reset" | "invite" | "confirmation";
@@ -22,6 +23,14 @@ export type AuthPageData = {
 // Composition adapted from shadcn's Base UI login-03 block.
 // Native POSTs intentionally keep session creation and redirects in Phoenix.
 export default function AuthPage({ data }: { data: AuthPageData }) {
+  const { add } = useToastManager();
+  const notified = useRef(false);
+  useEffect(() => {
+    if (data.info && !notified.current) {
+      notified.current = true;
+      add({ title: data.info, type: "success" });
+    }
+  }, [data.info, add]);
   const invalid = (data.kind === "reset" || data.kind === "invite") && !data.valid;
   const title = invalid
     ? `This ${data.kind === "invite" ? "invite" : "reset"} link is no longer valid`
@@ -64,11 +73,6 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
             {data.error && (
               <p role="alert" className="text-sm text-destructive">
                 {data.error}
-              </p>
-            )}
-            {data.info && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {data.info}
               </p>
             )}
             {invalid ? (

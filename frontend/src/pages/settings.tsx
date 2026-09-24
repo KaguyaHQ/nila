@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toast";
 import { Shell } from "@/components/workspace-shell";
 import {
   SettingsError,
@@ -48,6 +49,7 @@ function useSettingsSave<T>(save: (values: T, signal: AbortSignal) => Promise<Se
       }
       for (const key of ["settings", "clients", "sales", "purchases"])
         void cache.invalidateQueries({ queryKey: [key] });
+      toast.add({ title: result.message, type: "success" });
     },
     onSettled: () => {
       request.current = null;
@@ -155,11 +157,6 @@ function SettingsForm({
       {mutation.isError && (
         <p role="alert" className="text-sm text-destructive">
           {mutation.error.message}
-        </p>
-      )}
-      {mutation.isSuccess && (
-        <p role="status" className="text-sm">
-          {mutation.data.message}
         </p>
       )}
     </form>
@@ -541,11 +538,6 @@ function Member({
       {mutation.isError && (
         <p role="alert" className="text-sm text-destructive">
           {mutation.error.message}
-        </p>
-      )}
-      {mutation.isSuccess && (
-        <p role="status" className="text-sm">
-          {mutation.data.message}
         </p>
       )}
     </div>

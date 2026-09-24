@@ -3,6 +3,7 @@ import { ClientGstConnection } from "@/components/client-gst-connection";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -314,7 +315,10 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
       void cache.invalidateQueries({ queryKey: ["purchases"] });
       void cache.invalidateQueries({ queryKey: ["gst-connection", saved.client.id] });
       void cache.invalidateQueries({ queryKey: ["gstr2b", saved.client.id] });
-      if (!controller.signal.aborted) navigate({ to: "/clients", search: { period: data.period } });
+      if (!controller.signal.aborted) {
+        toast.add({ title: client ? "Client updated." : "Client added.", type: "success" });
+        navigate({ to: "/clients", search: { period: data.period } });
+      }
     },
     onSettled: (_saved, _error, { controller }) => {
       if (operation.current === controller) operation.current = null;

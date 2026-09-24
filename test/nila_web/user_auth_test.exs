@@ -5,6 +5,16 @@ defmodule NilaWeb.UserAuthTest do
   alias Nila.Clients
   alias NilaWeb.UserAuth
 
+  test "logout reaches React login with a one-time confirmation", %{conn: conn} do
+    %{user: user} = user_with_org_fixture()
+    signed_out = conn |> log_in_user(user) |> delete(~p"/users/log_out")
+    assert redirected_to(signed_out) == ~p"/users/log_in"
+    assert get_session(signed_out, :user_token) == nil
+    login = signed_out |> recycle() |> get(~p"/users/log_in")
+    assert html_response(login, 200) =~ "Signed out."
+    refute login |> recycle() |> get(~p"/users/log_in") |> html_response(200) =~ "Signed out."
+  end
+
   test "login preserves the requested React deep link", %{conn: conn} do
     %{user: user} = user_with_org_fixture()
     destination = "/app/clients/new"

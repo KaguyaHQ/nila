@@ -4,7 +4,14 @@ defmodule NilaWeb.AuthPageController do
 
   @dev_login? Application.compile_env(:nila, :dev_routes, false)
 
-  def login(conn, _), do: page(conn, "login", %{users: quick_login_users()})
+  def login(conn, _) do
+    notice = get_session(conn, :auth_notice) || Phoenix.Flash.get(conn.assigns.flash, :info)
+
+    conn
+    |> delete_session(:auth_notice)
+    |> page("login", %{users: quick_login_users(), info: notice})
+  end
+
   def forgot(conn, _), do: page(conn, "forgot")
 
   def reset(conn, %{"token" => token}) do

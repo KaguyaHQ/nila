@@ -1,5 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { AuthPageData } from "../src/pages/auth";
+
+test("logout confirmation appears once and can be dismissed", async ({ page }) => {
+  await auth(page, { info: "Signed out." });
+  const toast = page.locator('[data-slot="toast"]');
+  await expect(toast).toHaveCount(1);
+  await expect(toast).toContainText("Signed out.");
+  await expect(page.getByRole("heading", { name: "Sign in to Nila" })).toBeVisible();
+  await toast.locator('[data-slot="toast-close"]').click();
+  await expect(toast).toHaveCount(0);
+});
 async function auth(page: Page, data: Partial<AuthPageData> = {}) {
   const boot = { kind: "login", action: "/users/log_in", users: [], errors: {}, ...data };
   await page.route("**/users/**", async (route) => {

@@ -50,14 +50,14 @@ defmodule NilaWeb.UserAuth do
     conn
     |> clear_user_session()
     |> put_flash(:info, "Signed out.")
-    |> redirect(to: ~p"/")
+    |> redirect(to: ~p"/users/log_in")
   end
 
   def log_out_all_user_sessions(conn, user) do
     conn
     |> clear_all_user_sessions(user)
     |> put_flash(:info, "Signed out.")
-    |> redirect(to: ~p"/")
+    |> redirect(to: ~p"/users/log_in")
   end
 
   def clear_all_user_sessions(conn, user) do
