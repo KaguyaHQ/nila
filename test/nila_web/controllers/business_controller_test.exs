@@ -286,6 +286,66 @@ defmodule NilaWeb.BusinessControllerTest do
     assert normal["invoice"]["document_type"] == "invoice"
   end
 
+  test "business owner configures quote numbering and uploads scoped branding", %{
+    owner: owner,
+    ca: ca,
+    client: client
+  } do
+    alias Nila.Business.Invoicing
+
+    assert build_conn()
+           |> patch("/api/business/quotation-numbering", %{
+             numbering: %{style: "serial_fy", next_number: 79}
+           })
+           |> contract_response(401)
+
+    assert build_conn()
+           |> log_in_user(ca)
+           |> patch("/api/business/quotation-numbering", %{
+             numbering: %{style: "serial_fy", next_number: 79}
+           })
+           |> contract_response(403)
+
+    {:ok, _} =
+      Invoicing.save_profile(client, %{
+        legal_name: "Breeze Tech",
+        address: "Chennai",
+        state_code: String.slice(client.gstin, 0, 2)
+      })
+
+    conn = build_conn() |> log_in_user(owner)
+
+    response =
+      conn
+      |> patch("/api/business/quotation-numbering", %{
+        numbering: %{style: "serial_fy", next_number: 79}
+      })
+      |> contract_response(200)
+
+    assert response["quotation_numbering"]["next_number"] == 79
+    assert response["quotation_numbering"]["style"] == "serial_fy"
+
+    image = %Plug.Upload{
+      path: Path.expand("priv/static/images/og-image.png"),
+      filename: "logo.png",
+      content_type: "image/png"
+    }
+
+    uploaded =
+      conn
+      |> post("/api/business/profile/assets/logo", %{image: image})
+      |> contract_response(200)
+
+    assert uploaded["profile"]["has_logo"]
+
+    assert conn |> get("/api/business/profile/assets/logo") |> contract_file(200) ==
+             File.read!(image.path)
+
+    removed = conn |> delete("/api/business/profile/assets/logo") |> contract_response(200)
+    refute removed["profile"]["has_logo"]
+    assert conn |> get("/api/business/profile/assets/logo") |> contract_response(404)
+  end
+
   test "service endpoints use business access and serialize catalogue decimals", %{
     owner: owner,
     ca: ca

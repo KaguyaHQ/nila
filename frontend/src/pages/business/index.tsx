@@ -47,6 +47,7 @@ import {
   downloadInvoice,
   fetchInvoicePdf,
   type InvoiceInput,
+  uploadBusinessBrandAsset,
 } from "@/lib/business-api";
 import { ServicesPage } from "./services";
 
@@ -484,6 +485,8 @@ export function BusinessSettings() {
     legal_name: data.profile?.legal_name ?? data.business.name,
     address: data.profile?.address ?? "",
     state_code: data.profile?.state_code ?? data.business.gstin?.slice(0, 2) ?? "",
+    phone: data.profile?.phone ?? "",
+    email: data.profile?.email ?? "",
     e_invoice_not_applicable: data.profile?.e_invoice_not_applicable ?? false,
     domestic_services_only: data.profile?.domestic_services_only ?? false,
     domestic_goods_and_services_only: data.profile?.domestic_goods_and_services_only ?? false,
@@ -491,6 +494,61 @@ export function BusinessSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [saved, setSaved] = useState(false);
+  const [assetVersion, setAssetVersion] = useState(0);
+  const [numbering, setNumbering] = useState(data.quotation_numbering);
+  const financialYearShort = `${String(numbering.financial_year).slice(-2)}${String(numbering.financial_year + 1).slice(-2)}`;
+
+  async function changeAsset(kind: "logo" | "signature", file?: File) {
+    if (!file || busy) return;
+    setError(null);
+    if (file.size > 512_000 || !["image/png", "image/jpeg"].includes(file.type)) {
+      setError(new Error("Choose a PNG or JPEG smaller than 500 KB."));
+      return;
+    }
+    setBusy(true);
+    try {
+      await uploadBusinessBrandAsset(kind, file);
+      await cache.invalidateQueries({ queryKey });
+      setAssetVersion((current) => current + 1);
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAsset(kind: "logo" | "signature") {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await businessRequest("removeBusinessBrandAsset", { kind });
+      await cache.invalidateQueries({ queryKey });
+      setAssetVersion((current) => current + 1);
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveNumbering() {
+    if (busy || !numbering.editable) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await businessRequest("configureBusinessQuotationNumbering", {
+        body: { numbering: { style: numbering.style, next_number: numbering.next_number } },
+      });
+      setNumbering(result.quotation_numbering);
+      await cache.invalidateQueries({ queryKey });
+      setSaved(true);
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -511,7 +569,9 @@ export function BusinessSettings() {
     <form onSubmit={submit} className="max-w-xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Business details</h1>
-        <p className="mt-2 text-sm text-muted-foreground">These details appear on your invoices.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          These details appear on your quotations and invoices.
+        </p>
       </div>
       <Errors error={error} />
       {saved && (
@@ -546,6 +606,24 @@ export function BusinessSettings() {
               setSaved(false);
               setForm({ ...form, address: e.target.value });
             }}
+          />
+        </Field>
+        <Field label="Phone (optional)" id="business-phone">
+          <Input
+            id="business-phone"
+            type="tel"
+            maxLength={40}
+            value={form.phone ?? ""}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+        </Field>
+        <Field label="Email (optional)" id="business-email">
+          <Input
+            id="business-email"
+            type="email"
+            maxLength={254}
+            value={form.email ?? ""}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
         </Field>
         <Field label="State" id="business-state">
@@ -600,6 +678,85 @@ export function BusinessSettings() {
         </Field>
         <Button type="submit">{busy ? "Saving…" : "Save business details"}</Button>
       </fieldset>
+      <section className="space-y-4 border-t pt-5" aria-label="Quotation numbering">
+        <div>
+          <h2 className="font-medium">Quotation numbers</h2>
+          <p className="text-sm text-muted-foreground">
+            Set the next number for {numbering.financial_year}–{numbering.financial_year + 1}{" "}
+            before finalizing the first quotation of this financial year.
+          </p>
+        </div>
+        <Field label="Number format" id="business-quote-style">
+          <NativeSelect
+            id="business-quote-style"
+            disabled={!numbering.editable || busy}
+            value={numbering.style}
+            onChange={(e) =>
+              setNumbering({ ...numbering, style: e.target.value as typeof numbering.style })
+            }
+          >
+            <option value="nila">QT/{financialYearShort}/0001 style</option>
+            <option value="serial_fy">
+              1/{numbering.financial_year}-{String(numbering.financial_year + 1).slice(-2)} style
+            </option>
+          </NativeSelect>
+        </Field>
+        <Field label="Next number" id="business-quote-next">
+          <Input
+            id="business-quote-next"
+            type="number"
+            min={1}
+            max={999999}
+            disabled={!numbering.editable || busy}
+            value={numbering.next_number}
+            onChange={(e) => setNumbering({ ...numbering, next_number: Number(e.target.value) })}
+          />
+        </Field>
+        <Button type="button" variant="outline" disabled={!numbering.editable || busy} onClick={saveNumbering}>
+          Save quotation numbering
+        </Button>
+        {!numbering.editable && (
+          <p className="text-sm text-muted-foreground">
+            Numbering is locked for this financial year because a quotation has been finalized.
+          </p>
+        )}
+      </section>
+      <section className="space-y-4 border-t pt-5" aria-label="Business branding">
+        <h2 className="font-medium">Quotation and invoice branding</h2>
+        {(["logo", "signature"] as const).map((kind) => {
+          const present = kind === "logo" ? data.profile?.has_logo : data.profile?.has_signature;
+          return (
+            <div key={kind} className="space-y-2">
+              <label className="block text-sm font-medium" htmlFor={`business-${kind}`}>
+                {kind === "logo" ? "Logo" : "Signature or stamp"} (optional)
+              </label>
+              {present && (
+                <img
+                  src={`/api/business/profile/assets/${kind}?v=${assetVersion}`}
+                  alt={kind === "logo" ? "Current business logo" : "Current signature or stamp"}
+                  className="max-h-24 max-w-48 object-contain"
+                />
+              )}
+              <Input
+                id={`business-${kind}`}
+                type="file"
+                accept="image/png,image/jpeg"
+                disabled={busy}
+                onChange={(e) => {
+                  void changeAsset(kind, e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              {present && (
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => removeAsset(kind)}>
+                  Remove {kind === "logo" ? "logo" : "signature"}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+        <p className="text-sm text-muted-foreground">Save business details before adding images. PNG or JPEG, up to 500 KB each.</p>
+      </section>
     </form>
   );
 }
@@ -705,6 +862,7 @@ function InvoiceForm({
     invoice_date: invoice?.invoice_date ?? localDate(),
     due_date: invoice?.due_date ?? "",
     valid_until: invoice?.valid_until ?? "",
+    subject: invoice?.subject ?? "",
     place_of_supply: invoice?.place_of_supply ?? original?.place_of_supply ?? "",
     lines: (invoice?.lines ?? original?.lines)?.map((line) => ({
       description: line.description ?? "",
@@ -719,6 +877,7 @@ function InvoiceForm({
     purchase_order_number: invoice?.purchase_order_number ?? original?.purchase_order_number ?? "",
     purchase_order_date: invoice?.purchase_order_date ?? original?.purchase_order_date ?? "",
     delivery_address: invoice?.delivery_address ?? original?.delivery_address ?? "",
+    delivery_state_code: invoice?.delivery_state_code ?? original?.delivery_state_code ?? "",
     document_type: invoice?.document_type ?? (original ? "credit_note" : mode),
     original_invoice_id: invoice?.original_invoice_id ?? original?.id ?? null,
   }));
@@ -782,7 +941,36 @@ function InvoiceForm({
     }
   }
   async function issue() {
-    if (!saved || dirty || busy || issued) return;
+    if (busy || issued || !configured) return;
+    if (quotation) {
+      const formElement = document.getElementById("business-invoice-form") as HTMLFormElement | null;
+      if (!formElement?.reportValidity()) return;
+      setBusy("issue");
+      setError(null);
+      setMessage("");
+      try {
+        const result = await businessRequest("finalizeBusinessQuotation", {
+          body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
+        });
+        cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+        setSaved(result.invoice);
+        setDirty(false);
+        await cache.invalidateQueries({ queryKey });
+        setMessage("Quotation ready to download.");
+        if (!saved)
+          navigate({
+            to: "/business/quotations/$invoiceId",
+            params: { invoiceId: String(result.invoice.id) },
+            replace: true,
+          });
+      } catch (error) {
+        setError(error as Error);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+    if (!saved || dirty) return;
     setBusy("issue");
     setError(null);
     setMessage("");
@@ -805,7 +993,9 @@ function InvoiceForm({
     try {
       await downloadInvoice(
         saved.id,
-        quotation ? `quotation-${saved.id}.pdf` : `invoice-${saved.id}.pdf`,
+        quotation && saved.number
+          ? `quotation-${saved.number.replaceAll("/", "-")}.pdf`
+          : `invoice-${saved.id}.pdf`,
       );
     } catch (error) {
       setError(error as Error);
@@ -844,6 +1034,24 @@ function InvoiceForm({
           action === "accepted" ? "Quotation marked accepted." : "Quotation marked declined.",
         );
       }
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function reviseQuotation() {
+    if (!saved || busy || !quotation || !issued) return;
+    setBusy("revise");
+    setError(null);
+    try {
+      const result = await businessRequest("reviseBusinessQuotation", { id: saved.id });
+      cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+      await cache.invalidateQueries({ queryKey });
+      navigate({
+        to: "/business/quotations/$invoiceId",
+        params: { invoiceId: String(result.invoice.id) },
+      });
     } catch (error) {
       setError(error as Error);
     } finally {
@@ -904,7 +1112,7 @@ function InvoiceForm({
               <Button
                 type="button"
                 onClick={issue}
-                disabled={!saved || dirty || Boolean(busy) || !configured}
+                disabled={(quotation ? false : !saved || dirty) || Boolean(busy) || !configured}
                 aria-describedby="issue-help"
               >
                 {busy === "issue"
@@ -930,6 +1138,9 @@ function InvoiceForm({
             </span>
           </p>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={Boolean(busy)} onClick={reviseQuotation}>
+              {busy === "revise" ? "Creating…" : "Revise quotation"}
+            </Button>
             {saved.converted_invoice_id ? (
               <Button
                 nativeButton={false}
@@ -1118,7 +1329,9 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
       invoice.lines.every(
         (line) =>
           line.description.trim() &&
-          /^99[0-9]{4}$/.test(line.sac) &&
+          (line.kind === "goods"
+            ? /^(?!99)[0-9]{6}([0-9]{2})?$/.test(line.sac) && Boolean(line.unit)
+            : /^99[0-9]{4}$/.test(line.sac)) &&
           Number(line.quantity) > 0 &&
           Number(line.unit_price) > 0,
       ),
@@ -1175,7 +1388,7 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
               {quotation ? "Your quotation will appear here" : "Your invoice will appear here"}
             </p>
             <p className="max-w-xs text-sm text-muted-foreground">
-              Choose a customer and place of supply, then add a service, SAC and rate.
+              Choose a customer and place of supply, then add an item, HSN/SAC and rate.
             </p>
           </div>
         ) : current?.error ? (

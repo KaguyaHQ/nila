@@ -5,6 +5,10 @@ defmodule NilaWeb.BusinessController do
 
   def bootstrap(conn, params), do: dispatch(conn, params, :bootstrap)
   def profile(conn, params), do: dispatch(conn, params, :profile)
+  def upload_asset(conn, params), do: dispatch(conn, params, :upload_asset)
+  def asset(conn, params), do: dispatch(conn, params, :asset)
+  def remove_asset(conn, params), do: dispatch(conn, params, :remove_asset)
+  def quotation_numbering(conn, params), do: dispatch(conn, params, :quotation_numbering)
   def services(conn, params), do: dispatch(conn, params, :services)
   def create_service(conn, params), do: dispatch(conn, params, :create_service)
   def update_service(conn, params), do: dispatch(conn, params, :update_service)
@@ -12,11 +16,13 @@ defmodule NilaWeb.BusinessController do
   def create_customer(conn, params), do: dispatch(conn, params, :create_customer)
   def update_customer(conn, params), do: dispatch(conn, params, :update_customer)
   def create_invoice(conn, params), do: dispatch(conn, params, :create_invoice)
+  def finalize_quotation(conn, params), do: dispatch(conn, params, :finalize_quotation)
   def update_invoice(conn, params), do: dispatch(conn, params, :update_invoice)
   def show_invoice(conn, params), do: dispatch(conn, params, :show_invoice)
   def issue_invoice(conn, params), do: dispatch(conn, params, :issue_invoice)
   def quotation_status(conn, params), do: dispatch(conn, params, :quotation_status)
   def convert_quotation(conn, params), do: dispatch(conn, params, :convert_quotation)
+  def revise_quotation(conn, params), do: dispatch(conn, params, :revise_quotation)
   def pdf(conn, params), do: dispatch(conn, params, :pdf)
   def preview(conn, params), do: dispatch(conn, params, :preview)
   def calculate(conn, params), do: dispatch(conn, params, :calculate)
@@ -35,6 +41,11 @@ defmodule NilaWeb.BusinessController do
             "content-disposition",
             ~s(attachment; filename="#{filename}")
           )
+          |> send_resp(200, bytes)
+
+        {:asset, bytes, content_type} ->
+          conn
+          |> put_resp_content_type(content_type)
           |> send_resp(200, bytes)
 
         data ->
@@ -61,6 +72,7 @@ defmodule NilaWeb.BusinessController do
      %{
        business: Map.take(client, [:id, :name, :gstin, :address]),
        profile: profile_json(Invoicing.get_profile(client)),
+       quotation_numbering: Invoicing.quotation_numbering(client),
        services: Enum.map(Invoicing.list_services(client), &service_json/1),
        customers: Enum.map(Invoicing.list_customers(client), &customer_json/1),
        invoices: Enum.map(Invoicing.list_invoices(client), &invoice_json/1),
@@ -94,6 +106,32 @@ defmodule NilaWeb.BusinessController do
          do: {:ok, %{profile: profile_json(profile)}}
   end
 
+  defp perform(:quotation_numbering, client, _user, %{"numbering" => attrs})
+       when is_map(attrs) do
+    with {:ok, numbering} <- Invoicing.configure_quotation_numbering(client, attrs),
+         do: {:ok, %{quotation_numbering: numbering}}
+  end
+
+  defp perform(:upload_asset, client, _user, %{"kind" => kind, "image" => %Plug.Upload{} = upload}) do
+    with {:ok, %{size: size}} when size <= 512_000 <- File.stat(upload.path),
+         {:ok, bytes} <- File.read(upload.path),
+         {:ok, profile} <- Invoicing.save_brand_asset(client, kind, bytes) do
+      {:ok, %{profile: profile_json(profile)}}
+    else
+      _ -> {:error, :invalid_asset}
+    end
+  end
+
+  defp perform(:asset, client, _user, %{"kind" => kind}) do
+    with {:ok, bytes, content_type} <- Invoicing.get_brand_asset(client, kind),
+         do: {:ok, {:asset, bytes, content_type}}
+  end
+
+  defp perform(:remove_asset, client, _user, %{"kind" => kind}) do
+    with {:ok, profile} <- Invoicing.remove_brand_asset(client, kind),
+         do: {:ok, %{profile: profile_json(profile)}}
+  end
+
   defp perform(:create_customer, client, _user, %{"customer" => attrs}) when is_map(attrs) do
     with {:ok, customer} <- Invoicing.create_customer(client, attrs),
          do: {:ok, %{customer: customer_json(customer)}}
@@ -107,6 +145,13 @@ defmodule NilaWeb.BusinessController do
 
   defp perform(:create_invoice, client, user, %{"invoice" => attrs}) when is_map(attrs) do
     with {:ok, invoice} <- Invoicing.save_draft(client, user.id, attrs),
+         do: {:ok, %{invoice: invoice_json(invoice)}}
+  end
+
+  defp perform(:finalize_quotation, client, user, %{"invoice" => attrs} = params)
+       when is_map(attrs) do
+    with {:ok, invoice} <-
+           Invoicing.finalize_quotation(client, user.id, attrs, params["id"]),
          do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
@@ -135,6 +180,11 @@ defmodule NilaWeb.BusinessController do
     with {:ok, %{invoice: invoice, quotation: quotation}} <-
            Invoicing.convert_quotation(client, id, user.id),
          do: {:ok, %{invoice: invoice_json(invoice), quotation: invoice_json(quotation)}}
+  end
+
+  defp perform(:revise_quotation, client, user, %{"id" => id}) do
+    with {:ok, invoice} <- Invoicing.revise_quotation(client, id, user.id),
+         do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
   defp perform(:preview, client, _user, %{"invoice" => attrs}) when is_map(attrs) do
@@ -176,10 +226,15 @@ defmodule NilaWeb.BusinessController do
         :legal_name,
         :address,
         :state_code,
+        :phone,
+        :email,
+        :quotation_number_style,
         :e_invoice_not_applicable,
         :domestic_services_only,
         :domestic_goods_and_services_only
       ])
+      |> Map.put(:has_logo, not is_nil(profile.logo_key))
+      |> Map.put(:has_signature, not is_nil(profile.signature_key))
 
   defp service_json(service),
     do:
@@ -203,12 +258,15 @@ defmodule NilaWeb.BusinessController do
       :due_date,
       :valid_until,
       :converted_invoice_id,
+      :revised_from_id,
       :place_of_supply,
       :lines,
       :notes,
       :purchase_order_number,
       :purchase_order_date,
       :delivery_address,
+      :delivery_state_code,
+      :subject,
       :totals,
       :snapshot,
       :issued_at,
@@ -251,6 +309,16 @@ defmodule NilaWeb.BusinessController do
 
         :profile_incomplete ->
           {422, "Complete your business details and confirm the invoicing requirements first."}
+
+        :numbering_started ->
+          {409,
+           "Quotation numbers are locked after the first finalized quote this financial year."}
+
+        :invalid_numbering ->
+          {422, "Choose a number format and a next number between 1 and 999999."}
+
+        :invalid_asset ->
+          {422, "Choose a PNG or JPEG image smaller than 500 KB."}
 
         reason when reason in [:typst_not_found, :pdf_renderer_unavailable] ->
           {503, "PDF generation is unavailable. Your invoice has not been issued."}

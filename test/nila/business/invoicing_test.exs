@@ -440,6 +440,117 @@ defmodule Nila.Business.InvoicingTest do
     assert {:ok, _} = issue(ctx, credit)
   end
 
+  test "business can continue quotation numbers, finalize in one transaction and revise without changing the sent PDF",
+       ctx do
+    assert {:ok, numbering} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "style" => "serial_fy",
+               "next_number" => 79
+             })
+
+    assert numbering.next_number == 79
+    assert numbering.style == "serial_fy"
+
+    {:ok, _} =
+      Invoicing.save_profile(ctx.client, %{phone: "9962550448", email: "quotes@example.com"})
+
+    attrs = %{
+      "customer_id" => ctx.customer.id,
+      "invoice_date" => "2026-09-24",
+      "place_of_supply" => "33",
+      "delivery_address" => "IndiraGandhi Hospital, Puducherry",
+      "delivery_state_code" => "34",
+      "subject" => "Compressor and Pipe Supply and Insulation",
+      "lines" => [
+        %{
+          "kind" => "goods",
+          "description" => "Compressor",
+          "sac" => "84143000",
+          "unit" => "NOS",
+          "quantity" => "1",
+          "unit_price" => "5200",
+          "gst_rate" => "18"
+        }
+      ]
+    }
+
+    render = fn snapshot -> {:ok, "%PDF-test " <> snapshot["number"]} end
+
+    assert {:error, %Ecto.Changeset{}} =
+             Invoicing.finalize_quotation(ctx.client, ctx.actor, put_in(attrs["lines"], []), nil,
+               render_pdf: render
+             )
+
+    assert Invoicing.list_invoices(ctx.client) == []
+    assert Invoicing.quotation_numbering(ctx.client).next_number == 79
+
+    assert {:ok, quote} =
+             Invoicing.finalize_quotation(ctx.client, ctx.actor, attrs, nil, render_pdf: render)
+
+    assert quote.number == "79/2026-27"
+    assert quote.snapshot["subject"] == attrs["subject"]
+    assert quote.snapshot["delivery_state_code"] == "34"
+    assert quote.snapshot["supplier"]["phone"] == "9962550448"
+    assert quote.snapshot["supplier"]["email"] == "quotes@example.com"
+    assert quote.dump_id == nil
+    assert {:ok, original_pdf} = Invoicing.download(ctx.client, quote.id)
+
+    assert {:error, :numbering_started} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "style" => "nila",
+               "next_number" => 1
+             })
+
+    assert {:ok, revision} = Invoicing.revise_quotation(ctx.client, quote.id, ctx.actor)
+    assert revision.status == "draft"
+    assert revision.revised_from_id == quote.id
+    assert revision.subject == attrs["subject"]
+    assert revision.delivery_state_code == "34"
+    assert {:ok, revised} = issue(ctx, revision)
+    assert revised.number == "80/2026-27"
+    assert revised.snapshot["revised_from_number"] == quote.number
+    assert {:ok, ^original_pdf} = Invoicing.download(ctx.client, quote.id)
+  end
+
+  test "quotation finalization rejects an invoice draft without changing it", ctx do
+    {:ok, invoice} = draft(ctx)
+
+    assert {:error, :invalid_document_type} =
+             Invoicing.finalize_quotation(
+               ctx.client,
+               ctx.actor,
+               %{"subject" => "Should not be saved"},
+               invoice.id
+             )
+
+    unchanged = Nila.Repo.get!(Nila.Business.Invoice, invoice.id)
+    assert unchanged.document_type == "invoice"
+    assert unchanged.status == "draft"
+    assert unchanged.subject == nil
+  end
+
+  test "business branding accepts scoped PNG or JPEG files and can be removed", ctx do
+    png = File.read!("priv/static/images/og-image.png")
+    assert {:error, :invalid_asset} = Invoicing.save_brand_asset(ctx.client, "logo", "<svg/>")
+
+    assert {:error, :invalid_asset} =
+             Invoicing.save_brand_asset(ctx.client, "logo", binary_part(png, 0, 32))
+
+    assert {:error, :invalid_asset} =
+             Invoicing.save_brand_asset(ctx.client, "logo", :binary.copy(png, 20))
+
+    assert {:ok, profile} = Invoicing.save_brand_asset(ctx.client, "logo", png)
+    assert profile.logo_key
+    assert {:ok, ^png, "image/png"} = Invoicing.get_brand_asset(ctx.client, "logo")
+
+    assert {:error, :not_found} =
+             Invoicing.get_brand_asset(%{ctx.client | id: -1}, "logo")
+
+    assert {:ok, removed} = Invoicing.remove_brand_asset(ctx.client, "logo")
+    assert removed.logo_key == nil
+    assert {:error, :not_found} = Invoicing.get_brand_asset(ctx.client, "logo")
+  end
+
   test "goods lines require a valid HSN and goods unit", ctx do
     base = %{
       "description" => "Refrigerant gas",

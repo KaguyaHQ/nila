@@ -8090,6 +8090,673 @@
           }
         }
       }
+    },
+    "/api/business/quotation-numbering": {
+      "patch": {
+        "operationId": "configureBusinessQuotationNumbering",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessQuotationNumberingResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessQuotationNumberingWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/business/quotations/finalize": {
+      "post": {
+        "operationId": "finalizeBusinessQuotation",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessInvoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessQuotationFinalize"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/business/invoices/{id}/revise": {
+      "post": {
+        "operationId": "reviseBusinessQuotation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessInvoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header."
+      }
+    },
+    "/api/business/profile/assets/{kind}": {
+      "post": {
+        "operationId": "uploadBusinessBrandAsset",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "logo",
+                "signature"
+              ]
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessProfileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "image"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getBusinessBrandAsset",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "logo",
+                "signature"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored business image",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeBusinessBrandAsset",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "logo",
+                "signature"
+              ]
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessProfileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header."
+      }
     }
   },
   "components": {
@@ -11131,6 +11798,12 @@
                 "type": "null"
               }
             ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "delivery_state_code": {
+            "type": "string"
           }
         },
         "required": [
@@ -11288,6 +11961,36 @@
           },
           "inserted_at": {
             "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revised_from_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -11310,7 +12013,10 @@
           "totals",
           "snapshot",
           "issued_at",
-          "inserted_at"
+          "inserted_at",
+          "subject",
+          "delivery_state_code",
+          "revised_from_id"
         ],
         "additionalProperties": false
       },
@@ -11355,6 +12061,39 @@
           },
           "domestic_goods_and_services_only": {
             "type": "boolean"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "has_logo": {
+            "type": "boolean"
+          },
+          "has_signature": {
+            "type": "boolean"
+          },
+          "quotation_number_style": {
+            "type": "string",
+            "enum": [
+              "nila",
+              "serial_fy"
+            ]
           }
         },
         "required": [
@@ -11363,7 +12102,12 @@
           "state_code",
           "e_invoice_not_applicable",
           "domestic_services_only",
-          "domestic_goods_and_services_only"
+          "domestic_goods_and_services_only",
+          "phone",
+          "email",
+          "has_logo",
+          "has_signature",
+          "quotation_number_style"
         ],
         "additionalProperties": false
       },
@@ -11447,6 +12191,9 @@
               ],
               "additionalProperties": false
             }
+          },
+          "quotation_numbering": {
+            "$ref": "#/components/schemas/BusinessQuotationNumbering"
           }
         },
         "required": [
@@ -11455,7 +12202,8 @@
           "customers",
           "invoices",
           "states",
-          "services"
+          "services",
+          "quotation_numbering"
         ],
         "additionalProperties": false
       },
@@ -11868,6 +12616,12 @@
           },
           "domestic_goods_and_services_only": {
             "type": "boolean"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
           }
         },
         "required": [
@@ -12144,6 +12898,46 @@
               },
               "state_code": {
                 "type": "string"
+              },
+              "phone": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "email": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "logo_key": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signature_key": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -12218,6 +13012,36 @@
             ]
           },
           "original_sale_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery_state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revised_from_number": {
             "anyOf": [
               {
                 "type": "string"
@@ -12483,6 +13307,12 @@
               },
               "domestic_goods_and_services_only": {
                 "type": "boolean"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
               }
             },
             "required": [],
@@ -12564,6 +13394,12 @@
                     "type": "null"
                   }
                 ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "delivery_state_code": {
+                "type": "string"
               }
             },
             "required": [],
@@ -13672,6 +14508,93 @@
         "required": [
           "ok",
           "batch_ref"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessQuotationNumbering": {
+        "type": "object",
+        "properties": {
+          "financial_year": {
+            "type": "integer"
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "nila",
+              "serial_fy"
+            ]
+          },
+          "next_number": {
+            "type": "integer"
+          },
+          "editable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "financial_year",
+          "style",
+          "next_number",
+          "editable"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessQuotationNumberingWrite": {
+        "type": "object",
+        "properties": {
+          "numbering": {
+            "type": "object",
+            "properties": {
+              "style": {
+                "type": "string",
+                "enum": [
+                  "nila",
+                  "serial_fy"
+                ]
+              },
+              "next_number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 999999
+              }
+            },
+            "required": [
+              "style",
+              "next_number"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "numbering"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessQuotationNumberingResult": {
+        "type": "object",
+        "properties": {
+          "quotation_numbering": {
+            "$ref": "#/components/schemas/BusinessQuotationNumbering"
+          }
+        },
+        "required": [
+          "quotation_numbering"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessQuotationFinalize": {
+        "type": "object",
+        "properties": {
+          "invoice": {
+            "$ref": "#/components/schemas/InvoiceInput"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "invoice"
         ],
         "additionalProperties": false
       }

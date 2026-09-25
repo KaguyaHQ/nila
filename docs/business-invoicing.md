@@ -31,7 +31,9 @@ a draft, allocating a number, or storing a PDF. Draft previews are marked DRAFT.
 Issued previews read the same stored PDF used for downloads and CA evidence.
 Optional reference/PO number, reference date and delivery address are retained in
 the issued snapshot and PDF. The amount in words comes from Phoenix's saved totals.
-Delivery address does not infer place of supply.
+Delivery address does not silently change place of supply. When its selected
+state differs from the billing state, the editor asks the user to review the
+place of supply before finalizing.
 
 Source comments identify the Midday components and pinned revision adapted to
 Nila's APIs and Base UI shadcn controls.
@@ -55,12 +57,27 @@ access record and no firm membership. One business per user is supported.
 Invitation links are returned for the CA to share; Nila does not send them.
 
 Quotations live at `/app/business/quotations` and use the same editor and PDF
-template. They have a separate QT number series and an optional valid-until date.
-Finalizing retains the quotation PDF; the business can mark it accepted or
-declined. Accepted quotations convert into an invoice draft with the customer,
-items, prices, place of supply, notes and references copied. Conversion keeps
-a link to that invoice and retries return the same invoice. The invoice date is
-today; quotation validity does not become a payment due date.
+template. They have an optional valid-until date and a separate number series.
+Before the first quotation in a financial year, Business details can set the
+next number and choose either Nila's `QT/2627/0001` format or a simple
+`79/2026-27` format. The format and next number lock once that year's first
+quotation is finalized. A quotation can be finalized directly from the editor;
+Phoenix saves the draft, allocates its number, renders and retains the PDF in
+one transaction. A failed finalization leaves no partial draft or used number.
+
+The optional Work / subject appears above the items in the editor and PDF.
+Business details supply the seller phone, email, logo and optional signature
+for new PDFs. These assets are scoped to the business; old finalized PDFs stay
+unchanged when branding is updated. Goods lines require an explicit unit.
+
+A finalized quotation cannot be edited. **Revise quotation** creates a linked
+draft with its own number when finalized; the original PDF stays intact. The
+business can mark a finalized quotation accepted or declined. Accepted
+quotations convert into an invoice draft with the customer, items, prices,
+subject, delivery address/state, place of supply, notes and references copied.
+Conversion keeps a link to that invoice and retries return the same invoice.
+The invoice date is today; quotation validity does not become a payment due
+date.
 
 Quotations and converted invoice drafts do not create sales sources or change
 GST workings. Only issuing the resulting invoice does that. Finalized quotations

@@ -165,6 +165,10 @@ defmodule NilaWeb.Router do
     get "/", BusinessController, :bootstrap
     get "/bootstrap", BusinessController, :bootstrap
     patch "/profile", BusinessController, :profile
+    post "/profile/assets/:kind", BusinessController, :upload_asset
+    get "/profile/assets/:kind", BusinessController, :asset
+    delete "/profile/assets/:kind", BusinessController, :remove_asset
+    patch "/quotation-numbering", BusinessController, :quotation_numbering
     get "/services", BusinessController, :services
     post "/services", BusinessController, :create_service
     patch "/services/:id", BusinessController, :update_service
@@ -172,6 +176,7 @@ defmodule NilaWeb.Router do
     post "/customers", BusinessController, :create_customer
     patch "/customers/:id", BusinessController, :update_customer
     post "/invoices", BusinessController, :create_invoice
+    post "/quotations/finalize", BusinessController, :finalize_quotation
     post "/invoices/preview", BusinessController, :preview
     post "/invoices/calculate", BusinessController, :calculate
     get "/invoices/:id", BusinessController, :show_invoice
@@ -179,6 +184,7 @@ defmodule NilaWeb.Router do
     post "/invoices/:id/issue", BusinessController, :issue_invoice
     post "/invoices/:id/quotation-status", BusinessController, :quotation_status
     post "/invoices/:id/convert", BusinessController, :convert_quotation
+    post "/invoices/:id/revise", BusinessController, :revise_quotation
     get "/invoices/:id/pdf", BusinessController, :pdf
   end
 

@@ -10,6 +10,7 @@ defmodule Nila.Business.Invoicing do
 
   # Positive rate values accepted by the existing GSTR-1 output boundary.
   @gst_rates ~w(0.1 0.25 1 1.5 3 5 6 7.5 12 18 28 40)
+  @max_brand_image_bytes 512_000
 
   def get_profile(%Client{} = client) do
     Repo.get_by(Profile, client_id: client.id) ||
@@ -32,6 +33,133 @@ defmodule Nila.Business.Invoicing do
 
     Repo.insert_or_update(changeset)
   end
+
+  def quotation_numbering(%Client{} = client) do
+    year = financial_year(Date.utc_today())
+    profile = get_profile(client)
+
+    next_number =
+      case Repo.query!(
+             "SELECT last_number FROM business_invoice_counters WHERE client_id = $1 AND financial_year = $2 AND document_type = 'quotation'",
+             [client.id, year]
+           ).rows do
+        [[last]] -> last + 1
+        [] -> 1
+      end
+
+    %{
+      financial_year: year,
+      style: profile.quotation_number_style,
+      next_number: next_number,
+      editable: not quotation_issued_in_year?(client, year)
+    }
+  end
+
+  def configure_quotation_numbering(%Client{} = client, attrs) do
+    attrs = string_keys(attrs)
+    style = attrs["style"]
+    next_number = parse_number(attrs["next_number"])
+
+    if style in ~w(nila serial_fy) and is_integer(next_number) and
+         next_number in 1..999_999 do
+      Repo.transact(fn ->
+        current =
+          Repo.one!(
+            from c in Client,
+              where: c.id == ^client.id and c.org_id == ^client.org_id,
+              lock: "FOR UPDATE"
+          )
+
+        year = financial_year(Date.utc_today())
+
+        with false <- quotation_issued_in_year?(current, year),
+             %Profile{} = profile <- Repo.get_by(Profile, client_id: current.id),
+             {:ok, _profile} <-
+               profile
+               |> change(quotation_number_style: style)
+               |> Repo.update() do
+          Repo.query!(
+            "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1, $2, 'quotation', $3) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = EXCLUDED.last_number",
+            [current.id, year, next_number - 1]
+          )
+
+          {:ok, quotation_numbering(current)}
+        else
+          true -> {:error, :numbering_started}
+          nil -> {:error, :profile_incomplete}
+          error -> error
+        end
+      end)
+    else
+      {:error, :invalid_numbering}
+    end
+  end
+
+  def save_brand_asset(%Client{} = client, kind, bytes)
+      when kind in ["logo", "signature"] and is_binary(bytes) do
+    with {:ok, extension, content_type} <- brand_image_type(bytes),
+         %Profile{} = profile <- Repo.get_by(Profile, client_id: client.id),
+         key <-
+           "orgs/#{client.org_id}/clients/#{client.id}/business/brand/#{kind}/#{Ecto.UUID.generate()}.#{extension}",
+         {:ok, _} <- Storage.put(key, bytes, content_type: content_type) do
+      field = if kind == "logo", do: :logo_key, else: :signature_key
+      profile |> change(%{field => key}) |> Repo.update()
+    else
+      nil -> {:error, :profile_incomplete}
+      error -> error
+    end
+  end
+
+  def save_brand_asset(%Client{}, _, _), do: {:error, :invalid_asset}
+
+  def get_brand_asset(%Client{} = client, kind) when kind in ["logo", "signature"] do
+    profile = get_profile(client)
+    key = if kind == "logo", do: profile.logo_key, else: profile.signature_key
+
+    if key do
+      with {:ok, bytes} <- Storage.get(key) do
+        {:ok, bytes, if(String.ends_with?(key, ".png"), do: "image/png", else: "image/jpeg")}
+      end
+    else
+      {:error, :not_found}
+    end
+  end
+
+  def get_brand_asset(%Client{}, _), do: {:error, :not_found}
+
+  def remove_brand_asset(%Client{} = client, kind) when kind in ["logo", "signature"] do
+    case Repo.get_by(Profile, client_id: client.id) do
+      %Profile{} = profile ->
+        field = if kind == "logo", do: :logo_key, else: :signature_key
+        profile |> change(%{field => nil}) |> Repo.update()
+
+      nil ->
+        {:error, :profile_incomplete}
+    end
+  end
+
+  def remove_brand_asset(%Client{}, _), do: {:error, :not_found}
+
+  defp brand_image_type(bytes) when byte_size(bytes) <= @max_brand_image_bytes do
+    case bytes do
+      <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, "IHDR", width::32, height::32, _::binary>>
+      when width > 0 and height > 0 ->
+        if :binary.part(bytes, byte_size(bytes) - 12, 12) ==
+             <<0, 0, 0, 0, "IEND", 174, 66, 96, 130>>,
+           do: {:ok, "png", "image/png"},
+           else: {:error, :invalid_asset}
+
+      <<255, 216, 255, _::binary>> when byte_size(bytes) > 100 ->
+        if :binary.part(bytes, byte_size(bytes) - 2, 2) == <<255, 217>>,
+          do: {:ok, "jpg", "image/jpeg"},
+          else: {:error, :invalid_asset}
+
+      _ ->
+        {:error, :invalid_asset}
+    end
+  end
+
+  defp brand_image_type(_), do: {:error, :invalid_asset}
 
   def list_services(%Client{id: id}),
     do:
@@ -154,31 +282,33 @@ defmodule Nila.Business.Invoicing do
   end
 
   def update_draft(%Client{} = client, id, _actor_id, attrs) do
-    Repo.transact(fn ->
-      with {:ok, invoice} <- locked_invoice(client, id),
-           :ok <- draft?(invoice),
-           {:ok, customer} <-
-             customer_for(
-               client,
-               Map.put_new(string_keys(attrs), "customer_id", invoice.customer_id)
-             ),
-           :ok <-
-             matching_original(
-               customer,
-               invoice.original_invoice_id && Repo.get!(Invoice, invoice.original_invoice_id)
-             ) do
-        invoice
-        |> Invoice.draft_changeset(attrs)
-        |> put_change(:customer_id, customer.id)
-        |> validate_lines(client)
-        |> Repo.update()
-      end
-    end)
+    Repo.transact(fn -> update_draft_in_transaction(client, id, attrs) end)
   end
 
-  def issue(%Client{} = client, id, actor_id, opts \\ []) do
-    # Client lock also serializes creation of the first sales month and its numbering row.
-    # Keep lock order client -> invoice -> sales month for all business issuance.
+  defp update_draft_in_transaction(client, id, attrs) do
+    with {:ok, invoice} <- locked_invoice(client, id),
+         :ok <- draft?(invoice),
+         {:ok, customer} <-
+           customer_for(
+             client,
+             Map.put_new(string_keys(attrs), "customer_id", invoice.customer_id)
+           ),
+         :ok <-
+           matching_original(
+             customer,
+             invoice.original_invoice_id && Repo.get!(Invoice, invoice.original_invoice_id)
+           ) do
+      invoice
+      |> Invoice.draft_changeset(attrs)
+      |> put_change(:customer_id, customer.id)
+      |> validate_lines(client)
+      |> Repo.update()
+    end
+  end
+
+  def finalize_quotation(%Client{} = client, actor_id, attrs, id \\ nil, opts \\ []) do
+    attrs = Map.put(string_keys(attrs), "document_type", "quotation")
+
     Repo.transact(
       fn ->
         current_client =
@@ -188,29 +318,63 @@ defmodule Nila.Business.Invoicing do
               lock: "FOR UPDATE"
           )
 
-        with {:ok, invoice} <- locked_invoice(current_client, id),
-             :ok <- draft?(invoice),
-             {:ok, profile} <- ready_profile(current_client, invoice),
-             {:ok, customer} <-
-               Repo.fetch_by(Customer, id: invoice.customer_id, client_id: current_client.id),
-             :ok <- open_document_month(current_client, invoice),
-             {:ok, lines} <-
-               calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply),
-             {:ok, original} <- issue_original(current_client, invoice, lines),
-             number <- next_number(current_client, invoice),
-             snapshot <-
-               snapshot(current_client, profile, customer, invoice, lines, number, original),
-             {:ok, bytes} <- render(snapshot, opts),
-             key <-
-               "orgs/#{current_client.org_id}/clients/#{current_client.id}/business/#{invoice.id}/#{Ecto.UUID.generate()}.pdf",
-             {:ok, _stored} <- Storage.put(key, bytes, content_type: "application/pdf"),
-             {:ok, issued} <-
-               persist_issue(current_client, invoice, actor_id, snapshot, key, bytes) do
-          {:ok, Repo.preload(issued, :customer)}
-        end
+        with {:ok, draft} <-
+               if(id,
+                 do: update_quotation_draft_in_transaction(current_client, id, attrs),
+                 else: save_draft(current_client, actor_id, attrs)
+               ),
+             do: issue_in_transaction(current_client, draft.id, actor_id, opts)
       end,
       timeout: 60_000
     )
+  end
+
+  defp update_quotation_draft_in_transaction(client, id, attrs) do
+    case locked_invoice(client, id) do
+      {:ok, %Invoice{document_type: "quotation"}} ->
+        update_draft_in_transaction(client, id, attrs)
+
+      {:ok, _} ->
+        {:error, :invalid_document_type}
+
+      error ->
+        error
+    end
+  end
+
+  def issue(%Client{} = client, id, actor_id, opts \\ []) do
+    # Client lock also serializes creation of the first sales month and its numbering row.
+    # Keep lock order client -> invoice -> sales month for all business issuance.
+    Repo.transact(fn -> issue_in_transaction(client, id, actor_id, opts) end, timeout: 60_000)
+  end
+
+  defp issue_in_transaction(client, id, actor_id, opts) do
+    current_client =
+      Repo.one!(
+        from c in Client,
+          where: c.id == ^client.id and c.org_id == ^client.org_id,
+          lock: "FOR UPDATE"
+      )
+
+    with {:ok, invoice} <- locked_invoice(current_client, id),
+         :ok <- draft?(invoice),
+         {:ok, profile} <- ready_profile(current_client, invoice),
+         {:ok, customer} <-
+           Repo.fetch_by(Customer, id: invoice.customer_id, client_id: current_client.id),
+         :ok <- open_document_month(current_client, invoice),
+         {:ok, lines} <-
+           calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply),
+         {:ok, original} <- issue_original(current_client, invoice, lines),
+         number <- next_number(current_client, invoice, profile),
+         snapshot <- snapshot(current_client, profile, customer, invoice, lines, number, original),
+         {:ok, bytes} <- render(snapshot, opts),
+         key <-
+           "orgs/#{current_client.org_id}/clients/#{current_client.id}/business/#{invoice.id}/#{Ecto.UUID.generate()}.pdf",
+         {:ok, _stored} <- Storage.put(key, bytes, content_type: "application/pdf"),
+         {:ok, issued} <-
+           persist_issue(current_client, invoice, actor_id, snapshot, key, bytes) do
+      {:ok, Repo.preload(issued, :customer)}
+    end
   end
 
   # Like Bigcapital estimates, approval/rejection is only available after finalizing,
@@ -250,7 +414,9 @@ defmodule Nila.Business.Invoicing do
                 :notes,
                 :purchase_order_number,
                 :purchase_order_date,
-                :delivery_address
+                :delivery_address,
+                :delivery_state_code,
+                :subject
               ])
               |> Map.put(:invoice_date, Date.utc_today())
               |> string_keys()
@@ -275,6 +441,48 @@ defmodule Nila.Business.Invoicing do
        when status in ["issued", "accepted", "declined"], do: :ok
 
   defp quotation_transition(_), do: {:error, :invalid_quotation_status}
+
+  def revise_quotation(%Client{} = client, id, actor_id) do
+    Repo.transact(fn ->
+      with {:ok, quote} <- locked_invoice(client, id),
+           true <- quote.document_type == "quotation" and quote.status != "draft" do
+        today = Date.utc_today()
+
+        attrs =
+          quote
+          |> Map.take([
+            :customer_id,
+            :place_of_supply,
+            :lines,
+            :notes,
+            :purchase_order_number,
+            :purchase_order_date,
+            :delivery_address,
+            :delivery_state_code,
+            :subject
+          ])
+          |> Map.put(:document_type, "quotation")
+          |> Map.put(:invoice_date, today)
+          |> Map.put(
+            :valid_until,
+            if(quote.valid_until && Date.compare(quote.valid_until, today) != :lt,
+              do: quote.valid_until,
+              else: nil
+            )
+          )
+          |> string_keys()
+
+        with {:ok, draft} <- save_draft(client, actor_id, attrs),
+             {:ok, revised} <-
+               draft |> change(revised_from_id: quote.id) |> Repo.update() do
+          {:ok, Repo.preload(revised, :customer)}
+        end
+      else
+        false -> {:error, :invalid_quotation_status}
+        error -> error
+      end
+    end)
+  end
 
   def download(%Client{} = client, id) do
     with {:ok, %Invoice{status: status, pdf_key: key}}
@@ -487,9 +695,35 @@ defmodule Nila.Business.Invoicing do
     end)
   end
 
-  defp next_number(client, invoice) do
+  defp financial_year(date), do: if(date.month < 4, do: date.year - 1, else: date.year)
+
+  defp quotation_issued_in_year?(client, year) do
+    from_date = Date.new!(year, 4, 1)
+    until_date = Date.new!(year + 1, 4, 1)
+
+    Repo.exists?(
+      from i in Invoice,
+        where:
+          i.client_id == ^client.id and i.document_type == "quotation" and
+            i.status != "draft" and i.invoice_date >= ^from_date and
+            i.invoice_date < ^until_date
+    )
+  end
+
+  defp parse_number(value) when is_integer(value), do: value
+
+  defp parse_number(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
+
+  defp parse_number(_), do: nil
+
+  defp next_number(client, invoice, profile) do
     date = invoice.invoice_date
-    year = if date.month < 4, do: date.year - 1, else: date.year
+    year = financial_year(date)
 
     %{rows: [[sequence]]} =
       Repo.query!(
@@ -500,7 +734,11 @@ defmodule Nila.Business.Invoicing do
     prefix =
       %{"credit_note" => "CN", "invoice" => "INV", "quotation" => "QT"}[invoice.document_type]
 
-    "#{prefix}/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
+    if invoice.document_type == "quotation" and profile.quotation_number_style == "serial_fy" do
+      "#{sequence}/#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
+    else
+      "#{prefix}/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
+    end
   end
 
   defp validate_lines(changeset, client) do
@@ -653,17 +891,25 @@ defmodule Nila.Business.Invoicing do
       "invoice_date" => Date.to_iso8601(invoice.invoice_date),
       "due_date" => invoice.due_date && Date.to_iso8601(invoice.due_date),
       "valid_until" => invoice.valid_until && Date.to_iso8601(invoice.valid_until),
+      "subject" => invoice.subject,
+      "revised_from_number" =>
+        invoice.revised_from_id && Repo.get!(Invoice, invoice.revised_from_id).number,
       "notes" => invoice.notes,
       "purchase_order_number" => invoice.purchase_order_number,
       "purchase_order_date" =>
         invoice.purchase_order_date && Date.to_iso8601(invoice.purchase_order_date),
       "delivery_address" => invoice.delivery_address,
+      "delivery_state_code" => invoice.delivery_state_code,
       "total_in_words" => Nila.Formatters.amount_in_words(totals["total_paise"]),
       "supplier" => %{
         "name" => profile.legal_name,
         "address" => profile.address,
         "gstin" => client.gstin,
-        "state_code" => profile.state_code
+        "state_code" => profile.state_code,
+        "phone" => profile.phone,
+        "email" => profile.email,
+        "logo_key" => profile.logo_key,
+        "signature_key" => profile.signature_key
       },
       "customer" =>
         if(original,

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import type { BusinessBootstrap, BusinessInvoice } from "../src/lib/business-api";
 
 const bootstrap: BusinessBootstrap = {
@@ -8,15 +9,27 @@ const bootstrap: BusinessBootstrap = {
     legal_name: "Breeze Services",
     address: "Chennai",
     state_code: "33",
+    phone: null,
+    email: null,
+    has_logo: false,
+    has_signature: false,
+    quotation_number_style: "nila",
     domestic_services_only: true,
     domestic_goods_and_services_only: false,
     e_invoice_not_applicable: true,
   },
   customers: [{ id: 4, name: "Harbour Labs", gstin: null, address: "Chennai", state_code: "33" }],
   invoices: [],
+  quotation_numbering: {
+    financial_year: 2026,
+    style: "nila",
+    next_number: 1,
+    editable: true,
+  },
   states: [
     { code: "33", name: "Tamil Nadu" },
     { code: "29", name: "Karnataka" },
+    { code: "34", name: "Puducherry" },
   ],
 };
 const invoice: BusinessInvoice = {
@@ -26,6 +39,9 @@ const invoice: BusinessInvoice = {
   purchase_order_number: null,
   purchase_order_date: null,
   delivery_address: null,
+  delivery_state_code: null,
+  subject: null,
+  revised_from_id: null,
   snapshot: {},
   issued_at: null,
   inserted_at: "2026-09-22T10:00:00Z",
@@ -101,10 +117,10 @@ async function chooseCustomer(page: Page, name: string) {
   await page.getByRole("combobox", { name: "Search customers" }).fill(name);
   await page.getByRole("option", { name, exact: true }).click();
 }
-async function chooseState(page: Page, trigger: string, label = "State") {
+async function chooseState(page: Page, trigger: string, label = "State", stateName = "Tamil Nadu") {
   await page.locator(trigger).click();
-  await page.getByRole("combobox", { name: `Search ${label.toLowerCase()}` }).fill("Tamil");
-  await page.getByRole("option", { name: "Tamil Nadu", exact: true }).click();
+  await page.getByRole("combobox", { name: `Search ${label.toLowerCase()}` }).fill(stateName);
+  await page.getByRole("option", { name: stateName, exact: true }).click();
 }
 
 test("business dates allow typing, normalizing, Tab navigation and calendar selection", async ({
@@ -287,6 +303,54 @@ test("customer saves scoped and business profile confirms save", async ({ page }
   await page.getByLabel("Business address").fill("New address");
   await page.getByRole("button", { name: "Save business details" }).click();
   await expect(page.getByRole("status")).toHaveText("Business details saved.");
+});
+
+test("business details save contact info, numbering and a logo", async ({ page }, testInfo) => {
+  await setup(page);
+  const logoBytes = readFileSync(new URL("../../priv/static/images/og-image.png", import.meta.url));
+  let state = bootstrap;
+  await page.route(/\/api\/business$/, (route) => route.fulfill({ json: state }));
+  await page.route(/\/api\/business\/profile$/, (route) => {
+    const update = route.request().postDataJSON().profile;
+    state = { ...state, profile: { ...state.profile!, ...update } };
+    return route.fulfill({ json: { profile: state.profile } });
+  });
+  await page.route(/\/api\/business\/quotation-numbering$/, (route) => {
+    const update = route.request().postDataJSON().numbering;
+    state = {
+      ...state,
+      quotation_numbering: { ...state.quotation_numbering, ...update },
+    };
+    return route.fulfill({ json: { quotation_numbering: state.quotation_numbering } });
+  });
+  await page.route(/\/api\/business\/profile\/assets\/logo(?:\?.*)?$/, (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ status: 200, contentType: "image/png", body: logoBytes });
+    state = { ...state, profile: { ...state.profile!, has_logo: true } };
+    return route.fulfill({ json: { profile: state.profile } });
+  });
+  await page.goto("/app/business/settings");
+  await page.locator("#business-phone").fill("9962550448");
+  await page.locator("#business-email").fill("quotes@example.com");
+  await page.getByRole("button", { name: "Save business details" }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  await page.locator("#business-quote-style").selectOption("serial_fy");
+  await page.locator("#business-quote-next").fill("79");
+  await page.getByRole("button", { name: "Save quotation numbering" }).click();
+  await expect(page.locator("#business-quote-next")).toHaveValue("79");
+  await page.locator("#business-logo").setInputFiles({
+    name: "logo.png",
+    mimeType: "image/png",
+    buffer: logoBytes,
+  });
+  await expect(page.getByAltText("Current business logo")).toBeVisible();
+  await expect
+    .poll(() => page.getByAltText("Current business logo").evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  await page.screenshot({ path: testInfo.outputPath("business-branding-settings.png"), fullPage: true });
+  expect(state.profile?.phone).toBe("9962550448");
+  expect(state.profile?.email).toBe("quotes@example.com");
+  expect(state.quotation_numbering.style).toBe("serial_fy");
 });
 test("credit note carries original customer and services with explicit save and issue", async ({
   page,
@@ -617,6 +681,25 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   page,
 }, testInfo) => {
   await setup(page);
+  await page.route(/\/api\/business\/invoices\/calculate$/, (route) => {
+    const line = route.request().postDataJSON().invoice.lines[0];
+    const taxable = Math.round(Number(line.quantity) * Number(line.unit_price) * 100);
+    const halfTax = Math.round((taxable * Number(line.gst_rate)) / 200);
+    return route.fulfill({
+      json: {
+        totals: {
+          taxable_paise: taxable,
+          cgst_paise: halfTax,
+          sgst_paise: halfTax,
+          igst_paise: 0,
+          total_paise: taxable + halfTax * 2,
+        },
+        lines: [
+          { taxable_paise: taxable, cgst_paise: halfTax, sgst_paise: halfTax, igst_paise: 0 },
+        ],
+      },
+    });
+  });
   const saved = { ...quotation, id: 21 };
   let submitted: Record<string, unknown> = {};
   await page.route(/\/api\/business\/invoices$/, (route) => {
@@ -635,11 +718,12 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   await expect(billTo).toContainText("Parvathi Hospital, Chennai");
   await chooseState(page, "#invoice-pos", "Place of supply");
   await page.getByRole("combobox", { name: "Item type 1" }).selectOption("goods");
+  await expect(page.locator("#line-0-unit")).toHaveValue("");
   await page.locator("#line-0-description").fill("Refrigerant gas");
   await page.locator("#line-0-sac").fill("290339");
   await page.locator("#line-0-unit").selectOption("KGS");
   await page.locator("#line-0-price").fill("500");
-  await expect(page.getByText("₹1,180.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("₹590.00", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("goods-quotation.png"), fullPage: true });
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page).toHaveURL(/\/quotations\/21$/);
@@ -652,6 +736,44 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   expect(submitted.delivery_address).toBe("Parvathi Hospital, Chennai");
 });
 
+test("finalized quotation creates a linked editable revision", async ({ page }) => {
+  await setup(page);
+  const original = {
+    ...quotation,
+    status: "issued" as const,
+    number: "79/2026-27",
+    subject: "Compressor and Pipe Supply",
+  };
+  const revision = {
+    ...original,
+    id: 23,
+    status: "draft" as const,
+    number: null,
+    revised_from_id: original.id,
+  };
+  await page.route(/\/api\/business$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, invoices: [original, revision] } }),
+  );
+  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+    route.fulfill({ json: { invoice: original } }),
+  );
+  await page.route(/\/api\/business\/invoices\/23$/, (route) =>
+    route.fulfill({ json: { invoice: revision } }),
+  );
+  await page.route(/\/api\/business\/invoices\/21\/revise$/, (route) =>
+    route.fulfill({ json: { invoice: revision } }),
+  );
+  await page.goto("/app/business/quotations/21");
+  await page.getByRole("button", { name: "Revise quotation" }).click();
+  await expect(page).toHaveURL(/\/quotations\/23$/);
+  await expect(page.locator("#invoice-subject")).toHaveValue("Compressor and Pipe Supply");
+  await expect(page.getByRole("link", { name: "79/2026-27" })).toHaveAttribute(
+    "href",
+    "/app/business/quotations/21",
+  );
+  await expect(page.getByRole("button", { name: "Finalize quotation" })).toBeEnabled();
+});
+
 test("quotation builder finalizes explicitly, accepts, and converts to one invoice draft with fields retained", async ({
   page,
 }, testInfo) => {
@@ -659,6 +781,7 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   let current = { ...quotation };
   let savedInput: Record<string, unknown> = {};
   let conversions = 0;
+  let finalizations = 0;
   const converted = {
     ...quotation,
     id: 22,
@@ -670,11 +793,13 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.route(/\/api\/business$/, (route) =>
     route.fulfill({ json: { ...bootstrap, invoices: [current] } }),
   );
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/quotations\/finalize$/, (route) => {
+    finalizations++;
     savedInput = route.request().postDataJSON().invoice;
+    expect(route.request().postDataJSON().id).toBeUndefined();
     expect(savedInput.document_type).toBe("quotation");
     expect(savedInput.valid_until).toBe("2026-10-10");
-    current = { ...current, ...savedInput };
+    current = { ...current, ...savedInput, status: "issued", number: "QUO/2627/0001" };
     return route.fulfill({ json: { invoice: current } });
   });
   await page.route(/\/api\/business\/invoices\/21$/, (route) =>
@@ -687,10 +812,6 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
       },
     }),
   );
-  await page.route(/\/api\/business\/invoices\/21\/issue$/, (route) => {
-    current = { ...current, status: "issued", number: "QUO/2627/0001" };
-    return route.fulfill({ json: { invoice: current } });
-  });
   await page.route(/\/api\/business\/invoices\/21\/quotation-status$/, (route) => {
     expect(route.request().postDataJSON().status).toBe("accepted");
     current = { ...current, status: "accepted" };
@@ -709,9 +830,8 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   });
   await page.goto("/app/business/quotations/new");
   await expect(page.getByRole("heading", { name: "Quotation", exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Finalize quotation", exact: true }),
-  ).toBeDisabled();
+  await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
+  expect(finalizations).toBe(0);
   await chooseCustomer(page, "Harbour Labs");
   await chooseState(page, "#invoice-pos", "Place of supply");
   await page.locator("#invoice-date").fill("22/09/2026");
@@ -720,11 +840,18 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.locator("#line-0-sac").fill("998313");
   await page.locator("#line-0-price").fill("1000");
   await page.locator("#invoice-notes").fill("Payment within 15 days.");
+  await page.locator("#invoice-subject").fill("Compressor and Pipe Supply and Insulation");
+  await page.getByRole("button", { name: "Add ship-to address" }).click();
+  await page.locator("#invoice-delivery").fill("IndiraGandhi Hospital, Puducherry");
+  await chooseState(page, "#invoice-delivery-state", "Ship-to state", "Puducherry");
+  await expect(page.getByText(/Billing and delivery states differ/)).toBeVisible();
   await page.getByRole("button", { name: "Add reference / PO" }).click();
   await page.locator("#invoice-reference").fill("WO-4821");
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page).toHaveURL(/\/quotations\/21$/);
   await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
+  await expect(page).toHaveURL(/\/quotations\/21$/);
+  expect(finalizations).toBe(1);
+  expect(savedInput.subject).toBe("Compressor and Pipe Supply and Insulation");
+  expect(savedInput.delivery_state_code).toBe("34");
   await expect(page.getByRole("button", { name: "Download PDF", exact: true })).toBeVisible();
   await expect(page.locator("#line-0-description")).toBeDisabled();
   await expect(page.getByRole("link", { name: "Create credit note" })).toHaveCount(0);
@@ -741,6 +868,9 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await expect(page.locator("#line-0-description")).toHaveValue("Quoted consulting");
   await expect(page.locator("#invoice-reference")).toHaveValue("WO-4821");
   await expect(page.locator("#invoice-notes")).toHaveValue("Payment within 15 days.");
+  await expect(page.locator("#invoice-subject")).toHaveValue(
+    "Compressor and Pipe Supply and Insulation",
+  );
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
 });
 

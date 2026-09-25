@@ -81,6 +81,64 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "Parvathi Hospital, Chennai"
     end
 
+    test "quotation includes business branding, work title and revision reference" do
+      image = File.read!("priv/static/images/og-image.png")
+      logo_key = "test/business-logo-#{Ecto.UUID.generate()}.png"
+      signature_key = "test/business-signature-#{Ecto.UUID.generate()}.png"
+      {:ok, _} = Nila.Storage.put(logo_key, image, content_type: "image/png")
+      {:ok, _} = Nila.Storage.put(signature_key, image, content_type: "image/png")
+
+      on_exit(fn ->
+        Nila.Storage.delete(logo_key)
+        Nila.Storage.delete(signature_key)
+      end)
+
+      data =
+        snapshot()
+        |> Map.merge(%{
+          "document_type" => "quotation",
+          "number" => "79/2026-27",
+          "subject" => "Compressor and Pipe Supply and Insulation",
+          "delivery_address" => "IndiraGandhi Hospital, Puducherry",
+          "delivery_state_code" => "34",
+          "revised_from_number" => "78/2026-27"
+        })
+        |> Map.update!("lines", fn [line] ->
+          for description <- [
+                "Compressor replacement",
+                "Labour and installation",
+                "Copper pipe",
+                "Insulation foam",
+                "R32 refrigerant gas",
+                "Transport"
+              ],
+              do: Map.put(line, "description", description)
+        end)
+        |> Map.put("totals", %{
+          "taxable_paise" => 740_742,
+          "cgst_paise" => 66_666,
+          "sgst_paise" => 66_666,
+          "igst_paise" => 0,
+          "total_paise" => 874_074
+        })
+        |> put_in(["supplier", "phone"], "9962550448")
+        |> put_in(["supplier", "email"], "quotes@example.com")
+        |> put_in(["supplier", "logo_key"], logo_key)
+        |> put_in(["supplier", "signature_key"], signature_key)
+
+      assert {:ok, bytes} = Pdf.render(data)
+      text = pdf_text(bytes)
+      assert text =~ "79/2026-27"
+      assert text =~ "Revised from"
+      assert text =~ "78/2026-27"
+      assert text =~ "Compressor and Pipe Supply and Insulation"
+      assert text =~ "9962550448"
+      assert text =~ "quotes@example.com"
+      assert text =~ "State 34"
+      assert text =~ "R32 refrigerant gas"
+      assert length(String.split(text, "\f")) == 2
+    end
+
     test "renders optional reference, delivery address and amount words" do
       data =
         Map.merge(snapshot(), %{

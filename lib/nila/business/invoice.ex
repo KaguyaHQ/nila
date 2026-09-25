@@ -8,6 +8,7 @@ defmodule Nila.Business.Invoice do
     belongs_to :issued_by, Nila.Accounts.User
     belongs_to :original_invoice, __MODULE__
     belongs_to :converted_invoice, __MODULE__
+    belongs_to :revised_from, __MODULE__
     belongs_to :dump, Nila.Gst.Intake.Dump
     field :status, :string, default: "draft"
     field :document_type, :string, default: "invoice"
@@ -21,6 +22,8 @@ defmodule Nila.Business.Invoice do
     field :purchase_order_number, :string
     field :purchase_order_date, :date
     field :delivery_address, :string
+    field :delivery_state_code, :string
+    field :subject, :string
     field :snapshot, :map, default: %{}
     field :totals, :map, default: %{}
     field :pdf_key, :string
@@ -40,7 +43,9 @@ defmodule Nila.Business.Invoice do
       :notes,
       :purchase_order_number,
       :purchase_order_date,
-      :delivery_address
+      :delivery_address,
+      :delivery_state_code,
+      :subject
     ])
     |> validate_required([:invoice_date, :place_of_supply, :lines])
     |> validate_inclusion(
@@ -51,6 +56,11 @@ defmodule Nila.Business.Invoice do
     |> validate_length(:notes, max: 2000)
     |> validate_length(:purchase_order_number, max: 100)
     |> validate_length(:delivery_address, max: 2000)
+    |> validate_length(:subject, max: 200)
+    |> validate_inclusion(
+      :delivery_state_code,
+      Enum.map(Nila.Gst.StateCodes.all(), &Nila.Gst.StateCodes.code_for/1)
+    )
     |> validate_dates()
     |> validate_valid_until()
   end

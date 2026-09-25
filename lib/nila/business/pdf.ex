@@ -29,7 +29,6 @@ defmodule Nila.Business.Pdf do
       source = Path.join(dir, "invoice.typ")
       output = Path.join(dir, "invoice.pdf")
       File.cp!(template, source)
-      File.write!(Path.join(dir, "invoice.json"), Jason.encode!(presentation(snapshot)))
 
       args = [
         "compile",
@@ -42,7 +41,9 @@ defmodule Nila.Business.Pdf do
         output
       ]
 
-      with :ok <- compile(executable, args, timeout),
+      with {:ok, branded} <- materialize_brand_assets(dir, snapshot),
+           :ok <- File.write(Path.join(dir, "invoice.json"), Jason.encode!(presentation(branded))),
+           :ok <- compile(executable, args, timeout),
            {:ok, %{size: size}} when size <= @max_pdf_bytes <- File.stat(output),
            {:ok, <<"%PDF-", _::binary>> = bytes} <- File.read(output) do
         {:ok, bytes}
@@ -58,6 +59,36 @@ defmodule Nila.Business.Pdf do
         {:error, :pdf_render_failed}
     after
       File.rm_rf(dir)
+    end
+  end
+
+  defp materialize_brand_assets(dir, snapshot) do
+    supplier = Map.fetch!(snapshot, "supplier")
+
+    Enum.reduce_while(
+      [{"logo_key", "logo_file"}, {"signature_key", "signature_file"}],
+      {:ok, supplier},
+      fn {key_name, file_name}, {:ok, current} ->
+        case supplier[key_name] do
+          nil ->
+            {:cont, {:ok, current}}
+
+          key ->
+            extension = if String.ends_with?(key, ".png"), do: ".png", else: ".jpg"
+            filename = file_name <> extension
+
+            with {:ok, bytes} <- Nila.Storage.get(key),
+                 :ok <- File.write(Path.join(dir, filename), bytes) do
+              {:cont, {:ok, Map.put(current, file_name, filename)}}
+            else
+              _ -> {:halt, {:error, :pdf_render_failed}}
+            end
+        end
+      end
+    )
+    |> case do
+      {:ok, branded_supplier} -> {:ok, Map.put(snapshot, "supplier", branded_supplier)}
+      error -> error
     end
   end
 

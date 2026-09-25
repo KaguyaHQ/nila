@@ -1219,6 +1219,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/business/quotation-numbering": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        patch: operations["configureBusinessQuotationNumbering"];
+        trace?: never;
+    };
+    "/api/business/quotations/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["finalizeBusinessQuotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/business/invoices/{id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["reviseBusinessQuotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/business/profile/assets/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBusinessBrandAsset"];
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["uploadBusinessBrandAsset"];
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        delete: operations["removeBusinessBrandAsset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1840,6 +1909,8 @@ export interface components {
             document_type?: ("invoice" | "credit_note" | "quotation") | null;
             valid_until?: string;
             original_invoice_id?: number | null;
+            subject?: string;
+            delivery_state_code?: string;
         };
         BusinessInvoice: {
             id: number;
@@ -1864,6 +1935,9 @@ export interface components {
             snapshot: components["schemas"]["BusinessSnapshot"];
             issued_at: string | null;
             inserted_at: string;
+            subject: string | null;
+            delivery_state_code: string | null;
+            revised_from_id: number | null;
         };
         BusinessProfile: {
             legal_name: string | null;
@@ -1872,6 +1946,12 @@ export interface components {
             e_invoice_not_applicable: boolean;
             domestic_services_only: boolean;
             domestic_goods_and_services_only: boolean;
+            phone: string | null;
+            email: string | null;
+            has_logo: boolean;
+            has_signature: boolean;
+            /** @enum {string} */
+            quotation_number_style: "nila" | "serial_fy";
         };
         BusinessBootstrap: {
             business: {
@@ -1888,6 +1968,7 @@ export interface components {
                 code: string;
                 name: string;
             }[];
+            quotation_numbering: components["schemas"]["BusinessQuotationNumbering"];
         };
         InvoiceCalculation: {
             lines: components["schemas"]["CalculatedBusinessLine"][];
@@ -1991,6 +2072,8 @@ export interface components {
             e_invoice_not_applicable: boolean;
             domestic_services_only: boolean;
             domestic_goods_and_services_only?: boolean;
+            phone?: string;
+            email?: string;
         };
         BusinessTotals: {
             taxable_paise: number;
@@ -2044,6 +2127,10 @@ export interface components {
                 address: string;
                 gstin: string | null;
                 state_code: string;
+                phone?: string | null;
+                email?: string | null;
+                logo_key?: string | null;
+                signature_key?: string | null;
             };
             customer?: {
                 name: string;
@@ -2057,6 +2144,9 @@ export interface components {
             original_invoice_number?: string | null;
             original_invoice_date?: string | null;
             original_sale_category?: string | null;
+            subject?: string | null;
+            delivery_state_code?: string | null;
+            revised_from_number?: string | null;
         };
         BusinessProfileWrite: {
             profile: components["schemas"]["BusinessProfileInput"];
@@ -2124,6 +2214,8 @@ export interface components {
                 e_invoice_not_applicable?: boolean;
                 domestic_services_only?: boolean;
                 domestic_goods_and_services_only?: boolean;
+                phone?: string;
+                email?: string;
             };
         };
         BusinessInvoicePatch: {
@@ -2140,6 +2232,8 @@ export interface components {
                 document_type?: ("invoice" | "credit_note" | "quotation") | null;
                 valid_until?: string;
                 original_invoice_id?: number | null;
+                subject?: string;
+                delivery_state_code?: string;
             };
         };
         SettingsWorkspace: {
@@ -2384,6 +2478,27 @@ export interface components {
             /** @constant */
             ok: true;
             batch_ref: string;
+        };
+        BusinessQuotationNumbering: {
+            financial_year: number;
+            /** @enum {string} */
+            style: "nila" | "serial_fy";
+            next_number: number;
+            editable: boolean;
+        };
+        BusinessQuotationNumberingWrite: {
+            numbering: {
+                /** @enum {string} */
+                style: "nila" | "serial_fy";
+                next_number: number;
+            };
+        };
+        BusinessQuotationNumberingResult: {
+            quotation_numbering: components["schemas"]["BusinessQuotationNumbering"];
+        };
+        BusinessQuotationFinalize: {
+            invoice: components["schemas"]["InvoiceInput"];
+            id?: number;
         };
     };
     responses: never;
@@ -8518,6 +8633,538 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    configureBusinessQuotationNumbering: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessQuotationNumberingWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessQuotationNumberingResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    finalizeBusinessQuotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessQuotationFinalize"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    reviseBusinessQuotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    getBusinessBrandAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "logo" | "signature";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored business image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    uploadBusinessBrandAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                kind: "logo" | "signature";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessProfileResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    removeBusinessBrandAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                kind: "logo" | "signature";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessProfileResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
                 };
             };
         };

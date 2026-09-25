@@ -21,16 +21,35 @@
 
 #grid(columns: (1fr, 58mm), gutter: 18pt,
   [
-    #text(size: 19pt, weight: "semibold")[#data.supplier.name]
+    #if data.supplier.at("logo_file", default: none) != none [
+      #grid(columns: (22mm, 1fr), gutter: 8pt,
+        image(data.supplier.logo_file, width: 22mm, height: 13mm, fit: "contain"),
+        text(size: 19pt, weight: "semibold")[#data.supplier.name],
+      )
+    ] else [
+      #text(size: 19pt, weight: "semibold")[#data.supplier.name]
+    ]
     #v(8pt)
     #text(size: 8.5pt, fill: muted)[#data.supplier.address]
     #v(4pt)
     GSTIN #data.supplier.gstin
+    #if data.supplier.at("phone", default: none) not in (none, "") [
+      #v(4pt)
+      #data.supplier.phone
+    ]
+    #if data.supplier.at("email", default: none) not in (none, "") [
+      #v(3pt)
+      #data.supplier.email
+    ]
   ],
   align(right)[
     #label(if quotation { "QUOTATION" } else if credit { "CREDIT NOTE" } else { "TAX INVOICE" })
     #v(6pt)
     #text(size: 17pt, weight: "medium")[#data.number]
+    #if data.at("revised_from_number", default: none) not in (none, "") [
+      #v(4pt)
+      #label("Revised from") #data.revised_from_number
+    ]
     #v(8pt)
     #label(if quotation or data.at("draft", default: false) { "Date" } else { "Issued" }) #data.invoice_date
     #if quotation and data.at("valid_until", default: none) != none [
@@ -51,9 +70,9 @@
     ]
   ],
 )
-#v(16pt)
+#v(11pt)
 #line(length: 100%, stroke: 0.7pt + rule)
-#v(14pt)
+#v(10pt)
 #grid(columns: (1fr, 58mm), gutter: 18pt,
   [
     #label(if quotation { "PREPARED FOR" } else { "BILL TO" })
@@ -71,6 +90,16 @@
     ]
   ],
   [
+    #if data.at("delivery_address", default: none) not in (none, "") [
+      #label("SHIP TO")
+      #v(5pt)
+      #data.delivery_address
+      #if data.at("delivery_state_code", default: none) not in (none, "") [
+        #v(4pt)
+        #label("State") #data.delivery_state_code
+      ]
+      #v(9pt)
+    ]
     #label("PLACE OF SUPPLY")
     #v(6pt)
     #data.place_of_supply_display
@@ -88,17 +117,15 @@
     ]
   ],
 )
-#if data.at("delivery_address", default: none) not in (none, "") [
-  #v(14pt)
-  #label("SHIP TO")
-  #v(5pt)
-  #data.delivery_address
+#if data.at("subject", default: none) not in (none, "") [
+  #v(11pt)
+  #label("WORK") #h(7pt) #text(weight: "semibold")[#data.subject]
 ]
-#v(20pt)
+#v(12pt)
 
 #table(
   columns: (1fr, 52pt, 31pt, 64pt, 35pt, 74pt),
-  inset: (x: 5pt, y: 9pt),
+  inset: (x: 5pt, y: 5pt),
   stroke: (top: none, left: none, right: none, bottom: 0.4pt + rule),
   align: (left, left, right, right, right, right),
   table.header(..("Item", "HSN/SAC", "Qty", "Rate", "GST", "Amount").map(s => text(size: 8pt, fill: muted)[#s])),
@@ -114,41 +141,48 @@
     [#item.taxable_display],
   )).flatten(),
 )
-#v(14pt)
+#v(9pt)
 #align(right, block(width: 68mm, breakable: false)[
   #grid(columns: (1fr, auto), align: (left, right), column-gutter: 12pt, row-gutter: 8pt,
     label("Taxable amount"), [#data.subtotal_display],
     ..data.tax_rows.map(row => (label(row.label), [#row.amount])).flatten(),
   )
-  #v(10pt)
+  #v(7pt)
   #line(length: 100%, stroke: 0.7pt + rule)
-  #v(10pt)
+  #v(7pt)
   #grid(columns: (1fr, auto), align: (left, right), column-gutter: 12pt,
     text(weight: "semibold")[#if credit { "Credit total" } else { "Total" }],
     text(size: 15pt, weight: "semibold")[#data.total_display],
   )
 ])
 
-#if data.at("total_in_words", default: none) not in (none, "") [
-  #v(14pt)
-  #text(size: 8pt, fill: muted)[#data.total_in_words]
-]
-
-#if data.at("notes", default: none) != none and data.notes != "" [
-  #v(20pt)
-  #label("NOTES")
-  #v(5pt)
-  #data.notes
-]
-#v(26pt)
-#if quotation [
-  #text(size: 8pt, fill: muted)[This quotation is not a tax invoice.]
-  #v(12pt)
-]
-#align(right, block(width: 75mm, breakable: false)[
-  #label("For " + data.supplier.name)
-  #v(28pt)
-  #line(length: 50mm, stroke: 0.7pt + rule)
-  #v(5pt)
-  #label("Authorised signatory")
-])
+#v(12pt)
+#grid(columns: (1fr, 75mm), gutter: 18pt,
+  [
+    #if data.at("total_in_words", default: none) not in (none, "") [
+      #text(size: 8pt, fill: muted)[#data.total_in_words]
+    ]
+    #if data.at("notes", default: none) != none and data.notes != "" [
+      #v(12pt)
+      #label("NOTES")
+      #v(5pt)
+      #data.notes
+    ]
+    #if quotation [
+      #v(14pt)
+      #text(size: 8pt, fill: muted)[This quotation is not a tax invoice.]
+    ]
+  ],
+  align(right, block(width: 75mm, breakable: false)[
+    #label("For " + data.supplier.name)
+    #if data.supplier.at("signature_file", default: none) != none [
+      #v(5pt)
+      #image(data.supplier.signature_file, width: 50mm, height: 12mm, fit: "contain")
+    ] else [
+      #v(20pt)
+      #line(length: 50mm, stroke: 0.7pt + rule)
+    ]
+    #v(5pt)
+    #label("Authorised signatory")
+  ]),
+)

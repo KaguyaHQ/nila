@@ -58,6 +58,7 @@ export function InvoiceDocument({
   const [showDelivery, setShowDelivery] = useState(Boolean(value.delivery_address));
   const issued = Boolean(saved && saved.status !== "draft");
   const quotation = value.document_type === "quotation";
+  const showSubject = quotation || Boolean(saved?.subject || original?.subject);
   const credit = value.document_type === "credit_note";
   const supplier = issued
     ? saved?.snapshot?.supplier
@@ -65,6 +66,8 @@ export function InvoiceDocument({
         name: business.profile?.legal_name || business.business.name,
         address: business.profile?.address,
         gstin: business.business.gstin,
+        phone: business.profile?.phone,
+        email: business.profile?.email,
       };
   const customer = issued
     ? saved?.snapshot?.customer
@@ -94,6 +97,19 @@ export function InvoiceDocument({
             <span className="py-1 font-medium">
               {saved?.number || (quotation ? "Assigned on finalizing" : "Assigned on issue")}
             </span>
+            {saved?.revised_from_id && (
+              <>
+                <span className="text-muted-foreground">Revised from</span>
+                <Link
+                  to="/business/quotations/$invoiceId"
+                  params={{ invoiceId: String(saved.revised_from_id) }}
+                  className="py-1 underline underline-offset-4"
+                >
+                  {business.invoices.find((item) => item.id === saved.revised_from_id)?.number ??
+                    "Earlier quotation"}
+                </Link>
+              </>
+            )}
             {credit && (
               <>
                 <span className="text-muted-foreground">Original invoice</span>
@@ -205,6 +221,8 @@ export function InvoiceDocument({
             {supplier?.address || "Business address not added"}
           </p>
           {supplier?.gstin && <p className="text-muted-foreground">GSTIN {supplier.gstin}</p>}
+          {supplier?.phone && <p className="text-muted-foreground">{supplier.phone}</p>}
+          {supplier?.email && <p className="text-muted-foreground">{supplier.email}</p>}
           {!issued && !supplier?.address && (
             <Link to="/business/settings" className="inline-block underline underline-offset-4">
               Add business details
@@ -253,6 +271,20 @@ export function InvoiceDocument({
                 value={value.delivery_address || ""}
                 onChange={(e) => onChange({ delivery_address: e.target.value })}
               />
+              <label
+                htmlFor="invoice-delivery-state"
+                className="mt-2 mb-1 block text-sm text-muted-foreground"
+              >
+                Ship-to state (optional)
+              </label>
+              <StateCombobox
+                id="invoice-delivery-state"
+                states={business.states}
+                value={value.delivery_state_code || ""}
+                onChange={(state) => onChange({ delivery_state_code: state })}
+                disabled={disabled}
+                label="Ship-to state"
+              />
             </div>
           ) : (
             !issued && (
@@ -271,6 +303,22 @@ export function InvoiceDocument({
         </div>
       </section>
 
+      {showSubject && (
+        <div className="mb-6 max-w-2xl">
+          <label htmlFor="invoice-subject" className="mb-1 block text-sm text-muted-foreground">
+            Work / subject (optional)
+          </label>
+          <InlineInput
+            id="invoice-subject"
+            disabled={disabled}
+            maxLength={200}
+            placeholder="What is this quotation for?"
+            value={value.subject || ""}
+            onChange={(e) => onChange({ subject: e.target.value })}
+          />
+        </div>
+      )}
+
       <div className="mb-7 flex max-w-sm items-center gap-4 text-sm">
         <label htmlFor="invoice-pos" className="shrink-0 text-muted-foreground">
           Place of supply
@@ -286,6 +334,20 @@ export function InvoiceDocument({
           required
         />
       </div>
+      {customer && value.delivery_address && value.delivery_state_code &&
+        customer.state_code !== value.delivery_state_code && (
+          <p className="mb-6 rounded-md border border-border bg-muted/30 p-3 text-sm">
+            Bill to: {business.states.find((state) => state.code === customer.state_code)?.name ?? customer.state_code}
+            {" · "}Ship to: {business.states.find((state) => state.code === value.delivery_state_code)?.name ?? value.delivery_state_code}
+            {" · "}Place of supply: {business.states.find((state) => state.code === value.place_of_supply)?.name ?? "choose state"}
+            {value.place_of_supply && (
+              <> · {value.place_of_supply === supplier?.gstin?.slice(0, 2) ? "CGST + SGST" : "IGST"}</>
+            )}
+            <span className="mt-1 block text-muted-foreground">
+              Billing and delivery states differ. Confirm the place of supply with your CA before finalizing.
+            </span>
+          </p>
+        )}
 
       <section aria-label="Items" className="space-y-3">
         <div
@@ -330,7 +392,7 @@ export function InvoiceDocument({
                                 ...entry,
                                 kind: e.target.value as "goods" | "service",
                                 sac: "",
-                                unit: e.target.value === "goods" ? "NOS" : "",
+                                unit: "",
                               }
                             : entry,
                         ),
@@ -427,11 +489,13 @@ export function InvoiceDocument({
                     {line.kind === "goods" ? (
                       <InlineSelect
                         id={`line-${index}-unit`}
+                        required
                         disabled={disabled}
-                        value={line.unit ?? "NOS"}
+                        value={line.unit ?? ""}
                         className="min-w-0 flex-1 text-xs"
                         onChange={(e) => lineChange(index, "unit", e.target.value)}
                       >
+                        <option value="">Unit</option>
                         {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
                           <option key={unit} value={unit}>
                             {unit}
