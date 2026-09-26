@@ -1,7 +1,7 @@
 defmodule NilaWeb.SettingsWorkspaceController do
   use NilaWeb, :controller
 
-  alias Nila.{Accounts, Clients, Orgs}
+  alias Nila.{Accounts, Clients, Demo, Orgs}
   alias Nila.Accounts.Policy
   alias NilaWeb.UserAuth
 
@@ -61,6 +61,21 @@ defmodule NilaWeb.SettingsWorkspaceController do
          ) do
       {:ok, _} -> json(conn, %{message: "Firm details saved."})
       {:error, reason} -> failure(conn, reason)
+    end
+  end
+
+  def demo_reset(conn, _params) do
+    scope = conn.assigns.current_scope
+
+    case Demo.reset(scope) do
+      {:ok, _} ->
+        json(conn, %{message: "Demo reset. Your firm is ready for new clients."})
+
+      {:error, :forbidden} ->
+        conn |> put_status(403) |> json(%{error: Demo.reset_error(:forbidden)})
+
+      {:error, reason} ->
+        conn |> put_status(409) |> json(%{error: Demo.reset_error(reason)})
     end
   end
 
@@ -179,6 +194,7 @@ defmodule NilaWeb.SettingsWorkspaceController do
       firm: Map.take(scope.current_org, [:name, :contact_phone]),
       can_manage_firm: Policy.can?(scope, :manage_settings),
       can_manage_users: manage_users,
+      demo_reset: if(Demo.available?(scope), do: Map.take(scope.current_org, [:id, :name])),
       clients: Enum.map(Clients.list_clients(scope.current_org.id), &Map.take(&1, [:id, :name])),
       roles:
         Enum.map(Policy.assignable_roles(), fn {label, value} -> %{label: label, value: value} end),

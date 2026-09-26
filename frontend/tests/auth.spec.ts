@@ -110,3 +110,18 @@ test("verification provides resend and Phoenix logout", async ({ page }) => {
   expect(body.get("_method")).toBe("delete");
   expect(body.get("_csrf_token")).toBe("test-csrf");
 });
+
+test("development shortcuts name the workspaces and submit the matching identity", async ({ page }, info) => {
+  await auth(page, { users: [
+    { name: "Firm workspace", email: "firm@nila.test" },
+    { name: "Business workspace", email: "business@nila.test" },
+  ] });
+  await expect(page.getByRole("button", { name: "Firm workspace", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Business workspace", exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("workspace-logins.png"), fullPage: true });
+  const sent = page.waitForRequest((request) => request.method() === "POST");
+  await page.getByRole("button", { name: "Business workspace", exact: true }).click();
+  expect(Object.fromEntries(new URLSearchParams((await sent).postData()!))).toEqual({
+    _csrf_token: "test-csrf", dev_login: "true", email: "business@nila.test",
+  });
+});

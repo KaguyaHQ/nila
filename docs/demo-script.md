@@ -6,9 +6,9 @@ and preparation are in [the runbook](demo-runbook.md).
 
 ## Before showing the screen
 
-Log into `nila.tax`. **Use the client switcher to select `BREEZE TECH - Demo`.**
+Log into the designated demo firm. Create a client for the chosen packet and
+select it. The example below uses the rehearsed Breeze Tech packet.
 Open its **June 2026** Sales & GSTR-1 working and confirm it is empty.
-Production start page: `https://nila.tax/gst/2/2026-06/sales` (select the client first).
 Have `D:/nila-demo/breeze-2026-06/Breeze Tech - June 2026 - Sales.pdf` ready.
 Keep `Production working.xlsx`, `Production GSTR-1.json`, and
 `Completed production run.png` from the same folder available offline.
@@ -22,7 +22,7 @@ Keep `Production working.xlsx`, `Production GSTR-1.json`, and
 
 2. **Empty June working → Bring in invoices.** Select the PDF, wait for the upload
    to finish, then click **Add to Jun 2026 sales** once. Check the importer names
-   `BREEZE TECH - Demo`. During processing, connect the task to the firm's own
+   the client you created. During processing, connect the task to the firm's own
    workflow; don't narrate the progress indicator.
 
 3. **Batch result → inspect one invoice — about 45 seconds.** Expect eight
@@ -61,6 +61,7 @@ demo client. That is a discovery exercise, not a promise of the rehearsed timing
 
 ## After practising or between visits
 
-On the demo client's Sales & GSTR-1 page, click **⋯ → Reset demo → Reset demo**.
-Wait for processing to finish first. Save any downloads you want to keep before
-resetting. The app opens the empty June working, ready for the same PDF again.
+Open **Settings → Firm → Demo data → Reset demo** in the designated demo firm.
+Wait for processing to finish and save any downloads you need. Reset removes all
+clients and work across all months in this firm. Create whichever client you want
+for the next demonstration. See [setup and reset](development-and-demos.md).

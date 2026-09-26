@@ -47,98 +47,31 @@ The workbook's source-tax checks may expose this; do not change the source to
 force a green check. Explain the rounding if asked. The billed party and ship-to
 state can differ; do not reinterpret tax treatment from the delivery address.
 
-## Starting state and setup
+## Starting state and reset
 
-Production is the presentation environment. Localhost is for preparation and
-recovery, not evidence that the production presentation passed.
+The packet above is one rehearsed example, not a requirement of the demo system.
+Use any client and packet suited to the audience. Create the client in the demo
+firm and explicitly choose the correct month before uploading.
 
-The app currently takes an account's first organisation membership; a separate
-organisation would require additional account setup. A **dedicated client in the
-existing workspace** is the smaller repeatable boundary.
+See [development and demonstrations](development-and-demos.md) for setup.
+**Settings → Firm → Demo data → Reset demo** clears all clients and work across
+all months in the designated demo firm. It preserves the firm and sign-in access.
+Wait for running jobs to finish. Save any downloads needed for an offline fallback
+before resetting; reset has no backup. Create the client again for the next run.
 
-Production changes require explicit user authorization. Before setup, inspect
-the production organisation through `scripts/prod-console`. Existing production
-client 1 (`Breezetech`) and its June/November runs are not reset targets.
-
-```powershell
-# Local setup, already exercised; output gives the client ID and start path.
-./scripts/demo.ps1 -Action Setup -OrgId 1
-
-# Production setup, only after authorization. Creates one marked client,
-# with no contacts, chasing, Tally connection or imports.
-./scripts/demo.ps1 -Production -Action Setup -OrgId 1
-```
-
-The local demo client is **3**. Production demo client is **2**, created and
-authorized on September 7, 2026, in organisation **1**.
-Use the ID printed by setup; never substitute the existing client ID 1.
-
-**Always select the demo client using the shell's client switcher first.** A direct
-month URL does not update the client stored in the browser session. The upload
-uses that session client. Check both the sidebar and importer name before sending.
-
-Open `/gst/CLIENT_ID/2026-06/sales`. Expect zero invoices, no old uploads and no
-signed/filed state. The historical June period must be explicit; the app's default
-month changes with the calendar.
-
-## Reset between visits
-
-Wait for extraction to finish. Save the completed workbook,
-JSON and one result screenshot to the demo folder before the first reset. These
-are the offline fallback and must not be overwritten by an incomplete run.
-
-On the demo client's **Sales & GSTR-1** page, open the **⋯** menu at the top right,
-choose **Reset demo**, then confirm. The app returns to the empty June 2026 working.
-Cancel leaves the data intact. No terminal or AWS session is needed.
-
-This action is restricted to `spare.me1180650@gmail.com`, with a current owner
-membership, and the designated client's exact demo marker and configuration.
-The server rechecks authorization and all reset safeguards when confirmation is
-submitted. Other accounts and ordinary clients do not get this action.
-
-The PowerShell operator remains available as a fallback:
-
-```powershell
-# This laptop's production demo client (local uses client 3 without -Production).
-./scripts/demo.ps1 -Production -Action Inspect -OrgId 1 -ClientId 2
-
-# After authorization for this disposable client's resets:
-./scripts/demo.ps1 -Production -Action Reset -OrgId 1 -ClientId 2 -ConfirmReset 'RESET 1/2/2026-06'
-```
-
-The operator returns removed row counts, a backup storage key and `NILA_DEMO_OK`.
-It archives exact database rows through `Nila.Storage` and verifies the backup
-bytes before deleting anything. It clears only the marked demo client's sales
-month, uploads, batches, extraction attempts, completed jobs and review/correction/
-removal records. The client, other clients, source PDFs and evidence objects remain.
-This is a presentation reset, not permanent object-storage erasure.
-
-Refuses other months, purchase work, signed/filed work, Tally handoffs, running
-extractions or queued/retryable jobs. Do not bypass a refusal. Inspect and resolve
-the cause. Repeating reset on an empty demo returns zero removed rows.
-
-Backups are compressed Erlang term files under
-`orgs/ORG_ID/demo-backups/CLIENT_ID/UUID.etf`. Retain the returned key; an operator
-can inspect it with `Nila.Storage.get/1` and `:erlang.binary_to_term(bytes, [:safe])`.
-Restoration is an explicit operator task, not an automatic part of the demo.
+The September rehearsal records below describe an earlier client-specific setup.
+Their fixed client IDs and old reset behaviour are historical, not current setup instructions.
 
 ## Pre-visit check
 
 1. Confirm `nila.tax` login works and the correct demo client is selected.
 2. Run packet verification; keep PDF, completed XLSX and JSON locally available.
-3. Inspect/reset the demo client, then confirm the June working is empty.
+3. Reset the demo firm if needed, create the packet's client, and confirm its working is empty.
 4. Open Excel beforehand; check the downloaded workbook opens and formulas calculate.
 5. Use the laptop's working internet connection/hotspot; live extraction needs it.
 6. Keep the fallback files open. Do not diagnose AWS or run setup in front of the CA.
 
-AWS operator access expires independently of the website login. If needed, use
-`aws login --profile nila` before leaving. This laptop initially lacked the Session
-Manager plugin; preparation used the official AWS ZIP's packaged executable under
-`tmp/demo-prep/ssm-plugin/bin`. `demo.ps1` finds that or the standard installation.
-For another machine, follow [AWS's Windows installation instructions](https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html).
-The wrapper uses the same SSM instance and container as `scripts/prod-console`;
-it uses the same `Nila.DemoSession` module as the in-app action, with a source
-fallback for older releases. The CLI remains an AWS-authorized operator path.
+Operator access uses `scripts/prod-console`. See the setup guide for firm designation.
 
 ## Rehearsal record
 

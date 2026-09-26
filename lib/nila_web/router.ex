@@ -68,6 +68,7 @@ defmodule NilaWeb.Router do
     post "/settings/password", SettingsWorkspaceController, :password
     post "/settings/sessions", SettingsWorkspaceController, :sessions
     patch "/settings/firm", SettingsWorkspaceController, :firm
+    post "/settings/demo-reset", SettingsWorkspaceController, :demo_reset
     post "/settings/invitations", SettingsWorkspaceController, :invite
     patch "/settings/members/:id", SettingsWorkspaceController, :member
     get "/clients", ClientsWorkspaceController, :index

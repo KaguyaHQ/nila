@@ -252,28 +252,31 @@ export default function SettingsPage() {
             ) : section === "security" ? (
               <Security />
             ) : section === "workspace" ? (
-              <Panel title="Firm details" description="Shared details for your firm.">
-                <SettingsForm
-                  id="firm"
-                  fields={[
-                    { name: "name", label: "Firm name", value: data.firm.name },
-                    {
-                      name: "contact_phone",
-                      label: "Contact phone",
-                      type: "tel",
-                      value: data.firm.contact_phone,
-                      required: false,
-                    },
-                  ]}
-                  action="Save changes"
-                  save={(v, signal) =>
-                    settingsRequest("updateSettingsFirm", {
-                      body: { name: v.name, contact_phone: v.contact_phone },
-                      signal,
-                    })
-                  }
-                />
-              </Panel>
+              <>
+                <Panel title="Firm details" description="Shared details for your firm.">
+                  <SettingsForm
+                    id="firm"
+                    fields={[
+                      { name: "name", label: "Firm name", value: data.firm.name },
+                      {
+                        name: "contact_phone",
+                        label: "Contact phone",
+                        type: "tel",
+                        value: data.firm.contact_phone,
+                        required: false,
+                      },
+                    ]}
+                    action="Save changes"
+                    save={(v, signal) =>
+                      settingsRequest("updateSettingsFirm", {
+                        body: { name: v.name, contact_phone: v.contact_phone },
+                        signal,
+                      })
+                    }
+                  />
+                </Panel>
+                {data.demo_reset && <DemoReset firm={data.demo_reset} />}
+              </>
             ) : (
               <Members data={data} />
             )}
@@ -281,6 +284,55 @@ export default function SettingsPage() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+function DemoReset({ firm }: { firm: NonNullable<SettingsData["demo_reset"]> }) {
+  const cache = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const reset = useSettingsSave((_: void, signal) =>
+    settingsRequest("resetSettingsDemo", { signal }),
+  );
+  useEffect(() => {
+    if (reset.isSuccess) {
+      setOpen(false);
+      void cache.invalidateQueries();
+    }
+  }, [reset.isSuccess, cache]);
+
+  return (
+    <>
+      <Panel title="Demo data" description={`Start again with an empty ${firm.name}.`}>
+        <Button ref={trigger} type="button" variant="outline" onClick={() => setOpen(true)}>
+          Reset demo
+        </Button>
+      </Panel>
+      <AlertDialog open={open} onOpenChange={(value) => !reset.isPending && setOpen(value)}>
+        <AlertDialogContent initialFocus={cancel} finalFocus={trigger}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset {firm.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes every client and their work across all months in this
+              demo firm, including business documents and business access. Your login, firm
+              details, and team stay. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {reset.isError && <p role="alert" className="text-sm text-destructive">{reset.error.message}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={cancel} disabled={reset.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={reset.isPending}
+              onClick={() => reset.submit()}
+            >
+              {reset.isPending ? "Resetting…" : "Reset demo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

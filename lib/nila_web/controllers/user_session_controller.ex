@@ -9,8 +9,13 @@ defmodule NilaWeb.UserSessionController do
   if @dev_login? do
     def create(conn, %{"dev_login" => "true", "email" => email}) do
       case Accounts.get_user_by_email(email) do
-        nil -> reject_login(conn)
-        user -> UserAuth.log_in_user(conn, user)
+        %{active: true} = user ->
+          if Enum.any?(Nila.Development.quick_login_users(), &(&1.email == email)),
+            do: UserAuth.log_in_user(conn, user),
+            else: reject_login(conn)
+
+        _ ->
+          reject_login(conn)
       end
     end
   end

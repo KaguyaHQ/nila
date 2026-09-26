@@ -22,4 +22,4 @@ if ((Get-FileHash -LiteralPath $demoPdf -Algorithm SHA256).Hash -ne $expectedHas
 }
 Write-Output "Verified: $demoPdf"
 Write-Output 'June 2026 | 8 pages | 8 invoices | 33AEWPH4158J1Z3'
-Write-Output 'Use the client switcher to select BREEZE TECH - Demo before uploading.'
+Write-Output 'Create and select a client with the packet GSTIN in your demo firm before uploading.'

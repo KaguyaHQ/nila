@@ -9,6 +9,7 @@ defmodule Nila.Orgs.Org do
     field :legal_name, :string
     field :gstin, :string
     field :status, :string, default: "active"
+    field :is_demo, :boolean, default: false
     field :address_line1, :string
     field :address_line2, :string
     field :city, :string

@@ -14,6 +14,7 @@ function fixture(manage = true): SettingsData {
     firm: { name: "Nila Dev CA", contact_phone: null },
     can_manage_firm: manage,
     can_manage_users: manage,
+    demo_reset: null,
     clients: [],
     roles: [
       { label: "Owner", value: "owner" },
@@ -48,6 +49,34 @@ function fixture(manage = true): SettingsData {
       : [],
   };
 }
+
+test("demo reset names the whole firm and reports server refusal", async ({ page }, testInfo) => {
+  const data = await setup(page);
+  data.demo_reset = { id: 2, name: "Demo Firm" };
+  let resets = 0;
+  await page.route("**/api/workspace/settings/demo-reset", (route) => {
+    resets++;
+    expect(route.request().headers()["x-csrf-token"]).toBe("settings-csrf");
+    return route.fulfill(
+      resets === 1
+        ? { status: 409, json: { error: "Invoices are still processing." } }
+        : { json: { message: "Demo reset. Your firm is ready for new clients." } },
+    );
+  });
+  await page.goto("/app/settings/workspace");
+  await page.locator("#main-content").getByRole("button", { name: "Reset demo" }).click();
+  await expect(page.getByText(/every client and their work across all months/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("demo-reset-confirmation.png"), fullPage: true });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  expect(resets).toBe(0);
+  await page.locator("#main-content").getByRole("button", { name: "Reset demo" }).click();
+  await page.getByRole("button", { name: "Reset demo" }).last().click();
+  await expect(page.getByRole("alert")).toHaveText("Invoices are still processing.");
+  expect(resets).toBe(1);
+  await page.getByRole("button", { name: "Reset demo" }).last().click();
+  await expect(page.getByText("Demo reset. Your firm is ready for new clients.")).toBeVisible();
+  expect(resets).toBe(2);
+});
 async function setup(page: Page, manage = true) {
   await mockNavigation(page);
   const data = fixture(manage);

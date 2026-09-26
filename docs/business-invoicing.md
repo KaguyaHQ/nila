@@ -2,17 +2,13 @@
 
 ## Local demo login
 
-Run `mix run priv/repo/seeds.exs`, then open `/users/log_in` and click
-**Dev Business** under Development quick login. Sign out of your firm account
-first, or use a private window. The account (`business@nila.test`) opens
-Demo Business Services, linked to Nila Dev CA, with a customer, saved service,
-two draft invoices and one issued invoice with its PDF and CA sales entry.
+Run `mix nila.dev.reset` to rebuild disposable local data, then use **Business
+workspace** under Development quick login at `/users/log_in`. The baseline opens
+Example Business with its profile and no transactions. **Firm workspace** opens
+the professional side for accounting firms and tax consultants.
 
-These business seeds run only in development and preserve existing records.
-To add them to an already-seeded local database, run
-`mix run priv/repo/business_seeds.exs`. The issued invoice needs the configured
-Typst executable, just like normal invoice issuance.
-
+Optional examples: `mix run priv/repo/business_seeds.exs` adds a customer, saved
+item and draft invoice. See [development and demos](development-and-demos.md).
 ## Workflow
 
 The business portal serves GST-registered domestic goods and service businesses.

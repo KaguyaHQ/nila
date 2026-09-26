@@ -116,7 +116,7 @@ defmodule NilaWeb.AuthPageController do
 
   if @dev_login? do
     defp quick_login_users,
-      do: Accounts.list_users() |> Enum.take(10) |> Enum.map(&Map.take(&1, [:name, :email]))
+      do: Nila.Development.quick_login_users()
   else
     defp quick_login_users, do: []
   end

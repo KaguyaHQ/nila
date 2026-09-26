@@ -903,6 +903,22 @@ export interface paths {
         patch: operations["updateSettingsFirm"];
         trace?: never;
     };
+    "/api/workspace/settings/demo-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resetSettingsDemo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace/settings/invitations": {
         parameters: {
             query?: never;
@@ -2250,6 +2266,11 @@ export interface components {
             };
             can_manage_firm: boolean;
             can_manage_users: boolean;
+            /** @description The designated demo firm this owner can reset, or null. Reset removes all clients and work in this firm. */
+            demo_reset: {
+                id: number;
+                name: string;
+            } | null;
             clients: {
                 id: number;
                 name: string;
@@ -7137,6 +7158,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsError"];
+                };
+            };
+        };
+    };
+    resetSettingsDemo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SettingsResult */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResult"];
+                };
+            };
+            /** @description Error */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

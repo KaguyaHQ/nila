@@ -18,6 +18,7 @@ const operations = {
   updateSettingsPassword: ["POST", "/password"],
   deleteSettingsSessions: ["POST", "/sessions"],
   updateSettingsFirm: ["PATCH", "/firm"],
+  resetSettingsDemo: ["POST", "/demo-reset"],
   inviteSettingsUser: ["POST", "/invitations"],
   updateSettingsMember: ["PATCH", "/members/"],
 } as const;

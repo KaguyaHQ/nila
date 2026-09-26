@@ -6182,6 +6182,53 @@
         }
       }
     },
+    "/api/workspace/settings/demo-reset": {
+      "post": {
+        "operationId": "resetSettingsDemo",
+        "responses": {
+          "200": {
+            "description": "SettingsResult",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/settings/invitations": {
       "post": {
         "operationId": "inviteSettingsUser",
@@ -13467,6 +13514,26 @@
           "can_manage_users": {
             "type": "boolean"
           },
+          "demo_reset": {
+            "description": "The designated demo firm this owner can reset, or null. Reset removes all clients and work in this firm.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
           "clients": {
             "type": "array",
             "items": {
@@ -13558,6 +13625,7 @@
           "firm",
           "can_manage_firm",
           "can_manage_users",
+          "demo_reset",
           "clients",
           "roles",
           "members"

@@ -14,12 +14,27 @@ defmodule NilaWeb.SettingsWorkspaceControllerTest do
     body = contract_response(response, 200)
     assert body["user"]["id"] == user.id
     assert body["can_manage_firm"]
+    assert body["demo_reset"] == nil
 
     assert [%{"self" => true, "can_change_role" => false, "can_toggle_active" => false}] =
              body["members"]
 
     refute response.resp_body =~ "hashed_password"
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
+  end
+
+  test "only an owner of a designated demo firm sees and can reset it", %{conn: conn} do
+    assert conn |> post(@base <> "/demo-reset") |> contract_response(403)
+
+    %{user: presenter, org: org} = user_with_org_fixture()
+
+    {:ok, _} = Nila.Demo.designate(org.id)
+    presenter_conn = log_in_user(conn, presenter)
+    shown = presenter_conn |> get(@base) |> contract_response(200)
+    assert shown["demo_reset"] == %{"id" => org.id, "name" => org.name}
+
+    assert presenter_conn |> post(@base <> "/demo-reset") |> contract_response(200) ==
+             %{"message" => "Demo reset. Your firm is ready for new clients."}
   end
 
   test "name allows no account privilege or email changes and returns errors", %{
