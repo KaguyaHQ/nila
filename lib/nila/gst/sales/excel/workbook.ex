@@ -7,6 +7,10 @@ defmodule Nila.Gst.Sales.Excel.Workbook do
   @max_bytes 5_000_000
   def max_bytes, do: @max_bytes
 
+  def read(<<0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, _::binary>> = bytes)
+      when byte_size(bytes) <= @max_bytes,
+      do: Nila.Gst.Sales.Excel.LegacyWorkbook.read(bytes)
+
   def read(bytes) when is_binary(bytes) and byte_size(bytes) <= @max_bytes do
     with {:ok, entries} <- :zip.table(bytes),
          true <- length(entries) <= 300,

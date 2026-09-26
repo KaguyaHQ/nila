@@ -122,6 +122,10 @@ defmodule NilaWeb.Router do
     post "/sales/:client_id/:period/uploads/:batch_ref/move", SalesUploadController, :move
     post "/sales/:client_id/:period/uploads/:batch_ref/removal", SalesUploadController, :removal
     get "/sales/:client_id/:period/uploads", SalesUploadController, :index
+    get "/sales/:client_id/:period/reports", SalesReportController, :index
+    post "/sales/:client_id/:period/reports", SalesReportController, :create
+    patch "/sales/:client_id/:period/reports", SalesReportController, :update
+    delete "/sales/:client_id/:period/reports", SalesReportController, :destroy
     post "/sales/:client_id/:period/uploads/prepare", SalesUploadController, :prepare
     post "/sales/:client_id/:period/uploads", SalesUploadController, :create
   end

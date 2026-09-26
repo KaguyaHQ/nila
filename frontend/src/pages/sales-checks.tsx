@@ -21,6 +21,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSales } from "@/state/sales-workspace";
+import { SalesReportChecks } from "@/components/sales-report-checks";
 
 const supportedChecks = new Set(["sequence_gaps", "pages_unaccounted", "evidence_unavailable"]);
 const changedMessage = "This check changed. Review the updated check before confirming it again.";
@@ -56,6 +57,9 @@ export default function SalesChecks() {
           {workspace.client.name} · {workspace.month_label}
         </p>
       </div>
+      {(workspace.report_count ?? 0) > 0 && (
+        <SalesReportChecks key={`${client}/${period}`} data={workspace} />
+      )}
       {query.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading monthly checks…
@@ -77,6 +81,7 @@ export default function SalesChecks() {
         </div>
       ) : (
         <ChecksList
+          hideEmpty={(workspace.report_count ?? 0) > 0}
           key={`${client}/${period}`}
           data={query.data}
           refreshing={query.isFetching}
@@ -88,10 +93,12 @@ export default function SalesChecks() {
 }
 
 function ChecksList({
+  hideEmpty,
   data,
   refreshing,
   reload,
 }: {
+  hideEmpty?: boolean;
   data: MonthlySalesChecks;
   refreshing: boolean;
   reload: () => unknown;
@@ -198,9 +205,11 @@ function ChecksList({
         </p>
       )}
       {data.checks.length === 0 ? (
-        <p className="rounded-xl border bg-card px-5 py-10 text-center text-sm text-muted-foreground">
-          No sequence or source-page checks to review.
-        </p>
+        !hideEmpty && (
+          <p className="rounded-xl border bg-card px-5 py-10 text-center text-sm text-muted-foreground">
+            No sequence or source-page checks to review.
+          </p>
+        )
       ) : (
         <div className="space-y-4">
           {data.checks.map((check) => {

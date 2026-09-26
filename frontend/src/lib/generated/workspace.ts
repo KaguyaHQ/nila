@@ -1370,6 +1370,22 @@ export interface components {
             };
             rows: {
                 id: string;
+    "/api/workspace/sales/{client_id}/{period}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSalesReturnReports"];
+        put?: never;
+        post: operations["importSalesReturnReport"];
+        delete: operations["removeSalesReturnReport"];
+        options?: never;
+        head?: never;
+        patch: operations["correctSalesReturnReport"];
+        trace?: never;
+    };
                 number: string;
                 date: string | null;
                 customer: string;
@@ -1475,6 +1491,8 @@ export interface components {
                 label: string;
                 value: string;
             }[];
+            report_count?: number;
+            report_issue_count?: number;
             queue: {
                 id: string;
                 number: string;
@@ -2645,6 +2663,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewError"];
+        SalesReturnReportRow: {
+            source_filename?: string | null;
+            source_id?: string;
+            sheet: string;
+            row: number;
+            values: {
+                [key: string]: string | number | boolean | null;
+            };
+            cells?: {
+                [key: string]: (string | number | boolean) | null;
+            };
+            section: string;
+            suggestion?: {
+                message: string;
+                values: {
+                    [key: string]: number;
+                };
+            } | null;
+            source_values?: {
+                [key: string]: string | number | boolean | null;
+            };
+            headers?: {
+                [key: string]: string;
+            };
+            columns?: {
+                [key: string]: string | null;
+            };
+        };
+        SalesReturnReport: {
+            dump_id: number;
+            filename: string;
+            basis: string;
+            b2cs_before_notes?: boolean | null;
+            rows: components["schemas"]["SalesReturnReportRow"][];
+        };
+        SalesReturnReports: {
+            states: {
+                label: string;
+                value: string;
+            }[];
+            reports: components["schemas"]["SalesReturnReport"][];
+            editable: boolean;
+            tasks: components["schemas"]["SalesReportTask"][];
+        };
+        SalesReportTask: {
+            source_filename?: string | null;
+            id: string;
+            /** @enum {string} */
+            kind: "row" | "notes" | "basis" | "invoice" | "uploads" | "reconciliation";
+            title: string;
+            message: string;
+            dump_id: number;
+            basis: string;
+            filename: string;
+            sheet: string;
+            row: number;
+            source_ids: string[];
+            fields: string[];
+            values: {
+                [key: string]: string | number | boolean | null;
+            };
+            rows: components["schemas"]["SalesReturnReportRow"][];
+            amounts?: {
+                before: number;
+                notes: number;
+                after: number;
+            };
+        };
                 };
             };
             /** @description Request could not be completed */
@@ -9238,3 +9324,393 @@ export interface operations {
         };
     };
 }
+    uploadBusinessBrandAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                kind: "logo" | "signature";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessProfileResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    removeBusinessBrandAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                kind: "logo" | "signature";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessProfileResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    getSalesReturnReports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Supplied return reports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesReturnReports"];
+                };
+            };
+            /** @description Request failed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    importSalesReturnReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file?: string;
+                    /** @description Sales report files, sent as repeated files[] multipart fields. */
+                    files?: string[];
+                } | unknown | unknown;
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        dump_id?: number;
+                    };
+                };
+            };
+            /** @description Request failed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request failed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeSalesReturnReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dump_id: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Report removed from the working */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            /** @description Read only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Report cannot be removed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    correctSalesReturnReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dump_id: number;
+                    basis: string;
+                    source_filename?: string | null;
+                    sheet: string;
+                    row: number;
+                    values: {
+                        [key: string]: (string | number | boolean) | null;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        dump_id?: number;
+                    };
+                };
+            };
+            /** @description Request failed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };

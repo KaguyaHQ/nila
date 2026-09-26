@@ -67,10 +67,8 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
   @spec build(projection(), map(), String.t(), keyword()) ::
           {:ok, binary()} | {:error, :no_active_sales | :invalid_sales_data | term()}
   def build(projection, client, period, opts \\ []) do
-    active = Map.get(projection, :active_invoices, [])
-
     cond do
-      active == [] ->
+      not Nila.Gst.Sales.Workings.has_return_data?(projection) ->
         {:error, :no_active_sales}
 
       not valid_client?(client) or not valid_period?(period) ->
@@ -92,14 +90,35 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
             do: sheets,
             else: sheets ++ [exceptions_sheet(context)]
 
+        sheets =
+          if Map.get(projection, :supplied_rows, []) == [],
+            do: sheets,
+            else: sheets ++ [supplied_summary_sheet(context)]
+
         XlsxWriter.generate(sheets)
     end
   end
 
   defp context(projection, client, period, opts) do
     active = projection.active_invoices
-    tax_rows = tax_rows(active)
-    hsn_rows = hsn_rows(active)
+    supplied = Map.get(projection, :supplied_rows, [])
+
+    net_reports =
+      for report <- Map.get(projection, :return_reports, []),
+          report["b2cs_before_notes"] == false,
+          do: report["dump_id"]
+
+    tax_active =
+      Enum.reject(
+        active,
+        &(&1["return_report_section"] == "CDNUR" and &1["return_report_dump_id"] in net_reports and
+            Gstr1.filing_table(&1) == "b2cs")
+      )
+
+    tax_rows = tax_rows(tax_active) ++ supplied_tax_rows(supplied)
+
+    hsn_rows =
+      hsn_rows(Enum.reject(active, & &1["return_report_section"])) ++ supplied_hsn_rows(supplied)
 
     %{
       projection: projection,
@@ -113,6 +132,74 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
       tax_last_row: max(5, 4 + length(tax_rows)),
       hsn_last_row: max(5, 4 + length(hsn_rows))
     }
+  end
+
+  defp supplied_tax_rows(rows) do
+    for row <- rows, row["section"] == "b2cs" do
+      v = row["values"]
+
+      %{
+        source: "#{row["filename"]}: #{row["sheet"]} row #{row["row"]}",
+        source_id: nil,
+        document_type: "Supplied summary",
+        line_count: 1,
+        document: "B2CS row #{row["row"]}",
+        date: nil,
+        recipient: nil,
+        gstin: nil,
+        pos: v["pos"],
+        section: "B2CS",
+        treatment:
+          if(v["pos"] == String.slice(v["seller_gstin"] || "", 0, 2),
+            do: "Intrastate",
+            else: "Interstate"
+          ),
+        rate: v["rate"],
+        taxable: v["txval"],
+        cgst: v["camt"],
+        sgst: v["samt"],
+        igst: v["iamt"]
+      }
+    end
+  end
+
+  defp supplied_hsn_rows(rows) do
+    for row <- rows, row["section"] in ~w(hsn_b2b hsn_b2c) do
+      v = row["values"]
+
+      %{
+        source_id: nil,
+        document: "#{row["sheet"]} row #{row["row"]}",
+        hsn: v["hsn_sc"],
+        description: v["desc"],
+        uqc: v["uqc"],
+        quantity: v["qty"],
+        rate: v["rate"],
+        treatment: if((v["iamt"] || 0) != 0, do: "Interstate", else: "Intrastate"),
+        taxable: v["txval"]
+      }
+    end
+  end
+
+  defp supplied_summary_sheet(context) do
+    keys =
+      ~w(pos hsn_sc desc uqc qty rate txval camt samt iamt csamt nature from to totnum cancel net_issue)
+
+    rows =
+      for row <- context.projection.supplied_rows,
+          do: [row["filename"], row["sheet"], row["row"]] ++ Enum.map(keys, &row["values"][&1])
+
+    XlsxWriter.new_sheet("Supplied summaries")
+    |> title(context, "Supplied return summaries")
+    |> XlsxWriter.write(
+      2,
+      0,
+      "Monthly summaries supplied in the report; no invoice-level HSN links were invented."
+    )
+    |> write_headers(3, ["Source file", "Sheet", "Row"] ++ keys)
+    |> write_rows(4, rows)
+    |> set_widths([32, 16, 8] ++ List.duplicate(18, length(keys)))
+    |> XlsxWriter.freeze_panes(4, 3)
   end
 
   # These two reading views share the existing arithmetic instead of maintaining

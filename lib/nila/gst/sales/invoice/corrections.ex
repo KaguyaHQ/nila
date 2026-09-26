@@ -22,7 +22,7 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
   alias Nila.Repo
 
   @printed_total_fields ~w(printed_total_taxable printed_total_tax printed_grand_total)
-  @top_fields ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration) ++
+  @top_fields ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply original_sale_category narration) ++
                 @printed_total_fields
   @line_fields Invoice.correctable_line_fields()
   @numeric_line_fields ~w(
@@ -282,6 +282,11 @@ defmodule Nila.Gst.Sales.Invoice.Corrections do
   end
 
   defp coerce("place_of_supply", _value), do: {:error, :invalid_place_of_supply}
+
+  defp coerce("original_sale_category", value) when value in [nil, "", "b2cs", "b2cl"],
+    do: {:ok, normalize_optional_string(value)}
+
+  defp coerce("original_sale_category", _), do: {:error, :unsupported_field}
 
   defp coerce(field, value) when field in @printed_total_fields, do: coerce_number(value)
 

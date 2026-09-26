@@ -61,6 +61,193 @@ function month(client = 1, period = "2026-06"): SalesWorkspace {
   };
 }
 
+test("Excel upload collects multiple reports and keeps them after a failed upload", async ({
+  page,
+}, info) => {
+  await page.route("**/api/workspace/sales/1/2026-06", (route) => route.fulfill({ json: month() }));
+  let uploadBody = "";
+  await page.route("**/api/workspace/sales/1/2026-06/reports", (route) => {
+    uploadBody = route.request().postDataBuffer()?.toString("utf8") ?? "";
+    return route.fulfill({ status: 422, json: { error: "Test report needs correction." } });
+  });
+  await page.goto("/app/gst/1/2026-06/sales?upload=invoices");
+  const dialog = page.getByRole("dialog", { name: "Add sales files" });
+  await expect(dialog.getByText("Drop your sales PDFs here")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("pdf-upload.png"), fullPage: true });
+  await dialog.getByRole("button", { name: "Excel report", exact: true }).click();
+  await expect(dialog.getByText("Drop your Excel reports here")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "View uploads" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Upload reports", exact: true })).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("excel-upload.png"), fullPage: true });
+  const picker = dialog.getByLabel("Choose sales Excel reports");
+  await picker.setInputFiles({
+    name: "report.xls",
+    mimeType: "application/vnd.ms-excel",
+    buffer: Buffer.from("test"),
+  });
+  await expect(dialog.getByText("report.xls", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Remove report.xls" }).click();
+  await expect(dialog.getByText("Drop your Excel reports here")).toBeVisible();
+  const transfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(["test"], "dropped.xlsx"));
+    return data;
+  });
+  await dialog
+    .getByText("Drop your Excel reports here")
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await expect(dialog.getByText("dropped.xlsx", { exact: true })).toBeVisible();
+  await picker.setInputFiles({
+    name: "wrong.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("test"),
+  });
+  await expect(dialog.getByRole("alert")).toContainText(".xls, .xlsx or .csv");
+  await expect(dialog.getByText("dropped.xlsx", { exact: true })).toBeVisible();
+  await picker.setInputFiles([
+    {
+      name: "B2B(2).csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("GSTIN/UIN of Recipient,Receiver Name"),
+    },
+    {
+      name: "remove-me.xls",
+      mimeType: "application/vnd.ms-excel",
+      buffer: Buffer.from("remove"),
+    },
+  ]);
+  await expect(dialog.getByText("B2B(2).csv", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("dropped.xlsx", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Remove remove-me.xls" }).click();
+  await expect(dialog.getByText("remove-me.xls", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("2 files selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Upload reports", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Test report needs correction.");
+  expect(uploadBody.match(/name="files\[\]"/g)).toHaveLength(2);
+  expect(uploadBody).toContain('filename="dropped.xlsx"');
+  expect(uploadBody).toContain('filename="B2B(2).csv"');
+  expect(uploadBody).not.toContain('filename="remove-me.xls"');
+  await expect(dialog.getByText("dropped.xlsx", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("B2B(2).csv", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("excel-selected.png"), fullPage: true });
+});
+
+test("Excel issues save inline, retain the source and return to downloads", async ({
+  page,
+}, info) => {
+  const data = { ...month(), report_count: 1, report_issue_count: 1 };
+  const row = {
+    source_filename: "HSN(B2B).xlsx",
+    sheet: "HSN summary",
+    section: "hsn_b2b",
+    row: 14,
+    cells: { H: "" },
+    values: {
+      hsn_sc: "999799",
+      desc: "",
+      uqc: "NA",
+      qty: 0,
+      rate: null as number | null,
+      txval: 200,
+      iamt: 0,
+      camt: 18,
+      samt: 18,
+      csamt: 0,
+    },
+    suggestion: {
+      values: { rate: 18 },
+      message:
+        "Suggested 18%: calculated from this row's taxable value and GST amounts. Confirm the applicable rate.",
+    } as object | null,
+  };
+  let saved = 0;
+  let stale = true;
+  let basis = "review-1";
+  const task = () => ({
+    id: "hsn-rate",
+    kind: "row",
+    title: "HSN/SAC 999799",
+    message: "GST rate is missing.",
+    dump_id: 1,
+    basis,
+    filename: "client.xls",
+    source_filename: row.source_filename,
+    sheet: row.sheet,
+    row: 14,
+    source_ids: [],
+    fields: ["rate"],
+    values: row.values,
+    rows: [row],
+  });
+  await page.route("**/api/workspace/sales/1/2026-06", (route) => route.fulfill({ json: data }));
+  await page.route("**/api/workspace/sales/1/2026-06/checks", (route) =>
+    route.fulfill({
+      json: {
+        client: { id: 1, name: "Breeze Tech", gstin: null },
+        period: "2026-06",
+        can_edit: true,
+        lock_reason: null,
+        checks: [],
+      },
+    }),
+  );
+  await page.route("**/api/workspace/sales/1/2026-06/reports", (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      expect(body.basis).toBe(basis);
+      expect(body.values.rate).toBe(18);
+      expect(body.source_filename).toBe("HSN(B2B).xlsx");
+      saved++;
+      if (stale) {
+        stale = false;
+        basis = "review-2";
+        return route.fulfill({
+          status: 422,
+          json: { error: "This report changed. Refresh and review it again." },
+        });
+      }
+      row.values.rate = 18;
+      row.suggestion = null;
+      data.report_issue_count = 0;
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fulfill({
+      json: {
+        editable: true,
+        states: [{ label: "Tamil Nadu", value: "33" }],
+        tasks: row.values.rate === null ? [task()] : [],
+        reports: [{ dump_id: 1, filename: "client.xls", basis, rows: [row] }],
+      },
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales");
+  await expect(page.getByText("Supplied return report", { exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Fix 1 remaining issue" }).click();
+  const issue = page.getByRole("region", { name: "HSN/SAC 999799" });
+  await expect(issue.getByLabel("GST rate", { exact: true })).toHaveValue("");
+  await issue.getByLabel("GST rate", { exact: true }).fill("18");
+  await expect(issue.getByRole("cell").filter({ hasText: "HSN summary · 14" })).toContainText("HSN(B2B).xlsx");
+  await issue.getByText("Show full row", { exact: true }).click();
+  await expect(issue.getByRole("columnheader", { name: "H", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(saved).toBe(0);
+  await page.screenshot({ path: info.outputPath("report-inline-check.png"), fullPage: true });
+  await issue.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(issue.getByRole("alert")).toContainText("This report changed");
+  await expect(issue.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  expect(saved).toBe(1);
+  await issue.getByRole("button", { name: "Refresh and review again" }).click();
+  await expect(issue.getByLabel("GST rate", { exact: true })).toHaveValue("18");
+  await issue.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(issue).toContainText("Saved");
+  await expect(issue).toBeFocused();
+  expect(saved).toBe(2);
+  await expect(page.getByText("No report issues remaining.", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Back to summary and downloads" }).click();
+  await expect(page.getByRole("heading", { name: "GSTR-1 summary" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Fix 1 remaining issue" })).toHaveCount(0);
+});
+
 test("empty month retains section rows without asserting no entries or showing exports", async ({
   page,
 }, info) => {

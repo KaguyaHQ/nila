@@ -24,6 +24,7 @@ defmodule Nila.Gst.Issues do
   # {level, resolution_kind}. Every code any GST surface can raise appears here;
   # a code missing from this table is a classification bug, not a default.
   @classification %{
+    "return_report_invalid" => {"blocking", :correction},
     "seller_gst_registration_review" => {"required", :confirmation},
     "buyer_gst_registration_review" => {"required", :confirmation},
     "seller_gst_name_review" => {"required", :confirmation},

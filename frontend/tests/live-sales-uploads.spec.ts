@@ -313,6 +313,68 @@ test("history polls processing, retains failed sources and links to review and R
   ).toBe(true);
 });
 
+test("report packet keeps every source and removes the whole working after confirmation", async ({ page }, testInfo) => {
+  await setup(page);
+  let removed = false;
+  let deletes = 0;
+  await page.route("**/api/workspace/sales/1/2026-06/uploads", (route) =>
+    route.fulfill({
+      json: {
+        processing: false,
+        batches: [{
+          id: "41",
+          created_at: "2026-06-15T10:00:00Z",
+          active_invoice_ids: [],
+          removed_invoices: [],
+          files: ["B2B.csv", "B2CS.csv"].map((name, index) => ({
+            id: 41,
+            name,
+            state: removed ? "discarded" : "extracted",
+            label: removed ? "Discarded" : "Imported",
+            invoice_count: 0,
+            error: null,
+            original_url: `/gst/1/2026-06/original/41/${index}`,
+          })),
+        }],
+      },
+    }),
+  );
+  await page.route("**/api/workspace/sales/1/2026-06/reports", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletes += 1;
+    expect(route.request().postDataJSON()).toEqual({ dump_id: 41 });
+    if (deletes === 1) return route.fulfill({ status: 409, json: { error: "This month is filed." } });
+    removed = true;
+    return route.fulfill({ json: { ok: true } });
+  });
+
+  await page.goto("/app/gst/1/2026-06/sales/uploads");
+  await expect(page.getByText("B2B.csv", { exact: true })).toBeVisible();
+  await expect(page.getByText("B2CS.csv", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 invoices")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Upload actions" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download original report for B2CS.csv (new tab)" }))
+    .toHaveAttribute("href", "/gst/1/2026-06/original/41/1");
+  await page.screenshot({ path: testInfo.outputPath("report-packet-history.png"), fullPage: true });
+
+  await page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Remove this report?" });
+  await expect(dialog).toContainText("Remove all 2 files from this month’s working.");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect(deletes).toBe(0);
+
+  await page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" }).click();
+  await dialog.getByRole("button", { name: "Remove report" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("This month is filed.");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Remove report" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText("Discarded")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download original report for B2B.csv (new tab)" }))
+    .toHaveAttribute("href", "/gst/1/2026-06/original/41/0");
+});
+
 test("history permission failure does not appear as an empty upload list", async ({ page }) => {
   await setup(page);
   await page.route("**/api/workspace/sales/*/*/uploads", (route) =>

@@ -27,6 +27,9 @@ defmodule Nila.Gst.Sales.Derivation do
         [],
         Gstr1.production_header(client.gstin, dump.period),
         ledger_issues(dump),
+        return_reports:
+          Dumps.effective(dump.org_id, dump.client_id, dump.period, "sales")
+          |> Nila.Gst.Sales.ReturnSources.from_dumps(),
         compliance:
           maybe_put_directory(
             %{taxpayers: Nila.Gst.Sales.TaxpayerChecks.saved(invoices)},

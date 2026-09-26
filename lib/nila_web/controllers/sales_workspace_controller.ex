@@ -82,8 +82,11 @@ defmodule NilaWeb.SalesWorkspaceController do
         can_upload: Nila.Accounts.Policy.can?(scope, :edit_records),
         deadline: Nila.Gst.Filing.Calendar.due_dates(period).gstr1,
         invoice_count: length(workings.active_invoices),
+        report_count:
+          Enum.count(dumps, &(&1.status == "extracted" and not is_nil(&1.meta["return_report"]))),
         review_count: length(review.needs_you),
         month_issue_count: review.month_issue_count,
+        report_issue_count: length(Nila.Gst.Sales.ReportReview.build(workings)),
         taxable: Helpers.rupees(totals && totals.taxable),
         tax: Helpers.rupees(totals && totals.tax),
         rows: rows,

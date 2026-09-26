@@ -8,7 +8,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
   alias Nila.Gst.Sales.Review.{Resolutions, Values}
   alias NilaWeb.Gst.{InvoiceWorkbench, InvoicePresentation, SalesIssuePresentation}
 
-  @facts ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply narration)
+  @facts ~w(invoice_number invoice_date buyer_name buyer_gstin place_of_supply original_sale_category narration)
   @totals ~w(printed_total_taxable printed_total_tax printed_grand_total)
   @money_fields ~w(printed_unit_price printed_line_amount printed_line_total printed_taxable_value taxable_value cgst_amount sgst_amount igst_amount)
 
@@ -37,6 +37,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
 
   def project(context) do
     invoice = context.item.invoice
+    facts = if invoice["document_type"] in ~w(credit_note debit_note) and invoice["recipient_registration"] == "unregistered", do: @facts, else: @facts -- ["original_sale_category"]
     reason = lock_reason(context)
     can_edit = is_nil(reason)
 
@@ -52,7 +53,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         place_of_supply:
           InvoicePresentation.place_of_supply_label(context.item.treatment["place_of_supply"])
       },
-      facts: field_values(invoice, @facts),
+      facts: field_values(invoice, facts),
       lines:
         Enum.with_index(invoice["line_items"] || [])
         |> Enum.map(fn {line, index} ->
@@ -129,7 +130,7 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         end),
       can_edit: can_edit,
       lock_reason: reason,
-      editable_fields: %{facts: @facts, line: Invoice.correctable_line_fields(), totals: @totals},
+      editable_fields: %{facts: facts, line: Invoice.correctable_line_fields(), totals: @totals},
       states:
         Enum.map(StateCodes.all(), fn label ->
           %{label: label, value: StateCodes.code_for(label)}

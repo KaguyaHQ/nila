@@ -18,19 +18,30 @@ defmodule Nila.Gst.Sales.Review do
   def build(workings) when is_map(workings) do
     invoices = Map.fetch!(workings, :active_invoices)
     issues = workings |> Map.fetch!(:issues) |> Issues.normalize_all()
+    active_ids = MapSet.new(invoices, & &1["id"])
+    ids_by_number = Enum.group_by(invoices, & &1["invoice_number"], & &1["id"])
+
+    linked_issues =
+      Enum.map(issues, &{&1, issue_source_ids(&1, active_ids, ids_by_number)})
+
+    issues_by_source =
+      Enum.reduce(linked_issues, %{}, fn {issue, ids}, acc ->
+        Enum.reduce(Enum.uniq(ids), acc, fn id, acc ->
+          Map.update(acc, id, [issue], &[issue | &1])
+        end)
+      end)
 
     items =
       invoices
       |> Enum.map(fn invoice ->
         # An invoice that cannot form a return row is still reviewable source work.
         treatment = treatment_snapshot(invoice, workings) || %{}
-        item(invoice, treatment, issues, invoices)
+        invoice_issues = issues_by_source |> Map.get(invoice["id"], []) |> Enum.reverse()
+        item(invoice, treatment, invoice_issues)
       end)
 
     actionable_issues =
-      issues
-      |> Enum.filter(&actionable?/1)
-      |> Enum.filter(&(issue_source_ids(&1, invoices) != []))
+      for {issue, ids} <- linked_issues, ids != [], actionable?(issue), do: issue
 
     all_targets = MapSet.new(actionable_issues, &Workings.issue_key/1)
 
@@ -46,9 +57,11 @@ defmodule Nila.Gst.Sales.Review do
     }
 
     month_issue_count =
-      issues
-      |> Enum.filter(&(&1["status"] == "open" and Issues.gating?(&1)))
-      |> Enum.filter(&(issue_source_ids(&1, invoices) == []))
+      linked_issues
+      |> Enum.filter(fn {issue, ids} ->
+        ids == [] and issue["status"] == "open" and Issues.gating?(issue)
+      end)
+      |> Enum.map(&elem(&1, 0))
       |> Enum.uniq_by(&Workings.issue_key/1)
       |> length()
 
@@ -144,10 +157,7 @@ defmodule Nila.Gst.Sales.Review do
 
   def treatment_snapshot(_invoice, _without_contributions), do: nil
 
-  defp item(invoice, treatment, issues, invoices) do
-    invoice_issues =
-      Enum.filter(issues, &(invoice["id"] in issue_source_ids(&1, invoices)))
-
+  defp item(invoice, treatment, invoice_issues) do
     actionable_issues = Enum.filter(invoice_issues, &actionable?/1)
     actionable_targets = actionable_issues |> Enum.map(&Workings.issue_key/1) |> Enum.uniq()
 
@@ -186,23 +196,22 @@ defmodule Nila.Gst.Sales.Review do
   defp item_state(_targets, [_ | _]), do: :needs_you
   defp item_state(_targets, []), do: :settled
 
-  defp issue_source_ids(%{"source_ids" => source_ids}, invoices) when is_list(source_ids) do
-    active_ids = MapSet.new(invoices, & &1["id"])
+  defp issue_source_ids(%{"source_ids" => source_ids}, active_ids, _ids_by_number)
+       when is_list(source_ids) do
     Enum.filter(source_ids, &MapSet.member?(active_ids, &1))
   end
 
-  defp issue_source_ids(%{"source_id" => source_id}, invoices) when is_binary(source_id) do
-    if Enum.any?(invoices, &(&1["id"] == source_id)), do: [source_id], else: []
+  defp issue_source_ids(%{"source_id" => source_id}, active_ids, _ids_by_number)
+       when is_binary(source_id) do
+    if MapSet.member?(active_ids, source_id), do: [source_id], else: []
   end
 
-  defp issue_source_ids(%{"invoice" => invoice_number}, invoices)
+  defp issue_source_ids(%{"invoice" => invoice_number}, _active_ids, ids_by_number)
        when is_binary(invoice_number) do
-    invoices
-    |> Enum.filter(&(&1["invoice_number"] == invoice_number))
-    |> Enum.map(& &1["id"])
+    Map.get(ids_by_number, invoice_number, [])
   end
 
-  defp issue_source_ids(_issue, _invoices), do: []
+  defp issue_source_ids(_issue, _active_ids, _ids_by_number), do: []
 
   defp treatment_amounts(treatment) do
     treatment

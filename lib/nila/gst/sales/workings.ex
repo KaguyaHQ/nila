@@ -57,6 +57,13 @@ defmodule Nila.Gst.Sales.Workings do
 
     pristine_source_invoices =
       invoices
+      |> Enum.map(fn invoice ->
+        # This report supplies GSTIN, not seller name. Older imports copied the
+        # client label here; it must never be compared as a printed source fact.
+        if invoice["return_report_section"],
+          do: Map.put(invoice, "seller_name", nil),
+          else: invoice
+      end)
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
       |> Enum.map(&Invoice.resolve_line_amounts/1)
       |> InvoiceReadiness.annotate(compliance)
@@ -74,6 +81,7 @@ defmodule Nila.Gst.Sales.Workings do
       |> InvoiceReadiness.issues()
       |> Enum.concat(Gstr1Readiness.issues(pristine_source_invoices))
       |> Enum.concat(Gstr1Readiness.period_issues(pristine_source_invoices, period))
+      |> Enum.concat(Nila.Gst.Sales.ReturnSources.invoice_checks(pristine_source_invoices))
 
     source_flagged = CorrectionPolicy.flagged_fields(pristine_source_invoices, correction_issues)
 
@@ -98,15 +106,27 @@ defmodule Nila.Gst.Sales.Workings do
     {printed_invoices, printed_active_invoices, _printed_copies} =
       apply_exclusions(pristine_source_invoices, exclusions)
 
-    projection = Gstr1.project(active_invoices, header)
+    reports = Keyword.get(opts, :return_reports, [])
+
+    {projection, report_issues, supplied_rows} =
+      Nila.Gst.Sales.ReturnSources.apply(
+        Gstr1.project(active_invoices, header),
+        active_invoices,
+        reports
+      )
 
     raw_issues =
       active_invoices
       |> InvoiceReadiness.issues()
       |> Enum.concat(Gstr1Readiness.issues(active_invoices))
-      |> Enum.concat(Documents.issues(active_invoices))
+      |> Enum.concat(
+        Documents.issues(Enum.reject(active_invoices, & &1["return_report_section"]))
+      )
       |> Enum.concat(Gstr1Readiness.period_issues(active_invoices, period))
       |> Enum.concat(document_issues)
+      |> Nila.Gst.Sales.ReturnSources.invoice_issues(active_invoices, reports)
+      |> Enum.concat(report_issues)
+      |> Enum.concat(Nila.Gst.Sales.ReturnSources.invoice_checks(active_invoices))
       |> Issues.normalize_all()
       |> collapse_by_target()
       |> Enum.map(
@@ -148,6 +168,8 @@ defmodule Nila.Gst.Sales.Workings do
       issues: issues,
       derived: projection.derived,
       contributions: projection.contributions,
+      supplied_rows: supplied_rows,
+      return_reports: reports,
       decisions: decisions,
       corrections: corrections,
       flagged: source_flagged,
@@ -277,6 +299,12 @@ defmodule Nila.Gst.Sales.Workings do
     Enum.all?(issues, fn issue ->
       not blocking?(issue) and (issue["status"] == "resolved" or not Issues.gating?(issue))
     end)
+  end
+
+  @doc "Whether a sales working contains source transactions or supplied return rows."
+  def has_return_data?(projection) do
+    Map.get(projection, :active_invoices, []) != [] or
+      Map.get(projection, :supplied_rows, []) != []
   end
 
   @doc """

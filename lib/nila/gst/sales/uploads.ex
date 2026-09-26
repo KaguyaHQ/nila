@@ -98,7 +98,7 @@ defmodule Nila.Gst.Sales.Uploads do
               &%{id: Invoice.source_id(&1), number: &1["invoice_number"] || Invoice.source_id(&1)}
             ),
           created_at: first.inserted_at,
-          files: Enum.map(group, &file_row(&1, client_id, period)),
+          files: Enum.flat_map(group, &file_rows(&1, client_id, period)),
           invoice_ids:
             Enum.flat_map(group, fn dump ->
               Enum.map(dump.invoices || [], &Invoice.source_id/1)
@@ -270,13 +270,37 @@ defmodule Nila.Gst.Sales.Uploads do
     end
   end
 
-  defp file_row(dump, client_id, period) do
+  defp file_rows(%{file_keys: keys, meta: meta} = dump, client_id, period) do
+    manifest = (meta || %{})["file_manifest"]
+
+    if is_list(manifest) and length(manifest) == length(keys) and keys != [] do
+      manifest
+      |> Enum.with_index()
+      |> Enum.map(fn {entry, index} ->
+        file_row(
+          dump,
+          client_id,
+          period,
+          index,
+          entry["filename"] || SourcePacket.original_name(dump)
+        )
+      end)
+    else
+      [file_row(dump, client_id, period, 0, SourcePacket.original_name(dump))]
+    end
+  end
+
+  defp file_row(dump, client_id, period, index, name) do
     %{
       id: dump.id,
-      name: SourcePacket.original_name(dump),
+      name: name,
       state: dump.status,
-      label: label(dump),
-      invoice_count: length(dump.invoices),
+      label:
+        if((dump.meta || %{})["excel_import"] and dump.status == "extracted",
+          do: "Imported",
+          else: label(dump)
+        ),
+      invoice_count: if((dump.meta || %{})["excel_import"], do: 0, else: length(dump.invoices)),
       error:
         if(dump.status == "failed",
           do:
@@ -287,7 +311,7 @@ defmodule Nila.Gst.Sales.Uploads do
             )
         ),
       original_url:
-        if(dump.file_keys != [], do: "/gst/#{client_id}/#{period}/original/#{dump.id}/0")
+        if(dump.file_keys != [], do: "/gst/#{client_id}/#{period}/original/#{dump.id}/#{index}")
     }
   end
 

@@ -54,6 +54,7 @@ const fieldLabels: Record<string, string> = {
   buyer_name: "Customer",
   buyer_gstin: "Customer GSTIN",
   place_of_supply: "Place of supply",
+  original_sale_category: "Original unregistered sale category",
   narration: "Narration",
   printed_total_taxable: "Printed taxable value",
   printed_total_tax: "Printed GST",
@@ -940,6 +941,13 @@ function InvoiceReview({
                               {state.label}
                             </option>
                           ))}
+                        </NativeSelect>
+                      ) : field === "original_sale_category" ? (
+                        <NativeSelect id={id} value={values[field] ?? ""} disabled={busy || !data.can_edit}
+                          onChange={event => setValues(previous => ({ ...previous, [field]: event.target.value }))}>
+                          <option value="">Not provided / not applicable</option>
+                          <option value="b2cs">B2C other / small</option>
+                          <option value="b2cl">B2C large (interstate)</option>
                         </NativeSelect>
                       ) : field === "line_amount_tax_inclusion" ? (
                         <NativeSelect

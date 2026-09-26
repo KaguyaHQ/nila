@@ -237,6 +237,7 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
         document_issues(month) ++ tally.issues,
         source_namespace: "sales_month_#{month.id}",
         packet_basis: packet_basis(month),
+        return_reports: Nila.Gst.Sales.ReportImport.reports(month, resolutions),
         compliance:
           Map.put(compliance(month), :taxpayers, Nila.Gst.Sales.TaxpayerChecks.saved(invoices))
       )

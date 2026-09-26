@@ -31,7 +31,7 @@ defmodule Nila.Gst.Sales.Review.Resolution do
   """
   use Nila.Schema
 
-  @verbs ~w(correct_field confirm_issue accept_difference exclude_duplicate_copy reopen)
+  @verbs ~w(correct_field correct_return_row confirm_issue accept_difference exclude_duplicate_copy reopen)
 
   def verbs, do: @verbs
 

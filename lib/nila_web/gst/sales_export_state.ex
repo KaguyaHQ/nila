@@ -24,11 +24,11 @@ defmodule NilaWeb.Gst.SalesExportState do
             }
           ]
 
-        month == nil or workings.active_invoices == [] ->
+        month == nil or not Workings.has_return_data?(workings) ->
           [
             %{
               id: "empty",
-              message: "Add sales invoices to make downloads available.",
+              message: "Add sales files to make downloads available.",
               path: base <> "/upload",
               external: false
             }
@@ -106,48 +106,82 @@ defmodule NilaWeb.Gst.SalesExportState do
   defp required_blockers(workings, client_id, period) do
     review = Review.build(workings)
 
-    workings.issues
-    |> Issues.normalize_all()
-    |> Enum.filter(&(Workings.blocking?(&1) or (&1["status"] == "open" and Issues.gating?(&1))))
-    |> Enum.map(fn issue ->
-      target = Workings.issue_key(issue)
+    report_ids =
+      for invoice <- workings.active_invoices, invoice["return_report_dump_id"], do: invoice["id"]
 
-      owners =
-        Enum.filter(review.all, fn item ->
-          Enum.any?(item.actionable_issues, &(Workings.issue_key(&1) == target))
-        end)
+    report_blockers =
+      Nila.Gst.Sales.ReportReview.build(workings)
+      |> Enum.map(fn task ->
+        %{
+          id: task["id"],
+          message: task["title"],
+          path: "/gst/#{client_id}/#{period}/sales/checks",
+          external: false
+        }
+      end)
 
-      {path, external?} =
-        case owners do
-          [item] ->
-            {"/gst/#{client_id}/#{period}/sales/invoices/#{URI.encode_www_form(item.source_id)}",
-             false}
+    other_blockers =
+      workings.issues
+      |> Issues.normalize_all()
+      |> Enum.filter(&(Workings.blocking?(&1) or (&1["status"] == "open" and Issues.gating?(&1))))
+      |> Enum.reject(fn issue ->
+        report_ids != [] and
+          (issue["code"] == "return_report_invalid" or issue["source_id"] in report_ids)
+      end)
+      |> Enum.map(fn issue ->
+        target = Workings.issue_key(issue)
 
-          [] ->
-            {if(Nila.Gst.Sales.Review.MonthChecks.supported?(issue),
-               do: "/gst/#{client_id}/#{period}/sales/checks"
-             ), false}
+        owners =
+          Enum.filter(review.all, fn item ->
+            Enum.any?(item.actionable_issues, &(Workings.issue_key(&1) == target))
+          end)
 
-          _ ->
-            {"/gst/#{client_id}/#{period}/sales/register", false}
-        end
+        {path, external?} =
+          case owners do
+            [item] ->
+              {"/gst/#{client_id}/#{period}/sales/invoices/#{URI.encode_www_form(item.source_id)}",
+               false}
 
-      message =
-        case owners do
-          [item] ->
-            "#{item.invoice["invoice_number"] || "Invoice"}: #{NilaWeb.Gst.SalesIssuePresentation.register_reason(issue)}"
+            [] ->
+              {if(Nila.Gst.Sales.Review.MonthChecks.supported?(issue),
+                 do: "/gst/#{client_id}/#{period}/sales/checks"
+               ), false}
 
-          _ ->
-            issue["message"] || "Review this sales check."
-        end
+            _ ->
+              {"/gst/#{client_id}/#{period}/sales/register", false}
+          end
 
-      %{
-        id: target,
-        message: message,
-        path: path,
-        external: external?
-      }
-    end)
+        message =
+          case owners do
+            [item] ->
+              "#{item.invoice["invoice_number"] || "Invoice"}: #{NilaWeb.Gst.SalesIssuePresentation.register_reason(issue)}"
+
+            _ ->
+              issue["message"] || "Review this sales check."
+          end
+
+        %{
+          id: target,
+          message: message,
+          path: path,
+          external: external?
+        }
+      end)
+
+    case report_blockers ++ other_blockers do
+      [] ->
+        [
+          %{
+            id: "remaining",
+            message: "Resolve the remaining sales checks.",
+            path: "/gst/#{client_id}/#{period}/sales/checks",
+            external: false
+          }
+        ]
+
+      blockers ->
+        blockers
+    end
   end
 
   defp first_message([first | _]), do: first.message

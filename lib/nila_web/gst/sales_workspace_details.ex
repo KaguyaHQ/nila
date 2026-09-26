@@ -15,15 +15,40 @@ defmodule NilaWeb.Gst.SalesWorkspaceDetails do
 
       {key, section} ->
         {key,
-         if(filed?,
+         if(filed? or (key == "b2cs" and Map.get(workings, :supplied_rows, []) != []),
            do: filed_section(key, section.title, workings, client.id, period),
            else: invoices(key, section, client.id, period)
          )}
     end)
     |> Map.put(
       "hsn",
-      if(filed?, do: filed_hsn(workings.derived), else: hsn(workings, client.id, period))
+      if(filed? or Map.get(workings, :supplied_rows, []) != [],
+        do: filed_hsn(workings.derived),
+        else: hsn(workings, client.id, period)
+      )
     )
+    |> then(fn details ->
+      if not filed? and Map.get(workings, :supplied_rows, []) != [] do
+        details
+        |> update_in(
+          ["hsn"],
+          &Map.merge(&1, %{
+            description: "Supplied HSN summaries and any separately derived HSN totals.",
+            note:
+              "The report supplies monthly totals, without invoice-level HSN links. See the uploaded report for source rows."
+          })
+        )
+        |> update_in(
+          ["b2cs"],
+          &Map.merge(&1, %{
+            description:
+              "Supplied B2C totals, adjusted for notes according to the reviewed report basis."
+          })
+        )
+      else
+        details
+      end
+    end)
   end
 
   defp filed_section(key, title, workings, client_id, period) do

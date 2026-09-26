@@ -3,6 +3,43 @@ defmodule Nila.Gst.Sales.ReviewTest do
 
   alias Nila.Gst.Sales.Review
 
+  test "issue ownership preserves explicit IDs, legacy numbers, shared issues and order" do
+    sources = [invoice("a", "same"), invoice("b", "same"), invoice("c", "other")]
+
+    issues = [
+      %{"code" => "invalid_gstin", "invoice" => "same", "status" => "open"},
+      %{
+        "code" => "printed_tax_mismatch",
+        "source_ids" => ["b", "b", "c", "removed"],
+        "status" => "open"
+      },
+      %{
+        "code" => "missing_taxable_value",
+        "source_id" => "a",
+        "invoice" => "other",
+        "status" => "open"
+      },
+      %{
+        "code" => "pages_unaccounted",
+        "source_id" => "removed",
+        "invoice" => "same",
+        "status" => "open"
+      },
+      %{"code" => "missing_hsn_sac", "source_ids" => [], "source_id" => "a", "status" => "open"}
+    ]
+
+    review = Review.build(%{active_invoices: sources, issues: issues})
+
+    codes =
+      Map.new(review.all, &{&1.source_id, Enum.map(&1.issues, fn issue -> issue["code"] end)})
+
+    assert codes == %{
+             "a" => ["invalid_gstin", "missing_taxable_value"],
+             "b" => ["invalid_gstin", "printed_tax_mismatch"],
+             "c" => ["printed_tax_mismatch"]
+           }
+  end
+
   test "an invoice without a derived return row remains in the correction queue" do
     source = invoice("unready", "44")
     failure = issue("unready", "missing_taxable_value", "open") |> Map.put("level", "blocking")

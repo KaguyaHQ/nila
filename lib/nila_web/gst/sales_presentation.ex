@@ -23,8 +23,17 @@ defmodule NilaWeb.Gst.SalesPresentation do
   def summary_rows(workings, client, period) do
     review = Nila.Gst.Sales.Review.build(workings)
     ids = MapSet.new(review.needs_you, & &1.source_id)
-    assigns = %{active_invoices: workings.active_invoices, derived: workings.derived}
-    hsn = if workings.derived, do: Gstr1.hsn_summary(workings.active_invoices), else: []
+
+    assigns = %{
+      active_invoices: workings.active_invoices,
+      derived: workings.derived,
+      supplied_b2cs?: Enum.any?(Map.get(workings, :supplied_rows, []), &(&1["section"] == "b2cs"))
+    }
+
+    hsn =
+      if workings.derived,
+        do: Enum.flat_map(Map.values(workings.derived["hsn"] || %{}), & &1),
+        else: []
 
     gstr1_table_rows(
       assigns,
@@ -60,14 +69,24 @@ defmodule NilaWeb.Gst.SalesPresentation do
 
     statutory =
       Enum.map(@gstr1_table_order, fn {key, label} ->
-        count = counts[key] || 0
+        summary? = key == "b2cs" and assigns.supplied_b2cs?
+
+        count =
+          if summary?,
+            do: length((assigns.derived && assigns.derived["b2cs"]) || []),
+            else: counts[key] || 0
+
         unresolved = count_unresolved(assigns.active_invoices, review_ids, key)
         supported = key in ~w(b2b b2cl b2cs cdnr exp sez)
 
         %{
           id: key,
           label: label,
-          count: if(count == 0, do: "—", else: count_label(count, document_noun(key))),
+          count:
+            if(count == 0,
+              do: "—",
+              else: count_label(count, if(summary?, do: "summary", else: document_noun(key)))
+            ),
           value: gstr1_table_value(assigns.derived, key, count),
           status: gstr1_table_status(count, unresolved, supported),
           variant: gstr1_table_variant(count, unresolved, supported),
@@ -275,6 +294,7 @@ defmodule NilaWeb.Gst.SalesPresentation do
   defp base_path(client, period), do: "/gst/#{client.id}/#{period}/sales"
 
   defp count_label(1, noun), do: "1 #{noun}"
+  defp count_label(count, "summary"), do: "#{count} summaries"
   defp count_label(count, "batch"), do: "#{count} batches"
   defp count_label(count, noun), do: "#{count} #{noun}s"
 end

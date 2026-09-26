@@ -268,6 +268,20 @@ export function LiveSalesSummary() {
   return (
     <>
       <PeriodHeading />
+      {(data.report_count ?? 0) > 0 && (
+        <p className="mb-5 text-sm">
+          Report imported · {data.invoice_count} invoices and credit notes.{" "}
+          <Link
+            to="/gst/$clientId/$period/sales/checks"
+            params={{ clientId: String(data.client.id), period: data.period }}
+            className="font-medium underline underline-offset-4"
+          >
+            {(data.report_issue_count ?? 0) > 0
+              ? `Fix ${data.report_issue_count} remaining ${data.report_issue_count === 1 ? "issue" : "issues"}`
+              : "Review report checks"}
+          </Link>
+        </p>
+      )}
       {data.uploads.unfinished && (
         <p role="status" className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           Some uploads are still being read or need attention.{" "}
@@ -285,14 +299,16 @@ export function LiveSalesSummary() {
           <div>
             <h2 className="text-sm font-semibold">Sales invoices</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {data.invoice_count
-                ? `${data.review_count} invoices need review.`
-                : emptyMonth
-                  ? "Add sales bills to prepare this month's working."
-                  : "No invoices in the working yet."}
+              {(data.report_count ?? 0) > 0
+                ? "Imported sales and credit notes."
+                : data.invoice_count
+                  ? `${data.review_count} invoices need review.`
+                  : emptyMonth
+                    ? "Add sales bills to prepare this month's working."
+                    : "No invoices in the working yet."}
             </p>
           </div>
-          {data.review_count > 0 && (
+          {data.review_count > 0 && !(data.report_count ?? 0) && (
             <Button
               nativeButton={false}
               role="link"
@@ -310,7 +326,10 @@ export function LiveSalesSummary() {
         </div>
         <div className="grid gap-5 px-6 py-6 sm:grid-cols-[.75fr_1fr_1fr]">
           {[
-            ["Invoices in working", String(data.invoice_count)],
+            [
+              (data.report_count ?? 0) > 0 ? "Invoices and credit notes" : "Invoices in working",
+              String(data.invoice_count),
+            ],
             ["Taxable value", money(data.taxable)],
             ["Output tax", money(data.tax)],
           ].map(([label, value], i) => (
@@ -351,7 +370,7 @@ export function LiveSalesSummary() {
           </Button>
         </div>
       </Card>
-      {data.month_issue_count > 0 && (
+      {data.month_issue_count > 0 && !(data.report_count ?? 0) && (
         <p className="mt-5 text-sm">
           <Link
             to="/gst/$clientId/$period/sales/checks"

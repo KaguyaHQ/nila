@@ -72,10 +72,10 @@ defmodule NilaWeb.Gstr1Controller do
         filename = "gstr1_#{derived["gstin"]}_#{period}.json"
 
         cond do
-          require_active_sales(projection) == {:error, :no_active_sales} ->
+          require_return_data(projection) == {:error, :no_active_sales} ->
             conn
             |> put_status(:unprocessable_entity)
-            |> text("Exports are unavailable until invoices are added")
+            |> text("Exports are unavailable until sales files are added")
 
           not NilaWeb.Gst.SalesExportState.json_ready?(sales_month, projection) ->
             conn
@@ -147,7 +147,7 @@ defmodule NilaWeb.Gstr1Controller do
     with {:ok, sales_month} <- SalesMonths.get_by_period(org_id, client_id, period),
          {:ok, client} <- Clients.get_client(org_id, client_id),
          projection <- SalesResolutions.effective_workings(sales_month),
-         :ok <- require_active_sales(projection),
+         :ok <- require_return_data(projection),
          true <- same_period?(projection, period),
          resolutions <- SalesResolutions.list_attributed(sales_month.id),
          {:ok, workbook} <-
@@ -204,6 +204,12 @@ defmodule NilaWeb.Gstr1Controller do
 
   defp require_active_sales(%{active_invoices: []}), do: {:error, :no_active_sales}
   defp require_active_sales(_projection), do: :ok
+
+  defp require_return_data(projection) do
+    if Nila.Gst.Sales.Workings.has_return_data?(projection),
+      do: :ok,
+      else: {:error, :no_active_sales}
+  end
 
   def tally_download(conn, %{"client_id" => client_id, "period" => period}) do
     org_id = conn.assigns.current_scope.current_org.id
