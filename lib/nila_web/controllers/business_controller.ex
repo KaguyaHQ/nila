@@ -9,14 +9,18 @@ defmodule NilaWeb.BusinessController do
   def asset(conn, params), do: dispatch(conn, params, :asset)
   def remove_asset(conn, params), do: dispatch(conn, params, :remove_asset)
   def quotation_numbering(conn, params), do: dispatch(conn, params, :quotation_numbering)
+  def invoice_numbering(conn, params), do: dispatch(conn, params, :invoice_numbering)
   def services(conn, params), do: dispatch(conn, params, :services)
   def create_service(conn, params), do: dispatch(conn, params, :create_service)
   def update_service(conn, params), do: dispatch(conn, params, :update_service)
   def delete_service(conn, params), do: dispatch(conn, params, :delete_service)
   def create_customer(conn, params), do: dispatch(conn, params, :create_customer)
   def update_customer(conn, params), do: dispatch(conn, params, :update_customer)
+  def create_customer_address(conn, params), do: dispatch(conn, params, :create_customer_address)
+  def update_customer_address(conn, params), do: dispatch(conn, params, :update_customer_address)
   def create_invoice(conn, params), do: dispatch(conn, params, :create_invoice)
   def finalize_quotation(conn, params), do: dispatch(conn, params, :finalize_quotation)
+  def finalize_invoice(conn, params), do: dispatch(conn, params, :finalize_invoice)
   def update_invoice(conn, params), do: dispatch(conn, params, :update_invoice)
   def show_invoice(conn, params), do: dispatch(conn, params, :show_invoice)
   def issue_invoice(conn, params), do: dispatch(conn, params, :issue_invoice)
@@ -73,8 +77,11 @@ defmodule NilaWeb.BusinessController do
        business: Map.take(client, [:id, :name, :gstin, :address]),
        profile: profile_json(Invoicing.get_profile(client)),
        quotation_numbering: Invoicing.quotation_numbering(client),
+       invoice_numbering: Invoicing.invoice_numbering(client),
        services: Enum.map(Invoicing.list_services(client), &service_json/1),
        customers: Enum.map(Invoicing.list_customers(client), &customer_json/1),
+       customer_addresses:
+         Enum.map(Invoicing.list_customer_addresses(client), &customer_address_json/1),
        invoices: Enum.map(Invoicing.list_invoices(client), &invoice_json/1),
        states:
          Enum.map(Nila.Gst.StateCodes.all(), fn name ->
@@ -112,6 +119,12 @@ defmodule NilaWeb.BusinessController do
          do: {:ok, %{quotation_numbering: numbering}}
   end
 
+  defp perform(:invoice_numbering, client, _user, %{"numbering" => attrs})
+       when is_map(attrs) do
+    with {:ok, numbering} <- Invoicing.configure_invoice_numbering(client, attrs),
+         do: {:ok, %{invoice_numbering: numbering}}
+  end
+
   defp perform(:upload_asset, client, _user, %{"kind" => kind, "image" => %Plug.Upload{} = upload}) do
     with {:ok, %{size: size}} when size <= 512_000 <- File.stat(upload.path),
          {:ok, bytes} <- File.read(upload.path),
@@ -143,6 +156,25 @@ defmodule NilaWeb.BusinessController do
          do: {:ok, %{customer: customer_json(customer)}}
   end
 
+  defp perform(:create_customer_address, client, _user, %{
+         "customer_id" => customer_id,
+         "address" => attrs
+       })
+       when is_map(attrs) do
+    with {:ok, address} <- Invoicing.create_customer_address(client, customer_id, attrs),
+         do: {:ok, %{address: customer_address_json(address)}}
+  end
+
+  defp perform(:update_customer_address, client, _user, %{
+         "customer_id" => customer_id,
+         "id" => id,
+         "address" => attrs
+       })
+       when is_map(attrs) do
+    with {:ok, address} <- Invoicing.update_customer_address(client, customer_id, id, attrs),
+         do: {:ok, %{address: customer_address_json(address)}}
+  end
+
   defp perform(:create_invoice, client, user, %{"invoice" => attrs}) when is_map(attrs) do
     with {:ok, invoice} <- Invoicing.save_draft(client, user.id, attrs),
          do: {:ok, %{invoice: invoice_json(invoice)}}
@@ -152,6 +184,12 @@ defmodule NilaWeb.BusinessController do
        when is_map(attrs) do
     with {:ok, invoice} <-
            Invoicing.finalize_quotation(client, user.id, attrs, params["id"]),
+         do: {:ok, %{invoice: invoice_json(invoice)}}
+  end
+
+  defp perform(:finalize_invoice, client, user, %{"invoice" => attrs} = params)
+       when is_map(attrs) do
+    with {:ok, invoice} <- Invoicing.finalize_invoice(client, user.id, attrs, params["id"]),
          do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
@@ -204,7 +242,16 @@ defmodule NilaWeb.BusinessController do
 
   defp valid_ids(params) do
     attrs = if is_map(params["invoice"]), do: params["invoice"], else: %{}
-    ids = [params["id"], attrs["customer_id"], attrs["original_invoice_id"]]
+
+    ids = [
+      params["id"],
+      params["customer_id"],
+      attrs["customer_id"],
+      attrs["original_invoice_id"],
+      attrs["billing_address_id"],
+      attrs["shipping_address_id"]
+    ]
+
     if Enum.all?(ids, &valid_id?/1), do: :ok, else: {:error, :not_found}
   end
 
@@ -229,6 +276,7 @@ defmodule NilaWeb.BusinessController do
         :phone,
         :email,
         :quotation_number_style,
+        :invoice_number_style,
         :e_invoice_not_applicable,
         :domestic_services_only,
         :domestic_goods_and_services_only
@@ -246,6 +294,20 @@ defmodule NilaWeb.BusinessController do
   defp customer_json(customer),
     do: Map.take(customer, [:id, :name, :address, :gstin, :state_code])
 
+  defp customer_address_json(address),
+    do:
+      Map.take(address, [
+        :id,
+        :customer_id,
+        :label,
+        :address,
+        :state_code,
+        :gstin,
+        :usage,
+        :is_primary_billing,
+        :is_primary_shipping
+      ])
+
   defp invoice_json(invoice) do
     Map.take(invoice, [
       :id,
@@ -254,6 +316,8 @@ defmodule NilaWeb.BusinessController do
       :original_invoice_id,
       :status,
       :customer_id,
+      :billing_address_id,
+      :shipping_address_id,
       :invoice_date,
       :due_date,
       :valid_until,

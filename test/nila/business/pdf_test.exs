@@ -55,7 +55,9 @@ defmodule Nila.Business.PdfTest do
         Map.merge(snapshot(), %{
           "document_type" => "quotation",
           "number" => "QT/2627/0002",
-          "delivery_address" => "Parvathi Hospital, Chennai"
+          "delivery_address" => "Parvathi Hospital, Chennai",
+          "shipping_name" => "Parvathi Hospital",
+          "shipping_gstin" => "33AAACG0123F1ZK"
         })
 
       [line] = data["lines"]
@@ -78,7 +80,9 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "KGS"
       assert text =~ "State 33"
       assert text =~ "SHIP TO"
+      assert text =~ "Parvathi Hospital"
       assert text =~ "Parvathi Hospital, Chennai"
+      assert text =~ "33AAACG0123F1ZK"
     end
 
     test "quotation includes business branding, work title and revision reference" do

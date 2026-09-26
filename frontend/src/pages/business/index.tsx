@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { ArrowLeft, Download, FileText, Plus } from "lucide-react";
 import {
+  Fragment,
   createContext,
   type FormEvent,
   lazy,
@@ -21,6 +22,7 @@ import {
   useState,
 } from "react";
 import { type InvoiceCalculation, InvoiceDocument } from "@/components/business/invoice-document";
+import { CustomerAddressPicker } from "@/components/business/customer-address-picker";
 import { StateCombobox } from "@/components/business/state-combobox";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +43,7 @@ import {
   BusinessApiError,
   type BusinessBootstrap,
   type BusinessCustomer,
+  type BusinessCustomerAddress,
   type BusinessInvoice,
   type BusinessLine,
   businessRequest,
@@ -447,15 +450,28 @@ export function BusinessCustomers() {
           </TableHeader>
           <TableBody>
             {data.customers.map((customer) => (
-              <TableRow key={customer.id}>
-                <TableCell className="font-medium">{customer.name}</TableCell>
-                <TableCell>{customer.gstin || "Unregistered"}</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" onClick={() => edit(customer)}>
-                    Edit<span className="sr-only"> {customer.name}</span>
-                  </Button>
-                </TableCell>
-              </TableRow>
+              <Fragment key={customer.id}>
+                <TableRow>
+                  <TableCell className="font-medium">{customer.name}</TableCell>
+                  <TableCell>{customer.gstin || "Unregistered"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" onClick={() => edit(customer)}>
+                      Edit<span className="sr-only"> {customer.name}</span>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} className="py-2">
+                    <CustomerAddressManager
+                      customerId={customer.id}
+                      addresses={data.customer_addresses.filter(
+                        (address) => address.customer_id === customer.id,
+                      )}
+                      states={data.states}
+                    />
+                  </TableCell>
+                </TableRow>
+              </Fragment>
             ))}
             {data.customers.length === 0 && (
               <TableRow>
@@ -468,6 +484,69 @@ export function BusinessCustomers() {
         </Table>
       </div>
     </div>
+  );
+}
+
+function CustomerAddressManager({
+  customerId,
+  addresses,
+  states,
+}: {
+  customerId: number;
+  addresses: BusinessCustomerAddress[];
+  states: BusinessBootstrap["states"];
+}) {
+  const [billingId, setBillingId] = useState<number | null>(
+    addresses.find((address) => address.is_primary_billing)?.id ?? null,
+  );
+  const [shippingId, setShippingId] = useState<number | null>(
+    addresses.find((address) => address.is_primary_shipping)?.id ?? null,
+  );
+  return (
+    <details className="rounded-md border px-3 py-2">
+      <summary className="cursor-pointer text-sm text-muted-foreground">
+        Manage addresses ({addresses.length})
+      </summary>
+      <div className="space-y-3 pt-3">
+        {addresses.length > 0 && (
+          <ul className="space-y-1 text-sm">
+            {addresses.map((address) => (
+              <li key={address.id}>
+                <span className="font-medium">{address.label}</span>
+                <span className="text-muted-foreground"> · {address.state_code}</span>
+                {address.gstin && <span className="text-muted-foreground"> · GSTIN {address.gstin}</span>}
+                {address.is_primary_billing && <span className="text-muted-foreground"> · Default billing</span>}
+                {address.is_primary_shipping && <span className="text-muted-foreground"> · Default shipping</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Billing addresses</p>
+            <CustomerAddressPicker
+              customerId={customerId}
+              addresses={addresses}
+              type="billing"
+              value={billingId}
+              states={states}
+              onSelect={(address) => setBillingId(address?.id ?? null)}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Shipping addresses</p>
+            <CustomerAddressPicker
+              customerId={customerId}
+              addresses={addresses}
+              type="shipping"
+              value={shippingId}
+              states={states}
+              onSelect={(address) => setShippingId(address?.id ?? null)}
+            />
+          </div>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -496,6 +575,7 @@ export function BusinessSettings() {
   const [saved, setSaved] = useState(false);
   const [assetVersion, setAssetVersion] = useState(0);
   const [numbering, setNumbering] = useState(data.quotation_numbering);
+  const [invoiceNumbering, setInvoiceNumbering] = useState(data.invoice_numbering);
   const financialYearShort = `${String(numbering.financial_year).slice(-2)}${String(numbering.financial_year + 1).slice(-2)}`;
 
   async function changeAsset(kind: "logo" | "signature", file?: File) {
@@ -541,6 +621,23 @@ export function BusinessSettings() {
         body: { numbering: { style: numbering.style, next_number: numbering.next_number } },
       });
       setNumbering(result.quotation_numbering);
+      await cache.invalidateQueries({ queryKey });
+      setSaved(true);
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveInvoiceNumbering() {
+    if (busy || !invoiceNumbering.editable) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await businessRequest("configureBusinessInvoiceNumbering", {
+        body: { numbering: { style: invoiceNumbering.style, next_number: invoiceNumbering.next_number } },
+      });
+      setInvoiceNumbering(result.invoice_numbering);
       await cache.invalidateQueries({ queryKey });
       setSaved(true);
     } catch (error) {
@@ -678,6 +775,44 @@ export function BusinessSettings() {
         </Field>
         <Button type="submit">{busy ? "Saving…" : "Save business details"}</Button>
       </fieldset>
+      <section className="space-y-4 border-t pt-5" aria-label="Invoice numbering">
+        <div>
+          <h2 className="font-medium">Invoice numbers</h2>
+          <p className="text-sm text-muted-foreground">
+            Set the next number for {invoiceNumbering.financial_year}–{invoiceNumbering.financial_year + 1} before issuing the first invoice of this financial year.
+          </p>
+        </div>
+        <Field label="Number format" id="business-invoice-style">
+          <NativeSelect
+            id="business-invoice-style"
+            disabled={!invoiceNumbering.editable || busy}
+            value={invoiceNumbering.style}
+            onChange={(e) => setInvoiceNumbering({ ...invoiceNumbering, style: e.target.value as typeof invoiceNumbering.style })}
+          >
+            <option value="nila">INV/{financialYearShort}/{String(invoiceNumbering.next_number).padStart(4, "0")} style</option>
+            <option value="serial_fy">{invoiceNumbering.next_number}/{invoiceNumbering.financial_year}-{String(invoiceNumbering.financial_year + 1).slice(-2)} style</option>
+          </NativeSelect>
+        </Field>
+        <Field label="Next number" id="business-invoice-next">
+          <Input
+            id="business-invoice-next"
+            type="number"
+            min={1}
+            max={999999}
+            disabled={!invoiceNumbering.editable || busy}
+            value={invoiceNumbering.next_number}
+            onChange={(e) => setInvoiceNumbering({ ...invoiceNumbering, next_number: Number(e.target.value) })}
+          />
+        </Field>
+        <Button type="button" variant="outline" disabled={!invoiceNumbering.editable || busy} onClick={saveInvoiceNumbering}>
+          Save invoice numbering
+        </Button>
+        {!invoiceNumbering.editable && (
+          <p className="text-sm text-muted-foreground">
+            Numbering is locked for this financial year because an invoice has been issued.
+          </p>
+        )}
+      </section>
       <section className="space-y-4 border-t pt-5" aria-label="Quotation numbering">
         <div>
           <h2 className="font-medium">Quotation numbers</h2>
@@ -859,6 +994,8 @@ function InvoiceForm({
   const cache = useQueryClient();
   const [form, setForm] = useState<InvoiceInput>(() => ({
     customer_id: invoice?.customer_id ?? original?.customer_id ?? "",
+    billing_address_id: invoice?.billing_address_id ?? original?.billing_address_id ?? null,
+    shipping_address_id: invoice?.shipping_address_id ?? original?.shipping_address_id ?? null,
     invoice_date: invoice?.invoice_date ?? localDate(),
     due_date: invoice?.due_date ?? "",
     valid_until: invoice?.valid_until ?? "",
@@ -881,8 +1018,10 @@ function InvoiceForm({
     document_type: invoice?.document_type ?? (original ? "credit_note" : mode),
     original_invoice_id: invoice?.original_invoice_id ?? original?.id ?? null,
   }));
+  const [shippingTouched, setShippingTouched] = useState(
+    Boolean(invoice?.shipping_address_id || invoice?.delivery_address),
+  );
   const [saved, setSaved] = useState(invoice);
-  const [dirty, setDirty] = useState(!invoice);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [message, setMessage] = useState("");
@@ -904,9 +1043,33 @@ function InvoiceForm({
   );
   function change(next: Partial<InvoiceInput>) {
     setForm({ ...form, ...next });
-    setDirty(true);
     setMessage("");
   }
+  useEffect(() => {
+    const customerId = Number(form.customer_id);
+    if (!customerId) return;
+    const customerAddresses = data.customer_addresses.filter(
+      (address) => address.customer_id === customerId,
+    );
+    const billing = customerAddresses.find((address) => address.is_primary_billing);
+    setForm((current) => ({
+      ...current,
+      ...(current.billing_address_id == null && billing
+        ? { billing_address_id: billing.id }
+        : {}),
+      ...(() => {
+        const shipping = customerAddresses.find((address) => address.is_primary_shipping);
+        const billingId = current.billing_address_id ?? billing?.id ?? null;
+        return current.shipping_address_id == null &&
+          !current.delivery_address &&
+          !shippingTouched &&
+          shipping &&
+          shipping.id !== billingId
+          ? { shipping_address_id: shipping.id }
+          : {};
+      })(),
+    }));
+  }, [data.customer_addresses, form.customer_id, shippingTouched]);
   function lineChange(index: number, field: keyof BusinessLine, value: string) {
     change({
       lines: form.lines.map((line, i) => (i === index ? { ...line, [field]: value } : line)),
@@ -925,7 +1088,6 @@ function InvoiceForm({
       );
       cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
       setSaved(result.invoice);
-      setDirty(false);
       await cache.invalidateQueries({ queryKey });
       if (!saved)
         navigate({
@@ -954,7 +1116,6 @@ function InvoiceForm({
         });
         cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
         setSaved(result.invoice);
-        setDirty(false);
         await cache.invalidateQueries({ queryKey });
         setMessage("Quotation ready to download.");
         if (!saved)
@@ -970,16 +1131,25 @@ function InvoiceForm({
       }
       return;
     }
-    if (!saved || dirty) return;
+    const formElement = document.getElementById("business-invoice-form") as HTMLFormElement | null;
+    if (!formElement?.reportValidity()) return;
     setBusy("issue");
     setError(null);
     setMessage("");
     try {
-      const result = await businessRequest("issueBusinessInvoice", { id: saved.id });
+      const result = await businessRequest("finalizeBusinessInvoice", {
+        body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
+      });
       cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
       setSaved(result.invoice);
       await cache.invalidateQueries({ queryKey });
-      setMessage(quotation ? "Quotation ready to download." : "Issued and shared with your CA.");
+      setMessage("Issued and shared with your CA.");
+      if (!saved)
+        navigate({
+          to: "/business/invoices/$invoiceId",
+          params: { invoiceId: String(result.invoice.id) },
+          replace: true,
+        });
     } catch (error) {
       setError(error as Error);
     } finally {
@@ -1112,7 +1282,7 @@ function InvoiceForm({
               <Button
                 type="button"
                 onClick={issue}
-                disabled={(quotation ? false : !saved || dirty) || Boolean(busy) || !configured}
+                disabled={Boolean(busy) || !configured}
                 aria-describedby="issue-help"
               >
                 {busy === "issue"
@@ -1215,6 +1385,7 @@ function InvoiceForm({
           calculation={calculation.value}
           calculating={calculation.pending}
           onChange={change}
+          onShippingInteraction={setShippingTouched}
           disabled={issued || Boolean(busy)}
         />
       </form>
@@ -1235,9 +1406,7 @@ function InvoiceForm({
             : "Finalizing locks this quotation and creates its PDF."
           : issued
             ? "Issued documents are locked. Use a credit note to reduce or reverse an invoice."
-            : dirty || !saved
-              ? "Save your draft before issuing. Only issued invoices are shared with your CA."
-              : "Issuing assigns a number, locks the invoice, and shares it with your CA."}
+            : "Issuing saves the current invoice, assigns a number, locks it, and shares it with your CA."}
       </p>
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-h-[95vh] overflow-hidden p-0 sm:max-w-[960px]">
@@ -1343,6 +1512,12 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
         invoice,
         profile: data.profile,
         customer: data.customers.find((customer) => customer.id === Number(invoice.customer_id)),
+        addresses: data.customer_addresses.filter(
+          (address) =>
+            address.customer_id === Number(invoice.customer_id) &&
+            (address.id === Number(invoice.billing_address_id) ||
+              address.id === Number(invoice.shipping_address_id)),
+        ),
       });
   const requestToken = useMemo(() => Symbol(requestKey), [requestKey]);
   useEffect(() => {

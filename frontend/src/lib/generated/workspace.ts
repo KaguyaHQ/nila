@@ -519,6 +519,38 @@ export interface paths {
         patch: operations["updateBusinessCustomer"];
         trace?: never;
     };
+    "/api/business/customers/{customer_id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createBusinessCustomerAddress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/business/customers/{customer_id}/addresses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateBusinessCustomerAddress"];
+        trace?: never;
+    };
     "/api/business/invoices": {
         parameters: {
             query?: never;
@@ -1235,6 +1267,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/business/invoice-numbering": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        patch: operations["configureBusinessInvoiceNumbering"];
+        trace?: never;
+    };
     "/api/business/quotation-numbering": {
         parameters: {
             query?: never;
@@ -1250,6 +1299,23 @@ export interface paths {
         head?: never;
         /** @description Requires the Phoenix session and X-CSRF-Token header. */
         patch: operations["configureBusinessQuotationNumbering"];
+        trace?: never;
+    };
+    "/api/business/invoices/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["finalizeBusinessInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/business/quotations/finalize": {
@@ -1302,6 +1368,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSalesReturnReports"];
+        put?: never;
+        post: operations["importSalesReturnReport"];
+        delete: operations["removeSalesReturnReport"];
+        options?: never;
+        head?: never;
+        patch: operations["correctSalesReturnReport"];
         trace?: never;
     };
 }
@@ -1370,22 +1452,6 @@ export interface components {
             };
             rows: {
                 id: string;
-    "/api/workspace/sales/{client_id}/{period}/reports": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getSalesReturnReports"];
-        put?: never;
-        post: operations["importSalesReturnReport"];
-        delete: operations["removeSalesReturnReport"];
-        options?: never;
-        head?: never;
-        patch: operations["correctSalesReturnReport"];
-        trace?: never;
-    };
                 number: string;
                 date: string | null;
                 customer: string;
@@ -1425,6 +1491,8 @@ export interface components {
                 working: string;
                 purchases: string;
             };
+            report_count?: number;
+            report_issue_count?: number;
         };
         Error: {
             error: string;
@@ -1491,8 +1559,6 @@ export interface components {
                 label: string;
                 value: string;
             }[];
-            report_count?: number;
-            report_issue_count?: number;
             queue: {
                 id: string;
                 number: string;
@@ -1903,6 +1969,34 @@ export interface components {
             username: string;
             expires_in: number;
         };
+        BusinessCustomerAddress: {
+            id: number;
+            customer_id: number;
+            label: string;
+            address: string;
+            state_code: string;
+            gstin: string | null;
+            /** @enum {string} */
+            usage: "billing" | "shipping" | "either";
+            is_primary_billing: boolean;
+            is_primary_shipping: boolean;
+        };
+        BusinessCustomerAddressInput: {
+            label: string;
+            address: string;
+            state_code: string;
+            gstin?: string | null;
+            /** @enum {string} */
+            usage: "billing" | "shipping" | "either";
+            is_primary_billing?: boolean;
+            is_primary_shipping?: boolean;
+        };
+        BusinessCustomerAddressWrite: {
+            address: components["schemas"]["BusinessCustomerAddressInput"];
+        };
+        BusinessCustomerAddressResult: {
+            address: components["schemas"]["BusinessCustomerAddress"];
+        };
         BusinessCustomer: {
             id: number;
             name: string;
@@ -1932,6 +2026,8 @@ export interface components {
         };
         InvoiceInput: {
             customer_id: string | number;
+            billing_address_id?: number | null;
+            shipping_address_id?: number | null;
             invoice_date: string;
             due_date?: string;
             place_of_supply: string;
@@ -1956,6 +2052,8 @@ export interface components {
             /** @enum {string} */
             status: "draft" | "issued" | "accepted" | "declined" | "converted";
             customer_id: number;
+            billing_address_id: number | null;
+            shipping_address_id: number | null;
             invoice_date: string;
             due_date: string | null;
             valid_until: string | null;
@@ -1986,6 +2084,8 @@ export interface components {
             has_signature: boolean;
             /** @enum {string} */
             quotation_number_style: "nila" | "serial_fy";
+            /** @enum {string} */
+            invoice_number_style: "nila" | "serial_fy";
         };
         BusinessBootstrap: {
             business: {
@@ -1997,12 +2097,14 @@ export interface components {
             profile: components["schemas"]["BusinessProfile"];
             services: components["schemas"]["BusinessService"][];
             customers: components["schemas"]["BusinessCustomer"][];
+            customer_addresses: components["schemas"]["BusinessCustomerAddress"][];
             invoices: components["schemas"]["BusinessInvoice"][];
             states: {
                 code: string;
                 name: string;
             }[];
             quotation_numbering: components["schemas"]["BusinessQuotationNumbering"];
+            invoice_numbering: components["schemas"]["BusinessInvoiceNumbering"];
         };
         InvoiceCalculation: {
             lines: components["schemas"]["CalculatedBusinessLine"][];
@@ -2155,6 +2257,8 @@ export interface components {
             purchase_order_number?: string | null;
             purchase_order_date?: string | null;
             delivery_address?: string | null;
+            shipping_name?: string | null;
+            shipping_gstin?: string | null;
             total_in_words?: string;
             supplier?: {
                 name: string;
@@ -2518,12 +2622,26 @@ export interface components {
             ok: true;
             batch_ref: string;
         };
+        BusinessInvoiceNumbering: {
+            financial_year: number;
+            /** @enum {string} */
+            style: "nila" | "serial_fy";
+            next_number: number;
+            editable: boolean;
+        };
         BusinessQuotationNumbering: {
             financial_year: number;
             /** @enum {string} */
             style: "nila" | "serial_fy";
             next_number: number;
             editable: boolean;
+        };
+        BusinessInvoiceNumberingWrite: {
+            numbering: {
+                /** @enum {string} */
+                style: "nila" | "serial_fy";
+                next_number: number;
+            };
         };
         BusinessQuotationNumberingWrite: {
             numbering: {
@@ -2532,12 +2650,87 @@ export interface components {
                 next_number: number;
             };
         };
+        BusinessInvoiceNumberingResult: {
+            invoice_numbering: components["schemas"]["BusinessInvoiceNumbering"];
+        };
         BusinessQuotationNumberingResult: {
             quotation_numbering: components["schemas"]["BusinessQuotationNumbering"];
+        };
+        BusinessInvoiceFinalize: {
+            invoice: components["schemas"]["InvoiceInput"];
+            id?: number;
         };
         BusinessQuotationFinalize: {
             invoice: components["schemas"]["InvoiceInput"];
             id?: number;
+        };
+        SalesReturnReportRow: {
+            source_filename?: string | null;
+            source_id?: string;
+            sheet: string;
+            row: number;
+            values: {
+                [key: string]: string | number | boolean | null;
+            };
+            cells?: {
+                [key: string]: (string | number | boolean) | null;
+            };
+            section: string;
+            suggestion?: {
+                message: string;
+                values: {
+                    [key: string]: number;
+                };
+            } | null;
+            source_values?: {
+                [key: string]: string | number | boolean | null;
+            };
+            headers?: {
+                [key: string]: string;
+            };
+            columns?: {
+                [key: string]: string | null;
+            };
+        };
+        SalesReturnReport: {
+            dump_id: number;
+            filename: string;
+            basis: string;
+            b2cs_before_notes?: boolean | null;
+            rows: components["schemas"]["SalesReturnReportRow"][];
+        };
+        SalesReturnReports: {
+            states: {
+                label: string;
+                value: string;
+            }[];
+            reports: components["schemas"]["SalesReturnReport"][];
+            editable: boolean;
+            tasks: components["schemas"]["SalesReportTask"][];
+        };
+        SalesReportTask: {
+            source_filename?: string | null;
+            id: string;
+            /** @enum {string} */
+            kind: "row" | "notes" | "basis" | "invoice" | "uploads" | "reconciliation";
+            title: string;
+            message: string;
+            dump_id: number;
+            basis: string;
+            filename: string;
+            sheet: string;
+            row: number;
+            source_ids: string[];
+            fields: string[];
+            values: {
+                [key: string]: string | number | boolean | null;
+            };
+            rows: components["schemas"]["SalesReturnReportRow"][];
+            amounts?: {
+                before: number;
+                notes: number;
+                after: number;
+            };
         };
     };
     responses: never;
@@ -2663,74 +2856,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewError"];
-        SalesReturnReportRow: {
-            source_filename?: string | null;
-            source_id?: string;
-            sheet: string;
-            row: number;
-            values: {
-                [key: string]: string | number | boolean | null;
-            };
-            cells?: {
-                [key: string]: (string | number | boolean) | null;
-            };
-            section: string;
-            suggestion?: {
-                message: string;
-                values: {
-                    [key: string]: number;
-                };
-            } | null;
-            source_values?: {
-                [key: string]: string | number | boolean | null;
-            };
-            headers?: {
-                [key: string]: string;
-            };
-            columns?: {
-                [key: string]: string | null;
-            };
-        };
-        SalesReturnReport: {
-            dump_id: number;
-            filename: string;
-            basis: string;
-            b2cs_before_notes?: boolean | null;
-            rows: components["schemas"]["SalesReturnReportRow"][];
-        };
-        SalesReturnReports: {
-            states: {
-                label: string;
-                value: string;
-            }[];
-            reports: components["schemas"]["SalesReturnReport"][];
-            editable: boolean;
-            tasks: components["schemas"]["SalesReportTask"][];
-        };
-        SalesReportTask: {
-            source_filename?: string | null;
-            id: string;
-            /** @enum {string} */
-            kind: "row" | "notes" | "basis" | "invoice" | "uploads" | "reconciliation";
-            title: string;
-            message: string;
-            dump_id: number;
-            basis: string;
-            filename: string;
-            sheet: string;
-            row: number;
-            source_ids: string[];
-            fields: string[];
-            values: {
-                [key: string]: string | number | boolean | null;
-            };
-            rows: components["schemas"]["SalesReturnReportRow"][];
-            amounts?: {
-                before: number;
-                notes: number;
-                after: number;
-            };
-        };
                 };
             };
             /** @description Request could not be completed */
@@ -5514,6 +5639,95 @@ export interface operations {
             };
             /** @description Request failed; no successful write is implied. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    createBusinessCustomerAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessCustomerAddressWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved address */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessCustomerAddressResult"];
+                };
+            };
+            /** @description Customer not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Invalid address */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    updateBusinessCustomerAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessCustomerAddressWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved address */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessCustomerAddressResult"];
+                };
+            };
+            /** @description Address not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Invalid address */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8791,6 +9005,95 @@ export interface operations {
             };
         };
     };
+    configureBusinessInvoiceNumbering: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessInvoiceNumberingWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceNumberingResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
     configureBusinessQuotationNumbering: {
         parameters: {
             query?: never;
@@ -8813,6 +9116,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BusinessQuotationNumberingResult"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Request failed; no successful write is implied. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    finalizeBusinessInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessInvoiceFinalize"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceResult"];
                 };
             };
             /** @description Request failed; no successful write is implied. */
@@ -9323,188 +9715,6 @@ export interface operations {
             };
         };
     };
-}
-    uploadBusinessBrandAsset: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": string;
-            };
-            path: {
-                kind: "logo" | "signature";
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": {
-                    /** Format: binary */
-                    image: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BusinessProfileResult"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-        };
-    };
-    removeBusinessBrandAsset: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": string;
-            };
-            path: {
-                kind: "logo" | "signature";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BusinessProfileResult"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-            /** @description Request failed; no successful write is implied. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiProblem"];
-                };
-            };
-        };
-    };
     getSalesReturnReports: {
         parameters: {
             query?: never;
@@ -9714,3 +9924,4 @@ export interface operations {
             };
         };
     };
+}

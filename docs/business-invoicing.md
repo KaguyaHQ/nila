@@ -14,7 +14,7 @@ item and draft invoice. See [development and demos](development-and-demos.md).
 The business portal serves GST-registered domestic goods and service businesses.
 The CA invites a business owner from the React client edit page. The owner sets
 business details, confirms with their CA that e-invoicing does not apply, adds
-customers, saves drafts, then issues invoices and downloads PDFs.
+customers, saves drafts when work is unfinished, or issues directly from the filled editor, then downloads PDFs.
 
 The invoice editor adapts Midday's editable document composition, inline fields,
 line-item table, and customer picker/create/edit flow. The document is visible
@@ -30,6 +30,16 @@ the issued snapshot and PDF. The amount in words comes from Phoenix's saved tota
 Delivery address does not silently change place of supply. When its selected
 state differs from the billing state, the editor asks the user to review the
 place of supply before finalizing.
+
+Each customer has saved addresses with a searchable label, state, optional GSTIN,
+and billing/shipping use. The invoice chooses a bill-to address and optionally a
+different ship-to address; a one-off typed ship-to address remains possible. The
+selected billing address supplies the buyer GSTIN in the invoice and CA sales
+source. Phoenix checks that both selected addresses belong to that customer.
+Issued snapshots and PDFs keep the chosen buyer, consignee, address text and GST
+details even if a saved address is edited later. Place of supply remains an
+explicit choice. Existing customer address fields mirror the primary billing
+address for older callers; the address rows are the selectable source.
 
 Source comments identify the Midday components and pinned revision adapted to
 Nila's APIs and Base UI shadcn controls.
@@ -47,6 +57,15 @@ Before issuing a goods invoice, the business must confirm in Business details
 that it will use Nila only for domestic taxable goods and services. Existing
 services-only confirmations continue to allow service invoices, but do not
 authorize goods invoices. Quotations can be finalized before that confirmation.
+
+Before the first invoice in the current financial year, Business details can set
+the next invoice number and choose either Nila's `INV/2627/0001` format or a
+simple `129/2026-27` format. The choice and next number lock after that year's
+first invoice is issued. Drafts have no number. **Issue invoice** saves the
+current editor values, allocates the number, renders the PDF, and creates the CA
+sales source in one transaction. A failed issue leaves a new invoice unsaved or
+an existing draft unchanged, with no number used. **Save draft** remains available
+for unfinished work.
 
 The portal is `/app/business/invoices`. Business users have a separate client
 access record and no firm membership. One business per user is supported.

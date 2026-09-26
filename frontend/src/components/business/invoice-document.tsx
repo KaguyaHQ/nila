@@ -18,6 +18,7 @@ import type {
   InvoiceInput,
 } from "@/lib/business-api";
 import { CustomerPicker } from "./customer-picker";
+import { CustomerAddressPicker } from "./customer-address-picker";
 import { BusinessDateField } from "./date-field";
 import { InlineInput, InlineSelect, InlineTextarea } from "./inline-input";
 import { ServicePicker } from "./service-picker";
@@ -41,6 +42,7 @@ export function InvoiceDocument({
   calculation,
   calculating,
   onChange,
+  onShippingInteraction,
   disabled,
 }: {
   value: InvoiceInput;
@@ -50,6 +52,7 @@ export function InvoiceDocument({
   calculation: InvoiceCalculation | null;
   calculating: boolean;
   onChange: (next: Partial<InvoiceInput>) => void;
+  onShippingInteraction: (interacted: boolean) => void;
   disabled: boolean;
 }) {
   const [showReference, setShowReference] = useState(
@@ -74,6 +77,21 @@ export function InvoiceDocument({
     : credit
       ? original?.snapshot?.customer
       : business.customers.find((item) => item.id === Number(value.customer_id));
+  const customerAddresses = business.customer_addresses.filter(
+    (address) => address.customer_id === Number(value.customer_id),
+  );
+  const billingAddress = customerAddresses.find(
+    (address) => address.id === Number(value.billing_address_id),
+  );
+  const shippingAddress = customerAddresses.find(
+    (address) => address.id === Number(value.shipping_address_id),
+  );
+  const displayBilling = issued
+    ? customer
+    : billingAddress ?? customer;
+  const issuedShipping =
+    saved?.snapshot?.delivery_address ?? original?.snapshot?.delivery_address;
+  const frozenShippingGstin = saved?.snapshot?.shipping_gstin ?? original?.snapshot?.shipping_gstin;
   const totals = calculation?.totals;
   function lineChange(index: number, field: keyof BusinessLine, next: string) {
     onChange({
@@ -238,24 +256,152 @@ export function InvoiceDocument({
               customers={business.customers}
               states={business.states}
               value={value.customer_id}
-              onSelect={(selected) => onChange({ customer_id: selected.id })}
+              onSelect={(selected) => {
+                const addresses = business.customer_addresses.filter(
+                  (address) => address.customer_id === selected.id,
+                );
+                const primaryBilling = addresses.find((address) => address.is_primary_billing);
+                const primaryShipping = addresses.find((address) => address.is_primary_shipping);
+                const billingId = primaryBilling?.id ?? null;
+                onChange({
+                  customer_id: selected.id,
+                  billing_address_id: billingId,
+                  shipping_address_id:
+                    value.delivery_address || primaryShipping?.id === billingId
+                      ? null
+                      : primaryShipping?.id ?? null,
+                  delivery_address: "",
+                  delivery_state_code: "",
+                });
+                onShippingInteraction(false);
+                setShowDelivery(false);
+              }}
               disabled={disabled}
             />
           )}
           {customer && (
             <>
-              <p className="whitespace-pre-line text-muted-foreground">{customer.address}</p>
-              <p className="text-muted-foreground">
-                {business.states.find((state) => state.code === customer.state_code)?.name ??
-                  customer.state_code}{" "}
-                {customer.state_code && `· ${customer.state_code}`}
+              {!issued && !credit && (
+                <CustomerAddressPicker
+                  customerId={Number(value.customer_id)}
+                  addresses={customerAddresses}
+                  type="billing"
+                  value={value.billing_address_id}
+                  states={business.states}
+                  disabled={disabled}
+                  onSelect={(address) => {
+                    const billingId = address?.id ?? null;
+                    onChange({
+                      billing_address_id: billingId,
+                      ...(Number(value.shipping_address_id) === billingId
+                        ? { shipping_address_id: null }
+                        : {}),
+                    });
+                  }}
+                />
+              )}
+              <p className="whitespace-pre-line text-muted-foreground">
+                {displayBilling?.address || "Billing address not added"}
               </p>
               <p className="text-muted-foreground">
-                {customer.gstin ? `GSTIN ${customer.gstin}` : "Unregistered customer"}
+                {business.states.find((state) => state.code === displayBilling?.state_code)?.name ??
+                  displayBilling?.state_code}{" "}
+                {displayBilling?.state_code && `· ${displayBilling.state_code}`}
+              </p>
+              <p className="text-muted-foreground">
+                {displayBilling?.gstin ? `GSTIN ${displayBilling.gstin}` : "Unregistered customer"}
               </p>
             </>
           )}
-          {showDelivery ? (
+          {customer && !issued && !credit && (
+            <div className="space-y-2 pt-2">
+              <span className="block text-sm text-muted-foreground">Ship to (optional)</span>
+              <CustomerAddressPicker
+                customerId={Number(value.customer_id)}
+                addresses={customerAddresses}
+                type="shipping"
+                value={value.shipping_address_id}
+                states={business.states}
+                disabled={disabled}
+                onSelect={(address) => {
+                  onShippingInteraction(true);
+                  onChange({
+                    shipping_address_id: address?.id ?? null,
+                    delivery_address: address ? "" : value.delivery_address,
+                    delivery_state_code: address ? "" : value.delivery_state_code,
+                  });
+                  setShowDelivery(!address);
+                }}
+              />
+              {!shippingAddress && !showDelivery && !value.delivery_address && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={disabled}
+                  className="-ml-2 w-fit text-muted-foreground"
+                  onClick={() => {
+                    onShippingInteraction(true);
+                    onChange({
+                      shipping_address_id: null,
+                      delivery_address: "",
+                      delivery_state_code: "",
+                    });
+                    setShowDelivery(true);
+                  }}
+                >
+                  <Plus /> Add ship-to address
+                </Button>
+              )}
+              {shippingAddress ? (
+                <>
+                  <p className="whitespace-pre-line text-muted-foreground">{shippingAddress.address}</p>
+                  <p className="text-muted-foreground">
+                    {business.states.find((state) => state.code === shippingAddress.state_code)?.name ?? shippingAddress.state_code}
+                  </p>
+                </>
+              ) : showDelivery || value.delivery_address ? (
+                <div className="space-y-2">
+                  <InlineTextarea
+                    id="invoice-delivery"
+                    disabled={disabled}
+                    maxLength={2000}
+                    placeholder="Address, if different from billing"
+                    value={value.delivery_address || ""}
+                    onChange={(e) => onChange({ delivery_address: e.target.value })}
+                  />
+                  <StateCombobox
+                    id="invoice-delivery-state"
+                    states={business.states}
+                    value={value.delivery_state_code || ""}
+                    onChange={(state) => onChange({ delivery_state_code: state })}
+                    disabled={disabled}
+                    label="Ship-to state"
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
+          {(issued || credit) && issuedShipping ? (
+            <div className="space-y-1 pt-2">
+              <p className="text-muted-foreground">
+                Ship to
+                {(saved?.snapshot?.shipping_name ?? original?.snapshot?.shipping_name)
+                  ? ` · ${saved?.snapshot?.shipping_name ?? original?.snapshot?.shipping_name}`
+                  : ""}
+              </p>
+              <p className="whitespace-pre-line text-muted-foreground">{issuedShipping}</p>
+              {(saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code) && (
+                <p className="text-muted-foreground">
+                  {business.states.find((state) => state.code === (saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code))?.name ?? (saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code)}
+                </p>
+              )}
+              {frozenShippingGstin && (
+                <p className="text-muted-foreground">GSTIN {frozenShippingGstin}</p>
+              )}
+            </div>
+          ) : null}
+          {showDelivery && !customer && !issued && !credit ? (
             <div className="pt-3">
               <label
                 htmlFor="invoice-delivery"
@@ -286,20 +432,7 @@ export function InvoiceDocument({
                 label="Ship-to state"
               />
             </div>
-          ) : (
-            !issued && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={disabled}
-                className="-ml-2 mt-2 w-fit text-muted-foreground"
-                onClick={() => setShowDelivery(true)}
-              >
-                <Plus /> Add ship-to address
-              </Button>
-            )
-          )}
+          ) : null}
         </div>
       </section>
 
@@ -334,11 +467,11 @@ export function InvoiceDocument({
           required
         />
       </div>
-      {customer && value.delivery_address && value.delivery_state_code &&
-        customer.state_code !== value.delivery_state_code && (
+      {customer && (shippingAddress?.state_code || value.delivery_state_code) &&
+        displayBilling?.state_code !== (shippingAddress?.state_code || value.delivery_state_code) && (
           <p className="mb-6 rounded-md border border-border bg-muted/30 p-3 text-sm">
-            Bill to: {business.states.find((state) => state.code === customer.state_code)?.name ?? customer.state_code}
-            {" · "}Ship to: {business.states.find((state) => state.code === value.delivery_state_code)?.name ?? value.delivery_state_code}
+            Bill to: {business.states.find((state) => state.code === displayBilling?.state_code)?.name ?? displayBilling?.state_code}
+            {" · "}Ship to: {business.states.find((state) => state.code === (shippingAddress?.state_code || value.delivery_state_code))?.name ?? (shippingAddress?.state_code || value.delivery_state_code)}
             {" · "}Place of supply: {business.states.find((state) => state.code === value.place_of_supply)?.name ?? "choose state"}
             {value.place_of_supply && (
               <> · {value.place_of_supply === supplier?.gstin?.slice(0, 2) ? "CGST + SGST" : "IGST"}</>

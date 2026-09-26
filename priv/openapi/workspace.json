@@ -3864,6 +3864,30 @@
         }
       }
     },
+    "/api/business/customers/{customer_id}/addresses": {
+      "post": {
+        "operationId": "createBusinessCustomerAddress",
+        "parameters": [{"name": "customer_id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessCustomerAddressWrite"}}}},
+        "responses": {
+          "200": {"description": "Saved address", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessCustomerAddressResult"}}}},
+          "404": {"description": "Customer not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "422": {"description": "Invalid address", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}}
+        }
+      }
+    },
+    "/api/business/customers/{customer_id}/addresses/{id}": {
+      "patch": {
+        "operationId": "updateBusinessCustomerAddress",
+        "parameters": [{"name": "customer_id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}, {"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessCustomerAddressWrite"}}}},
+        "responses": {
+          "200": {"description": "Saved address", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessCustomerAddressResult"}}}},
+          "404": {"description": "Address not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "422": {"description": "Invalid address", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}}
+        }
+      }
+    },
     "/api/business/invoices": {
       "post": {
         "operationId": "createBusinessInvoice",
@@ -7140,6 +7164,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GstConnection"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Request failed; no successful write is implied.",
             "content": {
@@ -7186,16 +7220,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiProblem"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GstConnection"
                 }
               }
             }
@@ -7617,6 +7641,16 @@
               }
             }
           },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Request could not be completed",
             "content": {
@@ -7628,16 +7662,6 @@
             }
           },
           "503": {
-            "description": "Request could not be completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
             "description": "Request could not be completed",
             "content": {
               "application/json": {
@@ -7730,6 +7754,16 @@
               }
             }
           },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Request could not be completed",
             "content": {
@@ -7741,16 +7775,6 @@
             }
           },
           "503": {
-            "description": "Request could not be completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
             "description": "Request could not be completed",
             "content": {
               "application/json": {
@@ -7855,6 +7879,16 @@
               }
             }
           },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Request could not be completed",
             "content": {
@@ -7866,16 +7900,6 @@
             }
           },
           "503": {
-            "description": "Request could not be completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
             "description": "Request could not be completed",
             "content": {
               "application/json": {
@@ -8086,6 +8110,16 @@
               }
             }
           },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Request could not be completed",
             "content": {
@@ -8097,16 +8131,6 @@
             }
           },
           "503": {
-            "description": "Request could not be completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
             "description": "Request could not be completed",
             "content": {
               "application/json": {
@@ -8132,6 +8156,114 @@
                   "dump_id"
                 ],
                 "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/business/invoice-numbering": {
+      "patch": {
+        "operationId": "configureBusinessInvoiceNumbering",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessInvoiceNumberingResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessInvoiceNumberingWrite"
               }
             }
           }
@@ -8240,6 +8372,114 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BusinessQuotationNumberingWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/business/invoices/finalize": {
+      "post": {
+        "operationId": "finalizeBusinessInvoice",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessInvoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request failed; no successful write is implied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessInvoiceFinalize"
               }
             }
           }
@@ -8875,18 +9115,7 @@
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "anyOf": [
-                  {
-                    "required": [
-                      "file"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "files"
-                    ]
-                  }
-                ],
+                "anyOf": [{"required": ["file"]}, {"required": ["files"]}],
                 "properties": {
                   "file": {
                     "type": "string",
@@ -8897,10 +9126,7 @@
                     "minItems": 1,
                     "maxItems": 20,
                     "description": "Sales report files, sent as repeated files[] multipart fields.",
-                    "items": {
-                      "type": "string",
-                      "format": "binary"
-                    }
+                    "items": {"type": "string", "format": "binary"}
                   }
                 }
               }
@@ -9001,12 +9227,7 @@
                   "basis": {
                     "type": "string"
                   },
-                  "source_filename": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
+                  "source_filename": {"type": ["string", "null"]},
                   "sheet": {
                     "type": "string"
                   },
@@ -9082,90 +9303,19 @@
       "delete": {
         "operationId": "removeSalesReturnReport",
         "parameters": [
-          {
-            "name": "client_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "period",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
+          {"name": "client_id", "in": "path", "required": true, "schema": {"type": "integer"}},
+          {"name": "period", "in": "path", "required": true, "schema": {"type": "string"}}
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "dump_id"
-                ],
-                "properties": {
-                  "dump_id": {
-                    "type": "integer"
-                  }
-                }
-              }
-            }
-          }
-        },
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["dump_id"], "properties": {"dump_id": {"type": "integer"}}
+        }}}},
         "responses": {
-          "200": {
-            "description": "Report removed from the working",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "ok"
-                  ],
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Read only",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Report cannot be removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "200": {"description": "Report removed from the working", "content": {"application/json": {"schema": {
+            "type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}
+          }}}},
+          "403": {"description": "Read only", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "Report cannot be removed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
         }
       }
     }
@@ -12035,6 +12185,48 @@
         ],
         "additionalProperties": false
       },
+      "BusinessCustomerAddress": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "customer_id": {"type": "integer"},
+          "label": {"type": "string"},
+          "address": {"type": "string"},
+          "state_code": {"type": "string"},
+          "gstin": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "usage": {"type": "string", "enum": ["billing", "shipping", "either"]},
+          "is_primary_billing": {"type": "boolean"},
+          "is_primary_shipping": {"type": "boolean"}
+        },
+        "required": ["id", "customer_id", "label", "address", "state_code", "gstin", "usage", "is_primary_billing", "is_primary_shipping"],
+        "additionalProperties": false
+      },
+      "BusinessCustomerAddressInput": {
+        "type": "object",
+        "properties": {
+          "label": {"type": "string"},
+          "address": {"type": "string"},
+          "state_code": {"type": "string"},
+          "gstin": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "usage": {"type": "string", "enum": ["billing", "shipping", "either"]},
+          "is_primary_billing": {"type": "boolean"},
+          "is_primary_shipping": {"type": "boolean"}
+        },
+        "required": ["label", "address", "state_code", "usage"],
+        "additionalProperties": false
+      },
+      "BusinessCustomerAddressWrite": {
+        "type": "object",
+        "properties": {"address": {"$ref": "#/components/schemas/BusinessCustomerAddressInput"}},
+        "required": ["address"],
+        "additionalProperties": false
+      },
+      "BusinessCustomerAddressResult": {
+        "type": "object",
+        "properties": {"address": {"$ref": "#/components/schemas/BusinessCustomerAddress"}},
+        "required": ["address"],
+        "additionalProperties": false
+      },
       "BusinessCustomer": {
         "type": "object",
         "properties": {
@@ -12161,6 +12353,8 @@
               }
             ]
           },
+          "billing_address_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+          "shipping_address_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
           "invoice_date": {
             "type": "string"
           },
@@ -12288,6 +12482,8 @@
           "customer_id": {
             "type": "integer"
           },
+          "billing_address_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+          "shipping_address_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
           "invoice_date": {
             "type": "string"
           },
@@ -12418,6 +12614,8 @@
           "converted_invoice_id",
           "status",
           "customer_id",
+          "billing_address_id",
+          "shipping_address_id",
           "invoice_date",
           "due_date",
           "valid_until",
@@ -12511,6 +12709,13 @@
               "nila",
               "serial_fy"
             ]
+          },
+          "invoice_number_style": {
+            "type": "string",
+            "enum": [
+              "nila",
+              "serial_fy"
+            ]
           }
         },
         "required": [
@@ -12524,7 +12729,8 @@
           "email",
           "has_logo",
           "has_signature",
-          "quotation_number_style"
+          "quotation_number_style",
+          "invoice_number_style"
         ],
         "additionalProperties": false
       },
@@ -12584,6 +12790,10 @@
               "$ref": "#/components/schemas/BusinessCustomer"
             }
           },
+          "customer_addresses": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/BusinessCustomerAddress"}
+          },
           "invoices": {
             "type": "array",
             "items": {
@@ -12611,16 +12821,21 @@
           },
           "quotation_numbering": {
             "$ref": "#/components/schemas/BusinessQuotationNumbering"
+          },
+          "invoice_numbering": {
+            "$ref": "#/components/schemas/BusinessInvoiceNumbering"
           }
         },
         "required": [
           "business",
           "profile",
           "customers",
+          "customer_addresses",
           "invoices",
           "states",
           "services",
-          "quotation_numbering"
+          "quotation_numbering",
+          "invoice_numbering"
         ],
         "additionalProperties": false
       },
@@ -13291,6 +13506,8 @@
               }
             ]
           },
+          "shipping_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "shipping_gstin": {"anyOf": [{"type": "string"}, {"type": "null"}]},
           "total_in_words": {
             "type": "string"
           },
@@ -14949,7 +15166,7 @@
         ],
         "additionalProperties": false
       },
-      "BusinessQuotationNumbering": {
+      "BusinessInvoiceNumbering": {
         "type": "object",
         "properties": {
           "financial_year": {
@@ -14977,7 +15194,35 @@
         ],
         "additionalProperties": false
       },
-      "BusinessQuotationNumberingWrite": {
+    "BusinessQuotationNumbering": {
+        "type": "object",
+        "properties": {
+          "financial_year": {
+            "type": "integer"
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "nila",
+              "serial_fy"
+            ]
+          },
+          "next_number": {
+            "type": "integer"
+          },
+          "editable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "financial_year",
+          "style",
+          "next_number",
+          "editable"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessInvoiceNumberingWrite": {
         "type": "object",
         "properties": {
           "numbering": {
@@ -15008,7 +15253,50 @@
         ],
         "additionalProperties": false
       },
-      "BusinessQuotationNumberingResult": {
+    "BusinessQuotationNumberingWrite": {
+        "type": "object",
+        "properties": {
+          "numbering": {
+            "type": "object",
+            "properties": {
+              "style": {
+                "type": "string",
+                "enum": [
+                  "nila",
+                  "serial_fy"
+                ]
+              },
+              "next_number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 999999
+              }
+            },
+            "required": [
+              "style",
+              "next_number"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "numbering"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessInvoiceNumberingResult": {
+        "type": "object",
+        "properties": {
+          "invoice_numbering": {
+            "$ref": "#/components/schemas/BusinessInvoiceNumbering"
+          }
+        },
+        "required": [
+          "invoice_numbering"
+        ],
+        "additionalProperties": false
+      },
+    "BusinessQuotationNumberingResult": {
         "type": "object",
         "properties": {
           "quotation_numbering": {
@@ -15020,7 +15308,23 @@
         ],
         "additionalProperties": false
       },
-      "BusinessQuotationFinalize": {
+      "BusinessInvoiceFinalize": {
+        "type": "object",
+        "properties": {
+          "invoice": {
+            "$ref": "#/components/schemas/InvoiceInput"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "invoice"
+        ],
+        "additionalProperties": false
+      },
+    "BusinessQuotationFinalize": {
         "type": "object",
         "properties": {
           "invoice": {
@@ -15045,15 +15349,8 @@
           "section"
         ],
         "properties": {
-          "source_filename": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "source_id": {
-            "type": "string"
-          },
+          "source_filename": {"type": ["string", "null"]},
+          "source_id": {"type": "string"},
           "sheet": {
             "type": "string"
           },
@@ -15183,18 +15480,8 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": [
-                "label",
-                "value"
-              ],
-              "properties": {
-                "label": {
-                  "type": "string"
-                },
-                "value": {
-                  "type": "string"
-                }
-              }
+              "required": ["label", "value"],
+              "properties": {"label": {"type": "string"}, "value": {"type": "string"}}
             }
           },
           "reports": {
@@ -15232,12 +15519,7 @@
           "rows"
         ],
         "properties": {
-          "source_filename": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
+          "source_filename": {"type": ["string", "null"]},
           "id": {
             "type": "string"
           },

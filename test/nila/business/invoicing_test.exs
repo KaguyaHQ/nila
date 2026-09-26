@@ -40,6 +40,104 @@ defmodule Nila.Business.InvoicingTest do
              })
   end
 
+  test "customer addresses select buyer GSTIN and consignee without changing issued facts", ctx do
+    [primary] = Invoicing.list_customer_addresses(ctx.client)
+    assert primary.customer_id == ctx.customer.id
+    assert primary.is_primary_billing
+
+    {:ok, billing} =
+      Invoicing.create_customer_address(ctx.client, ctx.customer.id, %{
+        label: "Bengaluru Office",
+        address: "Siemens, Bengaluru",
+        state_code: "29",
+        gstin: "29AAVCS8021P1ZB",
+        usage: "billing"
+      })
+
+    {:ok, shipping} =
+      Invoicing.create_customer_address(ctx.client, ctx.customer.id, %{
+        label: "Apollo Hospital, Mysore",
+        address: "Apollo Hospital, Mysore",
+        state_code: "29",
+        usage: "shipping"
+      })
+
+    {:ok, draft} =
+      draft(ctx, %{
+        "billing_address_id" => billing.id,
+        "shipping_address_id" => shipping.id,
+        "place_of_supply" => "29"
+      })
+
+    assert draft.billing_address_id == billing.id
+    assert draft.shipping_address_id == shipping.id
+    assert {:ok, issued} = issue(ctx, draft)
+    assert issued.snapshot["customer"]["gstin"] == "29AAVCS8021P1ZB"
+    assert issued.snapshot["customer"]["address"] == "Siemens, Bengaluru"
+    assert issued.snapshot["delivery_address"] == "Apollo Hospital, Mysore"
+    assert issued.snapshot["shipping_name"] == "Apollo Hospital, Mysore"
+
+    assert {:ok, _} =
+             Invoicing.update_customer_address(ctx.client, ctx.customer.id, billing.id, %{
+               address: "Moved office"
+             })
+
+    assert {:ok, unchanged} = Invoicing.get_invoice(ctx.client, issued.id)
+    assert unchanged.snapshot == issued.snapshot
+  end
+
+  test "selected addresses must belong to the customer and allow their selected role", ctx do
+    {:ok, other} =
+      Invoicing.create_customer(ctx.client, %{
+        name: "Other buyer",
+        address: "Delhi",
+        state_code: "07"
+      })
+
+    other_address =
+      Invoicing.list_customer_addresses(ctx.client)
+      |> Enum.find(&(&1.customer_id == other.id))
+
+    assert {:error, changeset} =
+             draft(ctx, %{"billing_address_id" => other_address.id})
+
+    assert :billing_address_id in Keyword.keys(changeset.errors)
+
+    {:ok, shipping} =
+      Invoicing.create_customer_address(ctx.client, ctx.customer.id, %{
+        label: "Hospital",
+        address: "Hospital, Chennai",
+        state_code: "33",
+        usage: "shipping"
+      })
+
+    assert {:error, changeset} = draft(ctx, %{"billing_address_id" => shipping.id})
+    assert :billing_address_id in Keyword.keys(changeset.errors)
+  end
+
+  test "changing the primary billing address updates the customer default", ctx do
+    [old_primary] = Invoicing.list_customer_addresses(ctx.client)
+
+    {:ok, new_primary} =
+      Invoicing.create_customer_address(ctx.client, ctx.customer.id, %{
+        label: "Karnataka registration",
+        address: "Bengaluru office",
+        state_code: "29",
+        gstin: "29AAVCS8021P1ZB",
+        usage: "billing",
+        is_primary_billing: true
+      })
+
+    addresses = Invoicing.list_customer_addresses(ctx.client)
+    refute Enum.find(addresses, &(&1.id == old_primary.id)).is_primary_billing
+    assert Enum.find(addresses, &(&1.id == new_primary.id)).is_primary_billing
+    assert {:ok, customer} = Repo.fetch_by(Nila.Business.Customer, id: ctx.customer.id)
+    assert customer.address == "Bengaluru office"
+    assert customer.gstin == "29AAVCS8021P1ZB"
+    assert {:ok, draft} = draft(ctx)
+    assert draft.billing_address_id == new_primary.id
+  end
+
   test "editable document amounts use issuance arithmetic before identity fields are complete",
        ctx do
     line = %{"quantity" => "2", "unit_price" => "500.50", "gst_rate" => "18"}
@@ -230,6 +328,94 @@ defmodule Nila.Business.InvoicingTest do
       Invoicing.issue(ctx.client, invoice.id, ctx.actor,
         render_pdf: fn snapshot -> {:ok, "%PDF-test " <> snapshot["number"]} end
       )
+
+  test "invoice numbering continues the business series and direct issue is atomic", ctx do
+    assert {:ok, numbering} =
+             Invoicing.configure_invoice_numbering(ctx.client, %{
+               "style" => "serial_fy",
+               "next_number" => 129
+             })
+
+    assert numbering.next_number == 129
+    assert numbering.style == "serial_fy"
+
+    attrs = %{
+      "customer_id" => ctx.customer.id,
+      "invoice_date" => "2026-09-22",
+      "place_of_supply" => "33",
+      "lines" => [
+        %{
+          "description" => "Controller",
+          "kind" => "goods",
+          "sac" => "903290",
+          "unit" => "NOS",
+          "quantity" => "1",
+          "unit_price" => "9000",
+          "gst_rate" => "18"
+        }
+      ]
+    }
+
+    assert {:error, :profile_incomplete} =
+             Invoicing.finalize_invoice(ctx.client, ctx.actor, attrs)
+
+    assert Invoicing.list_invoices(ctx.client) == []
+    assert Invoicing.invoice_numbering(ctx.client).next_number == 129
+
+    {:ok, _} =
+      Invoicing.save_profile(ctx.client, %{domestic_goods_and_services_only: true})
+
+    assert {:error, :renderer_down} =
+             Invoicing.finalize_invoice(ctx.client, ctx.actor, attrs, nil,
+               render_pdf: fn _ -> {:error, :renderer_down} end
+             )
+
+    assert Invoicing.list_invoices(ctx.client) == []
+    assert Invoicing.invoice_numbering(ctx.client).next_number == 129
+
+    assert {:ok, issued} =
+             Invoicing.finalize_invoice(ctx.client, ctx.actor, attrs, nil,
+               render_pdf: fn snapshot -> {:ok, "%PDF-test " <> snapshot["number"]} end
+             )
+
+    assert issued.number == "129/2026-27"
+    assert issued.status == "issued"
+    assert Invoicing.invoice_numbering(ctx.client).next_number == 130
+
+    assert {:error, :numbering_started} =
+             Invoicing.configure_invoice_numbering(ctx.client, %{
+               "style" => "nila",
+               "next_number" => 1
+             })
+
+    {:ok, draft} = draft(ctx)
+
+    assert {:ok, next} =
+             Invoicing.finalize_invoice(
+               ctx.client,
+               ctx.actor,
+               %{
+                 "customer_id" => ctx.customer.id,
+                 "invoice_date" => "2026-09-22",
+                 "place_of_supply" => "33",
+                 "lines" => [
+                   %{
+                     "description" => "Revised service",
+                     "sac" => "998312",
+                     "quantity" => "1",
+                     "unit_price" => "1000",
+                     "gst_rate" => "18"
+                   }
+                 ]
+               },
+               draft.id,
+               render_pdf: fn snapshot -> {:ok, "%PDF-test " <> snapshot["number"]} end
+             )
+
+    assert next.id == draft.id
+    assert next.number == "130/2026-27"
+    assert hd(next.snapshot["lines"])["description"] == "Revised service"
+  end
 
   test "draft stays out of sales; issuance feeds CA working with saved source PDF and hash",
        ctx do

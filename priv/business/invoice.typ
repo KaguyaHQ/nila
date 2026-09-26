@@ -93,7 +93,15 @@
     #if data.at("delivery_address", default: none) not in (none, "") [
       #label("SHIP TO")
       #v(5pt)
+      #if data.at("shipping_name", default: none) not in (none, "") [
+        #text(weight: "semibold")[#data.shipping_name]
+        #v(4pt)
+      ]
       #data.delivery_address
+      #if data.at("shipping_gstin", default: none) not in (none, "") [
+        #v(4pt)
+        GSTIN #data.shipping_gstin
+      ]
       #if data.at("delivery_state_code", default: none) not in (none, "") [
         #v(4pt)
         #label("State") #data.delivery_state_code

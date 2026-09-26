@@ -52,6 +52,7 @@ defmodule NilaWeb.BusinessControllerTest do
     assert response["business"]["name"] == "Service business"
     assert %{"name" => _, "code" => _} = hd(response["states"])
     assert response["invoices"] == []
+    assert response["invoice_numbering"]["style"] == "nila"
 
     calculated =
       build_conn()
@@ -151,6 +152,53 @@ defmodule NilaWeb.BusinessControllerTest do
            |> contract_response(404)
   end
 
+  test "customer address API lists, saves and scopes addresses", %{owner: owner} do
+    conn = build_conn() |> log_in_user(owner)
+
+    customer =
+      conn
+      |> post("/api/business/customers", %{
+        customer: %{name: "Siemens", address: "Chennai", state_code: "33"}
+      })
+      |> contract_response(200)
+      |> Map.fetch!("customer")
+
+    bootstrap = conn |> get("/api/business") |> contract_response(200)
+
+    assert [%{"label" => "Primary address", "customer_id" => customer_id}] =
+             bootstrap["customer_addresses"]
+
+    assert customer_id == customer["id"]
+
+    address =
+      conn
+      |> post("/api/business/customers/#{customer_id}/addresses", %{
+        address: %{
+          label: "Bengaluru Office",
+          address: "Bengaluru",
+          state_code: "29",
+          usage: "billing"
+        }
+      })
+      |> contract_response(200)
+      |> Map.fetch!("address")
+
+    assert address["label"] == "Bengaluru Office"
+    assert address["customer_id"] == customer_id
+
+    assert conn
+           |> post("/api/business/customers/999999/addresses", %{
+             address: %{label: "Wrong", address: "Delhi", state_code: "07", usage: "billing"}
+           })
+           |> contract_response(404)
+
+    assert conn
+           |> patch("/api/business/customers/999999/addresses/#{address["id"]}", %{
+             address: %{label: "Wrong"}
+           })
+           |> contract_response(404)
+  end
+
   test "profile validation and issue failures preserve draft", %{owner: owner} do
     conn = build_conn() |> log_in_user(owner)
 
@@ -193,6 +241,15 @@ defmodule NilaWeb.BusinessControllerTest do
     saved = conn |> get("/api/business/invoices/#{invoice["id"]}") |> contract_response(200)
     assert saved["invoice"]["status"] == "draft"
     assert is_nil(saved["invoice"]["number"])
+
+    assert conn
+           |> post("/api/business/invoices/finalize", %{invoice: attrs, id: invoice["id"]})
+           |> contract_response(422)
+
+    assert conn
+           |> get("/api/business/invoices/#{invoice["id"]}")
+           |> contract_response(200)
+           |> get_in(["invoice", "status"]) == "draft"
   end
 
   test "quotation actions authenticate, return linked invoice and preserve PDF", %{
@@ -324,6 +381,16 @@ defmodule NilaWeb.BusinessControllerTest do
 
     assert response["quotation_numbering"]["next_number"] == 79
     assert response["quotation_numbering"]["style"] == "serial_fy"
+
+    invoice_numbering =
+      conn
+      |> patch("/api/business/invoice-numbering", %{
+        numbering: %{style: "serial_fy", next_number: 129}
+      })
+      |> contract_response(200)
+
+    assert invoice_numbering["invoice_numbering"]["next_number"] == 129
+    assert invoice_numbering["invoice_numbering"]["style"] == "serial_fy"
 
     image = %Plug.Upload{
       path: Path.expand("priv/static/images/og-image.png"),

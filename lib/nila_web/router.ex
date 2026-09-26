@@ -174,14 +174,18 @@ defmodule NilaWeb.Router do
     get "/profile/assets/:kind", BusinessController, :asset
     delete "/profile/assets/:kind", BusinessController, :remove_asset
     patch "/quotation-numbering", BusinessController, :quotation_numbering
+    patch "/invoice-numbering", BusinessController, :invoice_numbering
     get "/services", BusinessController, :services
     post "/services", BusinessController, :create_service
     patch "/services/:id", BusinessController, :update_service
     delete "/services/:id", BusinessController, :delete_service
     post "/customers", BusinessController, :create_customer
     patch "/customers/:id", BusinessController, :update_customer
+    post "/customers/:customer_id/addresses", BusinessController, :create_customer_address
+    patch "/customers/:customer_id/addresses/:id", BusinessController, :update_customer_address
     post "/invoices", BusinessController, :create_invoice
     post "/quotations/finalize", BusinessController, :finalize_quotation
+    post "/invoices/finalize", BusinessController, :finalize_invoice
     post "/invoices/preview", BusinessController, :preview
     post "/invoices/calculate", BusinessController, :calculate
     get "/invoices/:id", BusinessController, :show_invoice

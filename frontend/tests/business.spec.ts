@@ -1,6 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import type { BusinessBootstrap, BusinessInvoice } from "../src/lib/business-api";
+import type {
+  BusinessBootstrap,
+  BusinessCustomerAddress,
+  BusinessInvoice,
+} from "../src/lib/business-api";
 
 const bootstrap: BusinessBootstrap = {
   services: [],
@@ -14,13 +18,21 @@ const bootstrap: BusinessBootstrap = {
     has_logo: false,
     has_signature: false,
     quotation_number_style: "nila",
+    invoice_number_style: "nila",
     domestic_services_only: true,
     domestic_goods_and_services_only: false,
     e_invoice_not_applicable: true,
   },
   customers: [{ id: 4, name: "Harbour Labs", gstin: null, address: "Chennai", state_code: "33" }],
+  customer_addresses: [],
   invoices: [],
   quotation_numbering: {
+    financial_year: 2026,
+    style: "nila",
+    next_number: 1,
+    editable: true,
+  },
+  invoice_numbering: {
     financial_year: 2026,
     style: "nila",
     next_number: 1,
@@ -40,6 +52,8 @@ const invoice: BusinessInvoice = {
   purchase_order_date: null,
   delivery_address: null,
   delivery_state_code: null,
+  billing_address_id: null,
+  shipping_address_id: null,
   subject: null,
   revised_from_id: null,
   snapshot: {},
@@ -123,6 +137,101 @@ async function chooseState(page: Page, trigger: string, label = "State", stateNa
   await page.getByRole("option", { name: stateName, exact: true }).click();
 }
 
+test("invoice reuses customer bill-to and saves an inline ship-to address", async ({ page }) => {
+  const primary: BusinessCustomerAddress = {
+    id: 40,
+    customer_id: 4,
+    label: "Bengaluru Registered Office",
+    address: "1 MG Road, Bengaluru",
+    state_code: "29",
+    gstin: "29AABCT3518Q1ZF",
+    usage: "either",
+    is_primary_billing: true,
+    is_primary_shipping: true,
+  };
+  const alternateBilling: BusinessCustomerAddress = {
+    id: 41,
+    customer_id: 4,
+    label: "Chennai GST Registration",
+    address: "2 Mount Road, Chennai",
+    state_code: "33",
+    gstin: "33AABCT3518Q1ZG",
+    usage: "billing",
+    is_primary_billing: false,
+    is_primary_shipping: false,
+  };
+  let customerAddresses = [primary, alternateBilling];
+  let submittedInvoice: Record<string, unknown> | undefined;
+  await setup(page);
+  await page.unroute(/\/api\/business$/);
+  await page.route(/\/api\/business$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, customer_addresses: customerAddresses } }),
+  );
+  await page.route(/\/api\/business\/customers\/4\/addresses$/, async (route) => {
+    const body = route.request().postDataJSON().address;
+    expect(body).toMatchObject({
+      label: "Apollo Hospital, Mysore",
+      address: "Apollo Main Road, Mysore",
+      state_code: "29",
+      usage: "shipping",
+      is_primary_shipping: true,
+    });
+    const savedAddress: BusinessCustomerAddress = {
+      ...body,
+      id: 43,
+      customer_id: 4,
+      gstin: null,
+      is_primary_billing: false,
+    };
+    customerAddresses = [...customerAddresses, savedAddress];
+    await route.fulfill({ json: { address: savedAddress } });
+  });
+  await page.route(/\/api\/business\/invoices$/, async (route) => {
+    submittedInvoice = route.request().postDataJSON().invoice;
+    await route.fulfill({
+      json: {
+        invoice: {
+          ...invoice,
+          billing_address_id: 41,
+          shipping_address_id: 43,
+        },
+      },
+    });
+  });
+
+  await page.goto("/app/business/invoices/new");
+  await chooseCustomer(page, "Harbour Labs");
+  await expect(page.getByRole("button", { name: "Select shipping address" })).toContainText(
+    "Choose saved address",
+  );
+  await page.getByRole("button", { name: "Select billing address" }).click();
+  await page.getByRole("combobox", { name: "Search billing addresses" }).fill("Chennai GST");
+  await page.getByRole("option").filter({ hasText: "Chennai GST Registration" }).click();
+  await expect(page.getByText("GSTIN 33AABCT3518Q1ZG")).toBeVisible();
+
+  await page.getByRole("button", { name: "Select shipping address" }).click();
+  await page.getByRole("option", { name: "Add saved address" }).click();
+  await page.getByLabel("Label", { exact: true }).fill("Apollo Hospital, Mysore");
+  await page.getByLabel("Address", { exact: true }).fill("Apollo Main Road, Mysore");
+  await chooseState(page, "#customer-address-state", "State", "Karnataka");
+  await page.getByLabel("Use this address for").selectOption("shipping");
+  await page.getByText("Default shipping address").click();
+  await page.getByRole("button", { name: "Save address" }).click();
+  const invoiceParties = page.getByRole("region", { name: "Invoice parties" });
+  await expect(invoiceParties.getByText("Apollo Main Road, Mysore")).toBeVisible();
+
+  await chooseState(page, "#invoice-pos", "Place of supply", "Karnataka");
+  await page.locator("#line-0-description").fill("Consulting");
+  await page.locator("#line-0-sac").fill("998313");
+  await page.locator("#line-0-price").fill("1000");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => submittedInvoice).toMatchObject({
+    customer_id: 4,
+    billing_address_id: 41,
+    shipping_address_id: 43,
+  });
+});
+
 test("business dates allow typing, normalizing, Tab navigation and calendar selection", async ({
   page,
 }, testInfo) => {
@@ -196,7 +305,7 @@ test("required place of supply stays required with searchable state picker", asy
   await expect.poll(() => writes).toBe(1);
 });
 
-test("draft save then issue is explicit; PDF failures stay visible", async ({ page }, testInfo) => {
+test("draft save and direct issue both work; PDF failures stay visible", async ({ page }, testInfo) => {
   await setup(page);
   let saved = { ...invoice };
   let issues = 0;
@@ -208,8 +317,9 @@ test("draft save then issue is explicit; PDF failures stay visible", async ({ pa
   await page.route(/\/api\/business\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice: saved } }),
   );
-  await page.route(/\/api\/business\/invoices\/9\/issue$/, (route) => {
+  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
     issues++;
+    expect(route.request().postDataJSON().id).toBe(9);
     saved = { ...saved, status: "issued", number: "INV/26-27/0001" };
     return route.fulfill({ json: { invoice: saved } });
   });
@@ -217,7 +327,7 @@ test("draft save then issue is explicit; PDF failures stay visible", async ({ pa
     route.fulfill({ status: 503, json: { error: "PDF temporarily unavailable." } }),
   );
   await page.goto("/app/business/invoices/new");
-  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
   await chooseCustomer(page, "Harbour Labs");
   await chooseState(page, "#invoice-pos", "Place of supply");
   await page.locator("#line-0-description").fill("Consulting");
@@ -247,12 +357,40 @@ test("draft save then issue is explicit; PDF failures stay visible", async ({ pa
   await expect(page.getByRole("alert").first()).toContainText("PDF temporarily unavailable.");
 });
 
+test("new invoice issues in one action without creating a separate draft", async ({ page }) => {
+  await setup(page);
+  let draftWrites = 0;
+  await page.route(/\/api\/business\/invoices$/, (route) => {
+    draftWrites++;
+    return route.fulfill({ status: 500, json: { error: "Unexpected draft write" } });
+  });
+  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.id).toBeUndefined();
+    expect(body.invoice.lines[0].description).toBe("Consulting");
+    return route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "129/2026-27" } } });
+  });
+  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+    route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "129/2026-27" } } }),
+  );
+  await page.goto("/app/business/invoices/new");
+  await chooseCustomer(page, "Harbour Labs");
+  await chooseState(page, "#invoice-pos", "Place of supply");
+  await page.locator("#line-0-description").fill("Consulting");
+  await page.locator("#line-0-sac").fill("998312");
+  await page.locator("#line-0-price").fill("1000");
+  await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+  await expect(page).toHaveURL(/\/business\/invoices\/9$/);
+  await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
+  expect(draftWrites).toBe(0);
+});
+
 test("server validation retains draft without false issued state", async ({ page }) => {
   await setup(page);
   await page.route(/\/api\/business\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice } }),
   );
-  await page.route(/\/api\/business\/invoices\/9\/issue$/, (route) =>
+  await page.route(/\/api\/business\/invoices\/finalize$/, (route) =>
     route.fulfill({ status: 422, json: { error: "Complete business details before issuing." } }),
   );
   await page.goto("/app/business/invoices/9");
@@ -269,7 +407,7 @@ test("forbidden workspace exposes no customer or invoice controls", async ({ pag
   await expect(page.getByRole("alert")).toContainText("do not have access");
   await expect(page.getByRole("link", { name: "New invoice" })).toHaveCount(0);
 });
-test("unsaved changes disable issue until saved", async ({ page }) => {
+test("unsaved changes are included when issuing", async ({ page }) => {
   await setup(page);
   await page.route(/\/api\/business\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice } }),
@@ -277,7 +415,13 @@ test("unsaved changes disable issue until saved", async ({ page }) => {
   await page.goto("/app/business/invoices/9");
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
   await page.locator("#line-0-description").fill("Revised services");
-  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
+  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
+    expect(route.request().postDataJSON().invoice.lines[0].description).toBe("Revised services");
+    return route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "INV/2627/0001" } } });
+  });
+  await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
 });
 test("customer saves scoped and business profile confirms save", async ({ page }) => {
   await setup(page);
@@ -291,7 +435,7 @@ test("customer saves scoped and business profile confirms save", async ({ page }
   await page.goto("/app/business/customers");
   await page.getByRole("button", { name: "Add customer", exact: true }).click();
   await page.getByLabel("Customer name").fill("New customer");
-  await page.getByLabel("Billing address").fill("Chennai");
+  await page.locator("#business-customer-form").getByLabel("Billing address").fill("Chennai");
   await chooseState(page, "#customer-state");
   await page.getByRole("button", { name: "Save customer" }).click();
   await expect(page.locator("#business-customer-form")).toHaveCount(0);
@@ -323,6 +467,14 @@ test("business details save contact info, numbering and a logo", async ({ page }
     };
     return route.fulfill({ json: { quotation_numbering: state.quotation_numbering } });
   });
+  await page.route(/\/api\/business\/invoice-numbering$/, (route) => {
+    const update = route.request().postDataJSON().numbering;
+    state = {
+      ...state,
+      invoice_numbering: { ...state.invoice_numbering, ...update },
+    };
+    return route.fulfill({ json: { invoice_numbering: state.invoice_numbering } });
+  });
   await page.route(/\/api\/business\/profile\/assets\/logo(?:\?.*)?$/, (route) => {
     if (route.request().method() === "GET")
       return route.fulfill({ status: 200, contentType: "image/png", body: logoBytes });
@@ -338,6 +490,10 @@ test("business details save contact info, numbering and a logo", async ({ page }
   await page.locator("#business-quote-next").fill("79");
   await page.getByRole("button", { name: "Save quotation numbering" }).click();
   await expect(page.locator("#business-quote-next")).toHaveValue("79");
+  await page.locator("#business-invoice-style").selectOption("serial_fy");
+  await page.locator("#business-invoice-next").fill("129");
+  await page.getByRole("button", { name: "Save invoice numbering" }).click();
+  await expect(page.locator("#business-invoice-next")).toHaveValue("129");
   await page.locator("#business-logo").setInputFiles({
     name: "logo.png",
     mimeType: "image/png",
@@ -351,6 +507,7 @@ test("business details save contact info, numbering and a logo", async ({ page }
   expect(state.profile?.phone).toBe("9962550448");
   expect(state.profile?.email).toBe("quotes@example.com");
   expect(state.quotation_numbering.style).toBe("serial_fy");
+  expect(state.invoice_numbering.style).toBe("serial_fy");
 });
 test("credit note carries original customer and services with explicit save and issue", async ({
   page,
@@ -382,7 +539,7 @@ test("credit note carries original customer and services with explicit save and 
     "Harbour Labs",
   );
   await expect(page.locator("#line-0-description")).toHaveValue("Consulting");
-  await expect(page.getByRole("button", { name: "Issue credit note" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Issue credit note" })).toBeEnabled();
   await expect(page.getByText("INV/26-27/0001", { exact: true }).first()).toBeVisible();
 });
 test("saved edits survive reopen and issued party names use frozen snapshot", async ({ page }) => {
@@ -457,7 +614,7 @@ test("focus and reconnect preserve unsaved edits", async ({ page }) => {
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect(page.locator("#line-0-description")).toHaveValue("Unsaved local edit");
-  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
   expect(reads).toBe(before);
 });
 test("empty document is editable immediately and totals come from Phoenix without saving or PDF", async ({

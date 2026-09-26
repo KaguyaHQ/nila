@@ -2,7 +2,7 @@ defmodule Nila.Business.Invoicing do
   @moduledoc "Domestic taxable goods and service billing for an authorized business client."
   import Ecto.Query
   import Ecto.Changeset
-  alias Nila.Business.{Customer, Invoice, Profile, Service}
+  alias Nila.Business.{Customer, CustomerAddress, Invoice, Profile, Service}
   alias Nila.Clients.Client
   alias Nila.Gst.Intake.{Dump, Dumps}
   alias Nila.Gst.Sales.{Derivation, Month, Processing}
@@ -35,13 +35,21 @@ defmodule Nila.Business.Invoicing do
   end
 
   def quotation_numbering(%Client{} = client) do
+    numbering(client, "quotation")
+  end
+
+  def invoice_numbering(%Client{} = client) do
+    numbering(client, "invoice")
+  end
+
+  defp numbering(client, type) do
     year = financial_year(Date.utc_today())
     profile = get_profile(client)
 
     next_number =
       case Repo.query!(
-             "SELECT last_number FROM business_invoice_counters WHERE client_id = $1 AND financial_year = $2 AND document_type = 'quotation'",
-             [client.id, year]
+             "SELECT last_number FROM business_invoice_counters WHERE client_id = $1 AND financial_year = $2 AND document_type = $3",
+             [client.id, year, type]
            ).rows do
         [[last]] -> last + 1
         [] -> 1
@@ -49,13 +57,25 @@ defmodule Nila.Business.Invoicing do
 
     %{
       financial_year: year,
-      style: profile.quotation_number_style,
+      style:
+        if(type == "invoice",
+          do: profile.invoice_number_style,
+          else: profile.quotation_number_style
+        ),
       next_number: next_number,
-      editable: not quotation_issued_in_year?(client, year)
+      editable: not issued_in_year?(client, year, type)
     }
   end
 
   def configure_quotation_numbering(%Client{} = client, attrs) do
+    configure_numbering(client, attrs, "quotation")
+  end
+
+  def configure_invoice_numbering(%Client{} = client, attrs) do
+    configure_numbering(client, attrs, "invoice")
+  end
+
+  defp configure_numbering(client, attrs, type) do
     attrs = string_keys(attrs)
     style = attrs["style"]
     next_number = parse_number(attrs["next_number"])
@@ -72,18 +92,17 @@ defmodule Nila.Business.Invoicing do
 
         year = financial_year(Date.utc_today())
 
-        with false <- quotation_issued_in_year?(current, year),
+        field = if(type == "invoice", do: :invoice_number_style, else: :quotation_number_style)
+
+        with false <- issued_in_year?(current, year, type),
              %Profile{} = profile <- Repo.get_by(Profile, client_id: current.id),
-             {:ok, _profile} <-
-               profile
-               |> change(quotation_number_style: style)
-               |> Repo.update() do
+             {:ok, _profile} <- profile |> change(%{field => style}) |> Repo.update() do
           Repo.query!(
-            "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1, $2, 'quotation', $3) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = EXCLUDED.last_number",
-            [current.id, year, next_number - 1]
+            "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1, $2, $3, $4) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = EXCLUDED.last_number",
+            [current.id, year, type, next_number - 1]
           )
 
-          {:ok, quotation_numbering(current)}
+          {:ok, numbering(current, type)}
         else
           true -> {:error, :numbering_started}
           nil -> {:error, :profile_incomplete}
@@ -184,12 +203,151 @@ defmodule Nila.Business.Invoicing do
     do:
       Repo.all(from c in Customer, where: c.client_id == ^id, order_by: [asc: c.name, asc: c.id])
 
-  def create_customer(%Client{id: id}, attrs),
-    do: %Customer{client_id: id} |> Customer.changeset(attrs) |> Repo.insert()
+  def create_customer(%Client{id: id}, attrs) do
+    Repo.transact(fn ->
+      with {:ok, customer} <-
+             %Customer{client_id: id} |> Customer.changeset(attrs) |> Repo.insert(),
+           {:ok, _address} <-
+             %CustomerAddress{client_id: id, customer_id: customer.id}
+             |> CustomerAddress.changeset(%{
+               label: "Primary address",
+               address: customer.address,
+               state_code: customer.state_code,
+               gstin: customer.gstin,
+               usage: "either",
+               is_primary_billing: true,
+               is_primary_shipping: true
+             })
+             |> Repo.insert() do
+        {:ok, customer}
+      end
+    end)
+  end
 
   def update_customer(%Client{} = client, id, attrs) do
-    with {:ok, customer} <- Repo.fetch_by(Customer, id: id, client_id: client.id),
-         do: customer |> Customer.changeset(attrs) |> Repo.update()
+    Repo.transact(fn ->
+      with {:ok, customer} <- locked_customer(client, id),
+           {:ok, customer} <- customer |> Customer.changeset(attrs) |> Repo.update(),
+           %CustomerAddress{} = primary <- primary_billing_address(customer),
+           {:ok, _address} <-
+             primary
+             |> CustomerAddress.changeset(%{
+               address: customer.address,
+               state_code: customer.state_code,
+               gstin: customer.gstin
+             })
+             |> Repo.update() do
+        {:ok, customer}
+      end
+    end)
+  end
+
+  def list_customer_addresses(%Client{id: id}) do
+    Repo.all(
+      from a in CustomerAddress,
+        where: a.client_id == ^id,
+        order_by: [asc: a.customer_id, desc: a.is_primary_billing, asc: a.label, asc: a.id]
+    )
+  end
+
+  def create_customer_address(%Client{} = client, customer_id, attrs) do
+    Repo.transact(fn ->
+      with {:ok, customer} <- locked_customer(client, customer_id) do
+        address = %CustomerAddress{client_id: client.id, customer_id: customer.id}
+        save_customer_address(client, customer, address, attrs, :insert)
+      end
+    end)
+  end
+
+  def update_customer_address(%Client{} = client, customer_id, id, attrs) do
+    Repo.transact(fn ->
+      with {:ok, customer} <- locked_customer(client, customer_id),
+           {:ok, address} <-
+             Repo.fetch_by(CustomerAddress,
+               id: id,
+               customer_id: customer.id,
+               client_id: client.id
+             ) do
+        save_customer_address(client, customer, address, attrs, :update)
+      end
+    end)
+  end
+
+  defp save_customer_address(client, customer, address, attrs, action) do
+    changeset = CustomerAddress.changeset(address, attrs)
+
+    with {:ok, candidate} <- Ecto.Changeset.apply_action(changeset, action),
+         :ok <- primary_address_change_allowed(address, candidate) do
+      if candidate.is_primary_billing do
+        from(a in CustomerAddress,
+          where:
+            a.customer_id == ^customer.id and a.client_id == ^client.id and
+              a.id != ^(address.id || 0)
+        )
+        |> Repo.update_all(set: [is_primary_billing: false])
+      end
+
+      if candidate.is_primary_shipping do
+        from(a in CustomerAddress,
+          where:
+            a.customer_id == ^customer.id and a.client_id == ^client.id and
+              a.id != ^(address.id || 0)
+        )
+        |> Repo.update_all(set: [is_primary_shipping: false])
+      end
+
+      with {:ok, saved} <-
+             if(action == :insert, do: Repo.insert(changeset), else: Repo.update(changeset)),
+           {:ok, _customer} <- maybe_sync_primary_customer(customer, saved) do
+        {:ok, saved}
+      end
+    end
+  end
+
+  defp primary_address_change_allowed(%CustomerAddress{id: nil}, _candidate), do: :ok
+
+  defp primary_address_change_allowed(current, candidate) do
+    cond do
+      current.is_primary_billing and not candidate.is_primary_billing ->
+        {:error, :primary_billing_required}
+
+      current.is_primary_shipping and not candidate.is_primary_shipping ->
+        {:error, :primary_shipping_required}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp maybe_sync_primary_customer(customer, %CustomerAddress{is_primary_billing: true} = address) do
+    customer
+    |> Customer.changeset(%{
+      address: address.address,
+      state_code: address.state_code,
+      gstin: address.gstin
+    })
+    |> Repo.update()
+  end
+
+  defp maybe_sync_primary_customer(customer, _), do: {:ok, customer}
+
+  defp primary_billing_address(customer) do
+    Repo.get_by(CustomerAddress,
+      customer_id: customer.id,
+      client_id: customer.client_id,
+      is_primary_billing: true
+    )
+  end
+
+  defp locked_customer(client, id) do
+    case Repo.one(
+           from c in Customer,
+             where: c.id == ^id and c.client_id == ^client.id,
+             lock: "FOR UPDATE"
+         ) do
+      %Customer{} = customer -> {:ok, customer}
+      nil -> {:error, :not_found}
+    end
   end
 
   def list_invoices(%Client{id: id}),
@@ -218,6 +376,7 @@ defmodule Nila.Business.Invoicing do
              document_type: document_type(attrs, original)
            }
            |> Invoice.draft_changeset(attrs)
+           |> validate_addresses(client, customer)
            |> validate_lines(client)
            |> apply_action(:validate),
          profile <- get_profile(client),
@@ -276,6 +435,7 @@ defmodule Nila.Business.Invoicing do
         document_type: document_type(attrs, original)
       }
       |> Invoice.draft_changeset(attrs)
+      |> validate_addresses(client, customer)
       |> validate_lines(client)
       |> Repo.insert()
     end
@@ -301,6 +461,7 @@ defmodule Nila.Business.Invoicing do
       invoice
       |> Invoice.draft_changeset(attrs)
       |> put_change(:customer_id, customer.id)
+      |> validate_addresses(client, customer)
       |> validate_lines(client)
       |> Repo.update()
     end
@@ -327,6 +488,39 @@ defmodule Nila.Business.Invoicing do
       end,
       timeout: 60_000
     )
+  end
+
+  def finalize_invoice(%Client{} = client, actor_id, attrs, id \\ nil, opts \\ []) do
+    attrs = string_keys(attrs)
+    type = if(attrs["original_invoice_id"], do: "credit_note", else: "invoice")
+    attrs = Map.put(attrs, "document_type", type)
+
+    Repo.transact(
+      fn ->
+        current_client =
+          Repo.one!(
+            from c in Client,
+              where: c.id == ^client.id and c.org_id == ^client.org_id,
+              lock: "FOR UPDATE"
+          )
+
+        with {:ok, draft} <-
+               if(id,
+                 do: update_billing_draft_in_transaction(current_client, id, attrs, type),
+                 else: save_draft(current_client, actor_id, attrs)
+               ),
+             do: issue_in_transaction(current_client, draft.id, actor_id, opts)
+      end,
+      timeout: 60_000
+    )
+  end
+
+  defp update_billing_draft_in_transaction(client, id, attrs, type) do
+    case locked_invoice(client, id) do
+      {:ok, %Invoice{document_type: ^type}} -> update_draft_in_transaction(client, id, attrs)
+      {:ok, _} -> {:error, :invalid_document_type}
+      error -> error
+    end
   end
 
   defp update_quotation_draft_in_transaction(client, id, attrs) do
@@ -361,6 +555,11 @@ defmodule Nila.Business.Invoicing do
          {:ok, profile} <- ready_profile(current_client, invoice),
          {:ok, customer} <-
            Repo.fetch_by(Customer, id: invoice.customer_id, client_id: current_client.id),
+         {:ok, invoice} <-
+           invoice
+           |> Invoice.draft_changeset(%{})
+           |> validate_addresses(current_client, customer)
+           |> Ecto.Changeset.apply_action(:validate),
          :ok <- open_document_month(current_client, invoice),
          {:ok, lines} <-
            calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply),
@@ -409,6 +608,8 @@ defmodule Nila.Business.Invoicing do
               quote
               |> Map.take([
                 :customer_id,
+                :billing_address_id,
+                :shipping_address_id,
                 :place_of_supply,
                 :lines,
                 :notes,
@@ -452,6 +653,8 @@ defmodule Nila.Business.Invoicing do
           quote
           |> Map.take([
             :customer_id,
+            :billing_address_id,
+            :shipping_address_id,
             :place_of_supply,
             :lines,
             :notes,
@@ -588,6 +791,44 @@ defmodule Nila.Business.Invoicing do
     end
   end
 
+  defp validate_addresses(changeset, client, customer) do
+    changeset =
+      if get_field(changeset, :billing_address_id) do
+        changeset
+      else
+        case primary_billing_address(customer) do
+          %CustomerAddress{id: id} -> put_change(changeset, :billing_address_id, id)
+          nil -> add_error(changeset, :billing_address_id, "is required")
+        end
+      end
+
+    Enum.reduce(
+      [billing_address_id: ~w(billing either), shipping_address_id: ~w(shipping either)],
+      changeset,
+      fn {field, allowed}, current ->
+        case get_field(current, field) do
+          nil ->
+            current
+
+          id ->
+            case Repo.get_by(CustomerAddress,
+                   id: id,
+                   customer_id: customer.id,
+                   client_id: client.id
+                 ) do
+              %CustomerAddress{usage: usage} ->
+                if usage in allowed,
+                  do: current,
+                  else: add_error(current, field, "cannot be used here")
+
+              _ ->
+                add_error(current, field, "must belong to this customer")
+            end
+        end
+      end
+    )
+  end
+
   defp customer_for(client, attrs) do
     case Map.get(string_keys(attrs), "customer_id") do
       nil -> {:error, :customer_required}
@@ -697,14 +938,14 @@ defmodule Nila.Business.Invoicing do
 
   defp financial_year(date), do: if(date.month < 4, do: date.year - 1, else: date.year)
 
-  defp quotation_issued_in_year?(client, year) do
+  defp issued_in_year?(client, year, type) do
     from_date = Date.new!(year, 4, 1)
     until_date = Date.new!(year + 1, 4, 1)
 
     Repo.exists?(
       from i in Invoice,
         where:
-          i.client_id == ^client.id and i.document_type == "quotation" and
+          i.client_id == ^client.id and i.document_type == ^type and
             i.status != "draft" and i.invoice_date >= ^from_date and
             i.invoice_date < ^until_date
     )
@@ -734,7 +975,8 @@ defmodule Nila.Business.Invoicing do
     prefix =
       %{"credit_note" => "CN", "invoice" => "INV", "quotation" => "QT"}[invoice.document_type]
 
-    if invoice.document_type == "quotation" and profile.quotation_number_style == "serial_fy" do
+    if (invoice.document_type == "quotation" and profile.quotation_number_style == "serial_fy") or
+         (invoice.document_type == "invoice" and profile.invoice_number_style == "serial_fy") do
       "#{sequence}/#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
     else
       "#{prefix}/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
@@ -885,6 +1127,26 @@ defmodule Nila.Business.Invoicing do
   defp snapshot(client, profile, customer, invoice, lines, number, original) do
     totals = line_totals(lines)
 
+    billing =
+      if invoice.billing_address_id,
+        do:
+          Repo.get_by!(CustomerAddress,
+            id: invoice.billing_address_id,
+            client_id: client.id,
+            customer_id: customer.id
+          ),
+        else: primary_billing_address(customer)
+
+    shipping =
+      if invoice.shipping_address_id,
+        do:
+          Repo.get_by!(CustomerAddress,
+            id: invoice.shipping_address_id,
+            client_id: client.id,
+            customer_id: customer.id
+          ),
+        else: nil
+
     %{
       "number" => number,
       "document_type" => invoice.document_type,
@@ -898,8 +1160,11 @@ defmodule Nila.Business.Invoicing do
       "purchase_order_number" => invoice.purchase_order_number,
       "purchase_order_date" =>
         invoice.purchase_order_date && Date.to_iso8601(invoice.purchase_order_date),
-      "delivery_address" => invoice.delivery_address,
-      "delivery_state_code" => invoice.delivery_state_code,
+      "delivery_address" => if(shipping, do: shipping.address, else: invoice.delivery_address),
+      "delivery_state_code" =>
+        if(shipping, do: shipping.state_code, else: invoice.delivery_state_code),
+      "shipping_name" => shipping && shipping.label,
+      "shipping_gstin" => shipping && shipping.gstin,
       "total_in_words" => Nila.Formatters.amount_in_words(totals["total_paise"]),
       "supplier" => %{
         "name" => profile.legal_name,
@@ -916,9 +1181,9 @@ defmodule Nila.Business.Invoicing do
           do: original.snapshot["customer"],
           else: %{
             "name" => customer.name,
-            "address" => customer.address,
-            "gstin" => customer.gstin,
-            "state_code" => customer.state_code
+            "address" => billing.address,
+            "gstin" => billing.gstin,
+            "state_code" => billing.state_code
           }
         ),
       "place_of_supply" => invoice.place_of_supply,
@@ -1004,6 +1269,12 @@ defmodule Nila.Business.Invoicing do
 
   def error_message(:not_issued), do: "Issue the invoice before downloading its PDF."
   def error_message(:month_filed), do: "The CA has filed this month. Choose an open period."
+
+  def error_message(:primary_billing_required),
+    do: "Choose another primary billing address first."
+
+  def error_message(:primary_shipping_required),
+    do: "Choose another primary shipping address first."
 
   def error_message(:profile_incomplete),
     do: "Complete your business details and confirm the supported billing scope first."

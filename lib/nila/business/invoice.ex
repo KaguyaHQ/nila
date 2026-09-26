@@ -4,6 +4,8 @@ defmodule Nila.Business.Invoice do
   schema "business_invoices" do
     belongs_to :client, Nila.Clients.Client
     belongs_to :customer, Nila.Business.Customer
+    belongs_to :billing_address, Nila.Business.CustomerAddress
+    belongs_to :shipping_address, Nila.Business.CustomerAddress
     belongs_to :created_by, Nila.Accounts.User
     belongs_to :issued_by, Nila.Accounts.User
     belongs_to :original_invoice, __MODULE__
@@ -45,6 +47,8 @@ defmodule Nila.Business.Invoice do
       :purchase_order_date,
       :delivery_address,
       :delivery_state_code,
+      :billing_address_id,
+      :shipping_address_id,
       :subject
     ])
     |> validate_required([:invoice_date, :place_of_supply, :lines])

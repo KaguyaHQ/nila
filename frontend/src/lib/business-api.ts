@@ -7,6 +7,7 @@ export type InvoiceInput = components["schemas"]["InvoiceInput"];
 export type BusinessInvoice = components["schemas"]["BusinessInvoice"];
 export type BusinessProfile = components["schemas"]["BusinessProfile"];
 export type BusinessBootstrap = components["schemas"]["BusinessBootstrap"];
+export type BusinessCustomerAddress = components["schemas"]["BusinessCustomerAddress"];
 export class BusinessApiError extends Error {
   constructor(
     public status: number,
@@ -21,14 +22,21 @@ const businessOperations = {
   getBusinessServices: ["GET", "/services"],
   updateBusinessProfile: ["PATCH", "/profile"],
   configureBusinessQuotationNumbering: ["PATCH", "/quotation-numbering"],
+  configureBusinessInvoiceNumbering: ["PATCH", "/invoice-numbering"],
   removeBusinessBrandAsset: ["DELETE", "/profile/assets/{kind}"],
   createBusinessService: ["POST", "/services"],
   updateBusinessService: ["PATCH", "/services/{id}"],
   deleteBusinessService: ["DELETE", "/services/{id}"],
   createBusinessCustomer: ["POST", "/customers"],
   updateBusinessCustomer: ["PATCH", "/customers/{id}"],
+  createBusinessCustomerAddress: ["POST", "/customers/{customer_id}/addresses"],
+  updateBusinessCustomerAddress: [
+    "PATCH",
+    "/customers/{customer_id}/addresses/{id}",
+  ],
   createBusinessInvoice: ["POST", "/invoices"],
   finalizeBusinessQuotation: ["POST", "/quotations/finalize"],
+  finalizeBusinessInvoice: ["POST", "/invoices/finalize"],
   getBusinessInvoice: ["GET", "/invoices/{id}"],
   updateBusinessInvoice: ["PATCH", "/invoices/{id}"],
   issueBusinessInvoice: ["POST", "/invoices/{id}/issue"],
@@ -42,7 +50,12 @@ type BusinessOptions<K extends BusinessOperation> = K extends BusinessOperation
   ? { signal?: AbortSignal } & ((typeof businessOperations)[K][1] extends
       | `${string}{id}`
       | `${string}{id}/${string}`
-      ? { id: string | number }
+      ? { id: string | number } & ((typeof businessOperations)[K][1] extends
+          `${string}{customer_id}${string}`
+          ? { customer_id: string | number }
+          : { customer_id?: never })
+      : (typeof businessOperations)[K][1] extends `${string}{customer_id}${string}`
+        ? { customer_id: string | number; id?: never }
       : (typeof businessOperations)[K][1] extends `${string}{kind}`
         ? { kind: "logo" | "signature" }
         : { id?: never; kind?: never }) &
@@ -55,8 +68,10 @@ export async function businessRequest<K extends BusinessOperation>(
 ): Promise<ApiResult<K>> {
   const [method, template] = businessOperations[operation];
   const id = "id" in options ? options.id : undefined;
+  const customerId = "customer_id" in options ? options.customer_id : undefined;
   const path = template
     .replace("{id}", encodeURIComponent(id ?? ""))
+    .replace("{customer_id}", encodeURIComponent(customerId ?? ""))
     .replace("{kind}", "kind" in options ? encodeURIComponent(options.kind ?? "") : "");
   const response = await fetch(`/api/business${path}`, {
     method,

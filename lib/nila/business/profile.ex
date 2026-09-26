@@ -11,6 +11,7 @@ defmodule Nila.Business.Profile do
     field :logo_key, :string
     field :signature_key, :string
     field :quotation_number_style, :string, default: "nila"
+    field :invoice_number_style, :string, default: "nila"
     field :e_invoice_not_applicable, :boolean, default: false
     field :domestic_services_only, :boolean, default: false
     field :domestic_goods_and_services_only, :boolean, default: false
