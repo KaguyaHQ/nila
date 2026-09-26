@@ -1,6 +1,6 @@
-import { mockNavigation } from "./fixtures/navigation";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { SettingsData } from "../src/lib/settings-api";
+import { mockNavigation } from "./fixtures/navigation";
 
 function fixture(manage = true): SettingsData {
   return {
@@ -8,10 +8,10 @@ function fixture(manage = true): SettingsData {
       id: 1,
       name: "Vasanth",
       email: "vasanth@example.test",
-      org: "Nila Dev CA",
+      org: "Nila Demo",
       role: manage ? "Owner" : "Viewer",
     },
-    firm: { name: "Nila Dev CA", contact_phone: null },
+    firm: { name: "Nila Demo", contact_phone: null },
     can_manage_firm: manage,
     can_manage_users: manage,
     demo_reset: null,
@@ -52,7 +52,7 @@ function fixture(manage = true): SettingsData {
 
 test("demo reset names the whole firm and reports server refusal", async ({ page }, testInfo) => {
   const data = await setup(page);
-  data.demo_reset = { id: 2, name: "Demo Firm" };
+  data.demo_reset = { id: 2, name: "Nila Demo" };
   let resets = 0;
   await page.route("**/api/workspace/settings/demo-reset", (route) => {
     resets++;
@@ -66,7 +66,10 @@ test("demo reset names the whole firm and reports server refusal", async ({ page
   await page.goto("/app/settings/workspace");
   await page.locator("#main-content").getByRole("button", { name: "Reset demo" }).click();
   await expect(page.getByText(/every client and their work across all months/)).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("demo-reset-confirmation.png"), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("demo-reset-confirmation.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Cancel" }).click();
   expect(resets).toBe(0);
   await page.locator("#main-content").getByRole("button", { name: "Reset demo" }).click();

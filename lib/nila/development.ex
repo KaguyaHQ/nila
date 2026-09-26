@@ -11,7 +11,7 @@ defmodule Nila.Development do
       do: raise("Development setup is only available in development")
 
     owner = user("firm@nila.test", "Firm Owner")
-    org = Repo.get_by(Org, name: "Demo Firm") || Orgs.create_org!(%{name: "Demo Firm"})
+    org = Repo.get_by(Org, name: "Nila Demo") || Orgs.create_org!(%{name: "Nila Demo"})
     {:ok, org} = Demo.designate(org.id)
 
     membership =

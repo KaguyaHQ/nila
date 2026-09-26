@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { NoticesData } from "../src/lib/notices-api";
 
 function previewPdf(text = "Draft invoice") {
@@ -26,7 +26,7 @@ function previewPdf(text = "Draft invoice") {
 
 function fixture(): NoticesData {
   return {
-    user: { name: "Vasanth", org: "Nila Dev CA" },
+    user: { name: "Vasanth", org: "Nila Demo" },
     permissions: { check: true, connect: true },
     checking: false,
     clients: [
@@ -125,10 +125,11 @@ test("notice list keeps history visible, scopes client filters and shows failed 
   await setup(page, data);
   await page.goto("/app/notices");
   await expect(page.getByRole("heading", { name: "Notices", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Notices", exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    page
+      .getByRole("navigation", { name: "Product" })
+      .getByRole("link", { name: "Notices", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("1 client wasn’t checked.")).toBeVisible();
   await page.keyboard.press("/");
   await expect(page.getByRole("textbox", { name: "Search notices" })).toBeFocused();

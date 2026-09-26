@@ -72,8 +72,8 @@ defmodule Mix.Tasks.Nila.SeedGstDemo do
     case Repo.one(from m in "org_memberships", select: m.org_id, limit: 1) do
       nil ->
         Orgs.create_org!(%{
-          name: "Nila Dev CA",
-          legal_name: "Nila Dev CA LLP",
+          name: "Nila Demo",
+          legal_name: "Nila Demo",
           gstin: "33AAAAA0000A1Z5"
         })
 

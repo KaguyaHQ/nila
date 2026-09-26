@@ -9,7 +9,7 @@ opens Example Business. Quick login exists only in development, selects active
 users with the appropriate access in a demo firm, and excludes other accounts.
 These are different product roles, not separate development/demo account types.
 
-The baseline contains a firm, owner, business user, client and business profile.
+The baseline contains a firm named **Nila Demo**, owner, business user, client and business profile.
 It creates no transactions. Run `mix run priv/repo/business_seeds.exs` to add an
 optional example customer, saved item and draft invoice. Re-running seeds on this
 baseline is safe. Existing ad-hoc databases should use the rebuild command once
