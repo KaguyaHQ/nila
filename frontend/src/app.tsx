@@ -17,6 +17,7 @@ import {
   BusinessCustomers,
   BusinessInvoiceEditor,
   BusinessInvoices,
+  BusinessIndex,
   BusinessLayout,
   BusinessServices,
   BusinessSettings,
@@ -115,13 +116,18 @@ const settings = createRoute({
 });
 const business = createRoute({
   getParentRoute: () => root,
-  path: "business",
+  path: "business/$businessId",
   component: BusinessLayout,
 });
 const businessIndex = createRoute({
+  getParentRoute: () => root,
+  path: "business",
+  component: BusinessIndex,
+});
+const businessHome = createRoute({
   getParentRoute: () => business,
   path: "/",
-  component: () => <Navigate to="/business/invoices" replace />,
+  component: () => <Navigate to="/business/$businessId/invoices" params={{ businessId: business.useParams().businessId }} replace />,
 });
 const businessInvoices = createRoute({
   getParentRoute: () => business,
@@ -302,8 +308,9 @@ const routeTree = root.addChildren([
   notice,
   settingsIndex,
   settings,
+  businessIndex,
   business.addChildren([
-    businessIndex,
+    businessHome,
     businessInvoices,
     businessInvoiceNew,
     businessInvoice,

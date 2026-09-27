@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link } from "@tanstack/react-router";
-import { ChevronsUpDown, LogOut, Settings, UserRound } from "lucide-react";
+import { Building2, ChevronsUpDown, LogOut, Settings, UserRound } from "lucide-react";
 import { useRef } from "react";
 export function AccountMenu({
   user,
@@ -40,6 +40,10 @@ export function AccountMenu({
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" className="min-w-48">
+          <DropdownMenuItem render={<a href="/app/business" />}>
+            <Building2 />
+            Business workspaces
+          </DropdownMenuItem>
           <DropdownMenuItem
             render={<Link to="/settings/$section" params={{ section: "profile" }} />}
           >

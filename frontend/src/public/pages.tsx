@@ -12,7 +12,7 @@ const action = buttonVariants({ size: "lg" });
 export function PublicPage({ page }: { page: string }) {
   const legal = legalPages[page as keyof typeof legalPages];
   return (
-    <div className={`public-site${page === "home" ? " public-home" : ""}`}>
+    <div className={`public-site${page === "home" ? " public-home" : ""}${page === "business" ? " public-business-page" : ""}`}>
       <a href="#main" className="public-skip">
         Skip to content
       </a>
@@ -21,12 +21,25 @@ export function PublicPage({ page }: { page: string }) {
           nila
         </a>
         <nav aria-label="Main navigation">
-          <a href="/#how-it-works">How it works</a>
-          <a href="/contact">Contact</a>
-          <a href="/users/log_in">Log in</a>
-          <a href="/contact" className={action}>
-            Try one client free <ArrowRight />
-          </a>
+          {page === "business" ? (
+            <>
+              <a href="/">For CA firms</a>
+              <a href="/contact">Contact</a>
+              <a href="/users/log_in">Log in</a>
+              <a href="/users/business_sign_up" className={action}>
+                Create business account <ArrowRight />
+              </a>
+            </>
+          ) : (
+            <>
+              <a href="/#how-it-works">How it works</a>
+              <a href="/contact">Contact</a>
+              <a href="/users/log_in">Log in</a>
+              <a href="/contact" className={action}>
+                Try one client free <ArrowRight />
+              </a>
+            </>
+          )}
         </nav>
       </header>
       <div className="public-wrap">
@@ -36,6 +49,8 @@ export function PublicPage({ page }: { page: string }) {
       </div>
       {page === "home" ? (
         <Home />
+      ) : page === "business" ? (
+        <Business />
       ) : page === "contact" ? (
         <Contact />
       ) : legal ? (
@@ -51,8 +66,18 @@ export function PublicPage({ page }: { page: string }) {
           <a href="/" className="public-logo" aria-label="Nila home">
             nila
           </a>
-          <p>GST preparation. With the evidence attached.</p>
+          <p>
+            {page === "business"
+              ? "Quotations and invoices for your business."
+              : "GST preparation. With the evidence attached."}
+          </p>
         </div>
+        {page !== "business" ? (
+          <a href="/business" className="public-footer-business">
+            <span>Nila Business</span>
+            Invoices and quotations <ArrowRight size={14} aria-hidden="true" />
+          </a>
+        ) : null}
         <nav aria-label="Footer">
           <a href="/contact">Contact</a>
           <a href="/privacy">Privacy</a>
@@ -62,6 +87,44 @@ export function PublicPage({ page }: { page: string }) {
         <small>© 2026 Nila · Kaguya Media Private Limited</small>
       </footer>
     </div>
+  );
+}
+
+function Business() {
+  return (
+    <main id="main" className="public-business public-wrap">
+      <div className="public-business-copy">
+        <p className="public-eyebrow"><span /> Nila Business</p>
+        <h1>Make a quote.<br /><em>Send an invoice.</em></h1>
+        <p className="public-business-lead">
+          Keep your customers, addresses and usual items ready. Make a quote or GST invoice,
+          then download the PDF.
+        </p>
+        <div className="public-business-actions">
+          <a href="/users/business_sign_up" className={action}>
+            Create business account <ArrowRight size={16} />
+          </a>
+          <a href="/users/log_in">Already have an account? Log in</a>
+        </div>
+      </div>
+      <div className="public-business-art" aria-hidden="true">
+        <div className="public-business-invoice">
+          <div className="public-business-invoice-top">
+            <span className="public-business-invoice-logo">nila</span>
+            <span>TAX INVOICE</span>
+          </div>
+          <div className="public-business-invoice-to">
+            <small>BILL TO</small>
+            <strong>Your customer</strong>
+            <span>Saved address · GST details</span>
+          </div>
+          <div className="public-business-invoice-row"><span>Item or service</span><span>Amount</span></div>
+          <div className="public-business-invoice-line"><span>What you sold</span><span>₹12,000</span></div>
+          <div className="public-business-invoice-line"><span>GST</span><span>₹2,160</span></div>
+          <div className="public-business-invoice-total"><span>Total</span><strong>₹14,160</strong></div>
+        </div>
+      </div>
+    </main>
   );
 }
 

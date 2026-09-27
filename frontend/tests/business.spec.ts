@@ -102,7 +102,10 @@ function previewPdf(text = "Draft invoice") {
   return Buffer.from(pdf);
 }
 async function setup(page: Page) {
-  await page.route(/\/api\/business\/invoices\/calculate$/, (route) =>
+  await page.route(/\/api\/business\/workspaces$/, (route) =>
+    route.fulfill({ json: { businesses: [{ id: 1, name: "Breeze Services", gstin: "33AABCT3518Q1ZF" }], ca_workspace: { available: false } } }),
+  );
+  await page.route(/\/api\/business\/1\/invoices\/calculate$/, (route) =>
     route.fulfill({
       json: {
         totals: invoice.totals,
@@ -110,13 +113,13 @@ async function setup(page: Page) {
       },
     }),
   );
-  await page.route(/\/api\/business\/invoices\/preview$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/preview$/, (route) =>
     route.fulfill({ contentType: "application/pdf", body: previewPdf() }),
   );
-  await page.route(/\/api\/business\/invoices\/\d+\/pdf$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/\d+\/pdf$/, (route) =>
     route.fulfill({ contentType: "application/pdf", body: previewPdf("Issued invoice") }),
   );
-  await page.route(/\/api\/business$/, (route) => route.fulfill({ json: bootstrap }));
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) => route.fulfill({ json: bootstrap }));
   await page.addInitScript(() =>
     document.addEventListener("DOMContentLoaded", () => {
       const meta = document.createElement("meta");
@@ -131,6 +134,35 @@ async function chooseCustomer(page: Page, name: string) {
   await page.getByRole("combobox", { name: "Search customers" }).fill(name);
   await page.getByRole("option", { name, exact: true }).click();
 }
+
+test("one login opens two businesses without mixing their invoices", async ({ page }) => {
+  await setup(page);
+  await page.unroute(/\/api\/business\/workspaces$/);
+  await page.route(/\/api\/business\/workspaces$/, (route) =>
+    route.fulfill({ json: {
+      businesses: [
+        { id: 1, name: "Breeze Services", gstin: "33AABCT3518Q1ZF" },
+        { id: 2, name: "Caltech", gstin: "33AABCT3518Q1ZG" },
+      ],
+      ca_workspace: { available: false },
+    } }),
+  );
+  await page.route(/\/api\/business\/2\/bootstrap$/, (route) =>
+    route.fulfill({ json: {
+      ...bootstrap,
+      business: { ...bootstrap.business, id: 2, name: "Caltech" },
+      invoices: [{ ...invoice, id: 21, number: "CAL-21" }],
+    } }),
+  );
+
+  await page.goto("/app/business");
+  await page.getByRole("link", { name: /Caltech/ }).click();
+  await expect(page).toHaveURL(/\/app\/business\/2\/invoices$/);
+  await expect(page.getByText("CAL-21")).toBeVisible();
+  await page.getByRole("combobox", { name: "Business" }).selectOption("1");
+  await expect(page).toHaveURL(/\/app\/business\/1\/invoices$/);
+  await expect(page.getByText("CAL-21")).toHaveCount(0);
+});
 async function chooseState(page: Page, trigger: string, label = "State", stateName = "Tamil Nadu") {
   await page.locator(trigger).click();
   await page.getByRole("combobox", { name: `Search ${label.toLowerCase()}` }).fill(stateName);
@@ -163,11 +195,11 @@ test("invoice reuses customer bill-to and saves an inline ship-to address", asyn
   let customerAddresses = [primary, alternateBilling];
   let submittedInvoice: Record<string, unknown> | undefined;
   await setup(page);
-  await page.unroute(/\/api\/business$/);
-  await page.route(/\/api\/business$/, (route) =>
+  await page.unroute(/\/api\/business\/1\/bootstrap$/);
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, customer_addresses: customerAddresses } }),
   );
-  await page.route(/\/api\/business\/customers\/4\/addresses$/, async (route) => {
+  await page.route(/\/api\/business\/1\/customers\/4\/addresses$/, async (route) => {
     const body = route.request().postDataJSON().address;
     expect(body).toMatchObject({
       label: "Apollo Hospital, Mysore",
@@ -186,7 +218,7 @@ test("invoice reuses customer bill-to and saves an inline ship-to address", asyn
     customerAddresses = [...customerAddresses, savedAddress];
     await route.fulfill({ json: { address: savedAddress } });
   });
-  await page.route(/\/api\/business\/invoices$/, async (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, async (route) => {
     submittedInvoice = route.request().postDataJSON().invoice;
     await route.fulfill({
       json: {
@@ -199,7 +231,7 @@ test("invoice reuses customer bill-to and saves an inline ship-to address", asyn
     });
   });
 
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await chooseCustomer(page, "Harbour Labs");
   await expect(page.getByRole("button", { name: "Select shipping address" })).toContainText(
     "Choose saved address",
@@ -236,7 +268,7 @@ test("business dates allow typing, normalizing, Tab navigation and calendar sele
   page,
 }, testInfo) => {
   await setup(page);
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await page.locator("#invoice-date").fill("24/9/26");
   await page.locator("#invoice-date").press("Tab");
   await expect(page.locator("#invoice-date")).toHaveValue("24/09/2026");
@@ -287,11 +319,11 @@ test("business dates allow typing, normalizing, Tab navigation and calendar sele
 test("required place of supply stays required with searchable state picker", async ({ page }) => {
   await setup(page);
   let writes = 0;
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, (route) => {
     writes++;
     return route.fulfill({ json: { invoice } });
   });
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await chooseCustomer(page, "Harbour Labs");
   await page.locator("#line-0-description").fill("Consulting");
   await page.locator("#line-0-sac").fill("998313");
@@ -309,24 +341,24 @@ test("draft save and direct issue both work; PDF failures stay visible", async (
   await setup(page);
   let saved = { ...invoice };
   let issues = 0;
-  await page.route(/\/api\/business\/invoices$/, async (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, async (route) => {
     expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
     expect(String(route.request().postDataJSON().invoice.customer_id)).toBe("4");
     await route.fulfill({ json: { invoice: saved } });
   });
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice: saved } }),
   );
-  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/finalize$/, (route) => {
     issues++;
     expect(route.request().postDataJSON().id).toBe(9);
     saved = { ...saved, status: "issued", number: "INV/26-27/0001" };
     return route.fulfill({ json: { invoice: saved } });
   });
-  await page.route(/\/api\/business\/invoices\/9\/pdf$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9\/pdf$/, (route) =>
     route.fulfill({ status: 503, json: { error: "PDF temporarily unavailable." } }),
   );
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
   await chooseCustomer(page, "Harbour Labs");
   await chooseState(page, "#invoice-pos", "Place of supply");
@@ -334,7 +366,7 @@ test("draft save and direct issue both work; PDF failures stay visible", async (
   await page.locator("#line-0-sac").fill("998313");
   await page.locator("#line-0-price").fill("1000");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page).toHaveURL(/\/business\/invoices\/9$/);
+  await expect(page).toHaveURL(/\/business\/1\/invoices\/9$/);
   await expect(page.getByText("₹1,180.00", { exact: true })).toBeVisible();
   expect(issues).toBe(0);
   await page.screenshot({
@@ -360,63 +392,63 @@ test("draft save and direct issue both work; PDF failures stay visible", async (
 test("new invoice issues in one action without creating a separate draft", async ({ page }) => {
   await setup(page);
   let draftWrites = 0;
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, (route) => {
     draftWrites++;
     return route.fulfill({ status: 500, json: { error: "Unexpected draft write" } });
   });
-  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/finalize$/, (route) => {
     const body = route.request().postDataJSON();
     expect(body.id).toBeUndefined();
     expect(body.invoice.lines[0].description).toBe("Consulting");
     return route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "129/2026-27" } } });
   });
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "129/2026-27" } } }),
   );
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await chooseCustomer(page, "Harbour Labs");
   await chooseState(page, "#invoice-pos", "Place of supply");
   await page.locator("#line-0-description").fill("Consulting");
   await page.locator("#line-0-sac").fill("998312");
   await page.locator("#line-0-price").fill("1000");
   await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
-  await expect(page).toHaveURL(/\/business\/invoices\/9$/);
+  await expect(page).toHaveURL(/\/business\/1\/invoices\/9$/);
   await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
   expect(draftWrites).toBe(0);
 });
 
 test("server validation retains draft without false issued state", async ({ page }) => {
   await setup(page);
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice } }),
   );
-  await page.route(/\/api\/business\/invoices\/finalize$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/finalize$/, (route) =>
     route.fulfill({ status: 422, json: { error: "Complete business details before issuing." } }),
   );
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
   await expect(page.getByRole("alert").first()).toContainText("Complete business details");
   await expect(page.getByRole("button", { name: "Download PDF" })).toHaveCount(0);
   await expect(page.locator("#line-0-description")).toHaveValue("Consulting");
 });
 test("forbidden workspace exposes no customer or invoice controls", async ({ page }) => {
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ status: 403, json: { error: "You do not have access to this business." } }),
   );
-  await page.goto("/app/business/invoices");
+  await page.goto("/app/business/1/invoices");
   await expect(page.getByRole("alert")).toContainText("do not have access");
   await expect(page.getByRole("link", { name: "New invoice" })).toHaveCount(0);
 });
 test("unsaved changes are included when issuing", async ({ page }) => {
   await setup(page);
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice } }),
   );
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
   await page.locator("#line-0-description").fill("Revised services");
   await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeEnabled();
-  await page.route(/\/api\/business\/invoices\/finalize$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/finalize$/, (route) => {
     expect(route.request().postDataJSON().invoice.lines[0].description).toBe("Revised services");
     return route.fulfill({ json: { invoice: { ...invoice, status: "issued", number: "INV/2627/0001" } } });
   });
@@ -425,21 +457,21 @@ test("unsaved changes are included when issuing", async ({ page }) => {
 });
 test("customer saves scoped and business profile confirms save", async ({ page }) => {
   await setup(page);
-  await page.route(/\/api\/business\/customers$/, async (route) => {
+  await page.route(/\/api\/business\/1\/customers$/, async (route) => {
     const body = route.request().postDataJSON();
     expect(body.customer.name).toBe("New customer");
     expect(body.customer.client_id).toBeUndefined();
     expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
     await route.fulfill({ json: { customer: { id: 5, ...body.customer } } });
   });
-  await page.goto("/app/business/customers");
+  await page.goto("/app/business/1/customers");
   await page.getByRole("button", { name: "Add customer", exact: true }).click();
   await page.getByLabel("Customer name").fill("New customer");
   await page.locator("#business-customer-form").getByLabel("Billing address").fill("Chennai");
   await chooseState(page, "#customer-state");
   await page.getByRole("button", { name: "Save customer" }).click();
   await expect(page.locator("#business-customer-form")).toHaveCount(0);
-  await page.route(/\/api\/business\/profile$/, (route) => {
+  await page.route(/\/api\/business\/1\/profile$/, (route) => {
     expect(route.request().postDataJSON().profile.address).toBe("New address");
     return route.fulfill({ json: { profile: bootstrap.profile } });
   });
@@ -453,13 +485,13 @@ test("business details save contact info, numbering and a logo", async ({ page }
   await setup(page);
   const logoBytes = readFileSync(new URL("../../priv/static/images/og-image.png", import.meta.url));
   let state = bootstrap;
-  await page.route(/\/api\/business$/, (route) => route.fulfill({ json: state }));
-  await page.route(/\/api\/business\/profile$/, (route) => {
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) => route.fulfill({ json: state }));
+  await page.route(/\/api\/business\/1\/profile$/, (route) => {
     const update = route.request().postDataJSON().profile;
     state = { ...state, profile: { ...state.profile!, ...update } };
     return route.fulfill({ json: { profile: state.profile } });
   });
-  await page.route(/\/api\/business\/quotation-numbering$/, (route) => {
+  await page.route(/\/api\/business\/1\/quotation-numbering$/, (route) => {
     const update = route.request().postDataJSON().numbering;
     state = {
       ...state,
@@ -467,7 +499,7 @@ test("business details save contact info, numbering and a logo", async ({ page }
     };
     return route.fulfill({ json: { quotation_numbering: state.quotation_numbering } });
   });
-  await page.route(/\/api\/business\/invoice-numbering$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoice-numbering$/, (route) => {
     const update = route.request().postDataJSON().numbering;
     state = {
       ...state,
@@ -475,13 +507,13 @@ test("business details save contact info, numbering and a logo", async ({ page }
     };
     return route.fulfill({ json: { invoice_numbering: state.invoice_numbering } });
   });
-  await page.route(/\/api\/business\/profile\/assets\/logo(?:\?.*)?$/, (route) => {
+  await page.route(/\/api\/business\/1\/profile\/assets\/logo(?:\?.*)?$/, (route) => {
     if (route.request().method() === "GET")
       return route.fulfill({ status: 200, contentType: "image/png", body: logoBytes });
     state = { ...state, profile: { ...state.profile!, has_logo: true } };
     return route.fulfill({ json: { profile: state.profile } });
   });
-  await page.goto("/app/business/settings");
+  await page.goto("/app/business/1/settings");
   await page.locator("#business-phone").fill("9962550448");
   await page.locator("#business-email").fill("quotes@example.com");
   await page.getByRole("button", { name: "Save business details" }).click();
@@ -513,7 +545,7 @@ test("credit note carries original customer and services with explicit save and 
   page,
 }) => {
   await setup(page);
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({
       json: {
         invoice: {
@@ -532,7 +564,7 @@ test("credit note carries original customer and services with explicit save and 
       },
     }),
   );
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await page.getByRole("link", { name: "Create credit note" }).click();
   await expect(page.getByRole("heading", { name: "Credit note", exact: true })).toBeVisible();
   await expect(page.getByRole("article", { name: "Editable invoice" })).toContainText(
@@ -545,15 +577,15 @@ test("credit note carries original customer and services with explicit save and 
 test("saved edits survive reopen and issued party names use frozen snapshot", async ({ page }) => {
   await setup(page);
   let current = { ...invoice };
-  await page.route(/\/api\/business\/invoices\/9$/, async (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/9$/, async (route) => {
     if (route.request().method() === "PATCH")
       current = { ...current, ...route.request().postDataJSON().invoice };
     await route.fulfill({ json: { invoice: current } });
   });
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, invoices: [current] } }),
   );
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await page.locator("#line-0-description").fill("Saved revision");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Draft saved." })).toBeVisible();
@@ -565,7 +597,7 @@ test("saved edits survive reopen and issued party names use frozen snapshot", as
     .nth(1)
     .click();
   await expect(page.locator("#line-0-description")).toHaveValue("Saved revision");
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({
       json: {
         invoice: {
@@ -600,11 +632,11 @@ test("saved edits survive reopen and issued party names use frozen snapshot", as
 test("focus and reconnect preserve unsaved edits", async ({ page }) => {
   await setup(page);
   let reads = 0;
-  await page.route(/\/api\/business\/invoices\/9$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) => {
     reads++;
     return route.fulfill({ json: { invoice } });
   });
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await page.locator("#line-0-description").fill("Unsaved local edit");
   const before = reads;
   await page.evaluate(() => {
@@ -624,15 +656,15 @@ test("empty document is editable immediately and totals come from Phoenix withou
   let previews = 0,
     writes = 0,
     calculations = 0;
-  await page.route(/\/api\/business\/invoices\/preview$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/preview$/, (route) => {
     previews++;
     return route.fulfill({ contentType: "application/pdf", body: previewPdf() });
   });
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, (route) => {
     writes++;
     return route.fulfill({ json: { invoice } });
   });
-  await page.route(/\/api\/business\/invoices\/calculate$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/calculate$/, (route) => {
     calculations++;
     expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
     return route.fulfill({
@@ -642,7 +674,7 @@ test("empty document is editable immediately and totals come from Phoenix withou
       },
     });
   });
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await expect(page.getByRole("article", { name: "Editable invoice" })).toBeVisible();
   await expect(page.locator("#line-0-description")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -669,22 +701,22 @@ test("empty document is editable immediately and totals come from Phoenix withou
 test("new customer sheet keeps draft lines and selects saved customer", async ({ page }) => {
   await setup(page);
   const customers = [...bootstrap.customers];
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, customers } }),
   );
   let invoiceWrites = 0;
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, (route) => {
     invoiceWrites++;
     return route.fulfill({ json: { invoice } });
   });
-  await page.route(/\/api\/business\/customers$/, (route) => {
+  await page.route(/\/api\/business\/1\/customers$/, (route) => {
     const body = route.request().postDataJSON();
     expect(body.customer.client_id).toBeUndefined();
     const customer = { id: 5, ...body.customer };
     customers.push(customer);
     return route.fulfill({ json: { customer } });
   });
-  await page.goto("/app/business/invoices/new");
+  await page.goto("/app/business/1/invoices/new");
   await page.locator("#line-0-description").fill("Keep these services");
   await page.locator("#line-0-price").fill("2300");
   await page.locator("#business-customer").click();
@@ -721,10 +753,10 @@ test("PDF preview is explicit, uses unsaved input, reports errors and releases U
       revoke(url);
     };
   });
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice } }),
   );
-  await page.route(/\/api\/business\/invoices\/preview$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/preview$/, (route) => {
     previews++;
     const input = route.request().postDataJSON().invoice;
     return input.notes === "Reject preview"
@@ -734,7 +766,7 @@ test("PDF preview is explicit, uses unsaved input, reports errors and releases U
           body: previewPdf(input.lines[0].description),
         });
   });
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await page.locator("#line-0-description").fill("Unsaved PDF services");
   expect(previews).toBe(0);
   await page.getByRole("button", { name: "Preview PDF", exact: true }).click();
@@ -758,12 +790,12 @@ test("saved decimal GST rate shows its supported rate without a silent fallback"
   page,
 }) => {
   await setup(page);
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({
       json: { invoice: { ...invoice, lines: [{ ...invoice.lines[0], gst_rate: "18.00" }] } },
     }),
   );
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await expect(page.locator("#line-0-gst")).toHaveValue("18");
   await expect(page.locator("#line-0-gst option:checked")).toHaveText("18%");
 });
@@ -785,17 +817,17 @@ test("new and saved credit notes keep the original billed identity after custome
       },
     },
   };
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({ json: { invoice: original } }),
   );
-  await page.route(/\/api\/business\/invoices\/10$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/10$/, (route) =>
     route.fulfill({
       json: {
         invoice: { ...invoice, id: 10, document_type: "credit_note", original_invoice_id: 9 },
       },
     }),
   );
-  for (const path of ["/app/business/invoices/new?credit_for=9", "/app/business/invoices/10"]) {
+  for (const path of ["/app/business/1/invoices/new?credit_for=9", "/app/business/1/invoices/10"]) {
     await page.goto(path);
     const document = page.getByRole("article", { name: "Editable invoice" });
     await expect(document).toContainText("Original billed customer");
@@ -817,7 +849,7 @@ const quotation: BusinessInvoice = {
 test("quotation list separates quotations from issued invoices", async ({ page }) => {
   await setup(page);
   const readyQuote = { ...quotation, status: "issued" as const, number: "QUO/2627/0001" };
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({
       json: {
         ...bootstrap,
@@ -825,7 +857,7 @@ test("quotation list separates quotations from issued invoices", async ({ page }
       },
     }),
   );
-  await page.goto("/app/business/quotations");
+  await page.goto("/app/business/1/quotations");
   await expect(page.getByRole("heading", { name: "Quotations", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "QUO/2627/0001", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "INV/2627/0001", exact: true })).toHaveCount(0);
@@ -838,7 +870,7 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   page,
 }, testInfo) => {
   await setup(page);
-  await page.route(/\/api\/business\/invoices\/calculate$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/calculate$/, (route) => {
     const line = route.request().postDataJSON().invoice.lines[0];
     const taxable = Math.round(Number(line.quantity) * Number(line.unit_price) * 100);
     const halfTax = Math.round((taxable * Number(line.gst_rate)) / 200);
@@ -859,14 +891,14 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   });
   const saved = { ...quotation, id: 21 };
   let submitted: Record<string, unknown> = {};
-  await page.route(/\/api\/business\/invoices$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices$/, (route) => {
     submitted = route.request().postDataJSON().invoice;
     return route.fulfill({ json: { invoice: { ...saved, ...submitted } } });
   });
-  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) =>
     route.fulfill({ json: { invoice: { ...saved, ...submitted } } }),
   );
-  await page.goto("/app/business/quotations/new");
+  await page.goto("/app/business/1/quotations/new");
   await chooseCustomer(page, "Harbour Labs");
   const billTo = page.getByText("Bill to").locator("..");
   await expect(billTo).toContainText("Tamil Nadu · 33");
@@ -908,25 +940,25 @@ test("finalized quotation creates a linked editable revision", async ({ page }) 
     number: null,
     revised_from_id: original.id,
   };
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, invoices: [original, revision] } }),
   );
-  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) =>
     route.fulfill({ json: { invoice: original } }),
   );
-  await page.route(/\/api\/business\/invoices\/23$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/23$/, (route) =>
     route.fulfill({ json: { invoice: revision } }),
   );
-  await page.route(/\/api\/business\/invoices\/21\/revise$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21\/revise$/, (route) =>
     route.fulfill({ json: { invoice: revision } }),
   );
-  await page.goto("/app/business/quotations/21");
+  await page.goto("/app/business/1/quotations/21");
   await page.getByRole("button", { name: "Revise quotation" }).click();
   await expect(page).toHaveURL(/\/quotations\/23$/);
   await expect(page.locator("#invoice-subject")).toHaveValue("Compressor and Pipe Supply");
   await expect(page.getByRole("link", { name: "79/2026-27" })).toHaveAttribute(
     "href",
-    "/app/business/quotations/21",
+    "/app/business/1/quotations/21",
   );
   await expect(page.getByRole("button", { name: "Finalize quotation" })).toBeEnabled();
 });
@@ -947,10 +979,10 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     status: "draft" as const,
     number: null,
   };
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, invoices: [current] } }),
   );
-  await page.route(/\/api\/business\/quotations\/finalize$/, (route) => {
+  await page.route(/\/api\/business\/1\/quotations\/finalize$/, (route) => {
     finalizations++;
     savedInput = route.request().postDataJSON().invoice;
     expect(route.request().postDataJSON().id).toBeUndefined();
@@ -959,22 +991,22 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     current = { ...current, ...savedInput, status: "issued", number: "QUO/2627/0001" };
     return route.fulfill({ json: { invoice: current } });
   });
-  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) =>
     route.fulfill({ json: { invoice: current } }),
   );
-  await page.route(/\/api\/business\/invoices\/22$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/22$/, (route) =>
     route.fulfill({
       json: {
         invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null },
       },
     }),
   );
-  await page.route(/\/api\/business\/invoices\/21\/quotation-status$/, (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/21\/quotation-status$/, (route) => {
     expect(route.request().postDataJSON().status).toBe("accepted");
     current = { ...current, status: "accepted" };
     return route.fulfill({ json: { invoice: current } });
   });
-  await page.route(/\/api\/business\/invoices\/21\/convert$/, async (route) => {
+  await page.route(/\/api\/business\/1\/invoices\/21\/convert$/, async (route) => {
     conversions++;
     expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
     current = { ...current, status: "converted", converted_invoice_id: 22 };
@@ -985,7 +1017,7 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
       },
     });
   });
-  await page.goto("/app/business/quotations/new");
+  await page.goto("/app/business/1/quotations/new");
   await expect(page.getByRole("heading", { name: "Quotation", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
   expect(finalizations).toBe(0);
@@ -1036,13 +1068,13 @@ test("quotation transition errors stay visible and conversion does not claim suc
 }) => {
   await setup(page);
   const accepted = { ...quotation, status: "accepted", number: "QUO/2627/0001" };
-  await page.route(/\/api\/business\/invoices\/21$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) =>
     route.fulfill({ json: { invoice: accepted } }),
   );
-  await page.route(/\/api\/business\/invoices\/21\/convert$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/21\/convert$/, (route) =>
     route.fulfill({ status: 409, json: { error: "Quotation changed. Reload before converting." } }),
   );
-  await page.goto("/app/business/quotations/21");
+  await page.goto("/app/business/1/quotations/21");
   await page.getByRole("button", { name: "Convert to invoice", exact: true }).click();
   await expect(page.getByRole("alert").first()).toContainText("Quotation changed");
   await expect(page).toHaveURL(/\/quotations\/21$/);
@@ -1058,10 +1090,10 @@ const savedService = {
 };
 async function mockServices(page: Page) {
   let services = [{ ...savedService }];
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({ json: { ...bootstrap, services } }),
   );
-  await page.route(/\/api\/business\/services(?:\/\d+)?$/, async (route) => {
+  await page.route(/\/api\/business\/1\/services(?:\/\d+)?$/, async (route) => {
     const request = route.request();
     const id = Number(new URL(request.url()).pathname.split("/").at(-1));
     if (request.method() === "GET") return route.fulfill({ json: { services } });
@@ -1086,7 +1118,7 @@ test("saved services catalogue creates, edits and removes reusable defaults", as
 }, testInfo) => {
   await setup(page);
   await mockServices(page);
-  await page.goto("/app/business/services");
+  await page.goto("/app/business/1/services");
   await expect(page.getByRole("heading", { name: "Items", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Add item", exact: true }).click();
   let dialog = page.getByRole("dialog");
@@ -1127,11 +1159,11 @@ for (const document of ["invoices", "quotations"])
     await setup(page);
     await mockServices(page);
     let writes = 0;
-    await page.route(/\/api\/business\/services(?:\/\d+)?$/, (route) => {
+    await page.route(/\/api\/business\/1\/services(?:\/\d+)?$/, (route) => {
       if (route.request().method() !== "GET") writes++;
       return route.fulfill({ json: { services: [savedService] } });
     });
-    await page.goto(`/app/business/${document}/new`);
+    await page.goto(`/app/business/1/${document}/new`);
     await page.locator("#line-0-quantity").fill("3.5");
     await page.getByRole("button", { name: "Select saved item 1", exact: true }).click();
     await page.getByRole("combobox", { name: "Search items" }).fill("consulting");
@@ -1151,19 +1183,19 @@ for (const document of ["invoices", "quotations"])
 test("saved invoice lines stay unchanged after catalogue edits", async ({ page }) => {
   await setup(page);
   await mockServices(page);
-  await page.route(/\/api\/business\/invoices\/9$/, (route) =>
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
     route.fulfill({
       json: { invoice: { ...invoice, lines: [{ ...savedService, quantity: "2" }] } },
     }),
   );
-  await page.goto("/app/business/services");
+  await page.goto("/app/business/1/services");
   await page.getByRole("button", { name: "Edit Monthly consulting", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Description", { exact: true }).fill("Repriced consulting");
   await dialog.getByLabel("Rate", { exact: false }).fill("9999");
   await dialog.getByRole("button", { name: "Save item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.goto("/app/business/invoices/9");
+  await page.goto("/app/business/1/invoices/9");
   await expect(page.locator("#line-0-description")).toHaveValue("Monthly consulting");
   await expect(page.locator("#line-0-price")).toHaveValue("2500.50");
   await expect(page.locator("#line-0-quantity")).toHaveValue("2");
@@ -1171,7 +1203,7 @@ test("saved invoice lines stay unchanged after catalogue edits", async ({ page }
 
 test("nullable profile facts become blank editable fields", async ({ page }, testInfo) => {
   await setup(page);
-  await page.route(/\/api\/business$/, (route) =>
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
     route.fulfill({
       json: {
         ...bootstrap,
@@ -1180,11 +1212,11 @@ test("nullable profile facts become blank editable fields", async ({ page }, tes
     }),
   );
   let submitted: unknown;
-  await page.route(/\/api\/business\/profile$/, async (route) => {
+  await page.route(/\/api\/business\/1\/profile$/, async (route) => {
     submitted = route.request().postDataJSON();
     await route.fulfill({ json: { profile: bootstrap.profile } });
   });
-  await page.goto("/app/business/settings");
+  await page.goto("/app/business/1/settings");
   await expect(page.locator("#business-name")).toHaveValue("Breeze Services");
   await expect(page.locator("#business-address")).toHaveValue("");
   await page.locator("#business-address").fill("Chennai");

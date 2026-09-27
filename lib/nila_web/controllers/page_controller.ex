@@ -12,6 +12,10 @@ defmodule NilaWeb.PageController do
     NilaWeb.PublicPage.render(conn, "home")
   end
 
+  def business(conn, _params) do
+    NilaWeb.PublicPage.render(conn, "business")
+  end
+
   def signup_redirect(conn, _params) do
     redirect(conn, to: ~p"/users/business_sign_up")
   end

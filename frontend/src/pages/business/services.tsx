@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import {
@@ -36,6 +37,7 @@ const blank: Omit<BusinessService, "id"> = {
 };
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
 export function ServicesPage({ services }: { services: BusinessService[] }) {
+  const { businessId } = useParams({ strict: false }) as { businessId: string };
   const cache = useQueryClient();
   const cancelRemove = useRef<HTMLButtonElement>(null);
   const removeTrigger = useRef<HTMLButtonElement>(null);
@@ -68,11 +70,11 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
     setBusy(true);
     setError(null);
     try {
-      await businessRequest(editing ? "updateBusinessService" : "createBusinessService", {
+      await businessRequest(editing ? "updateBusinessService" : "createBusinessService", { businessId,
         id: editing ?? undefined,
         body: { service: form },
       });
-      await cache.invalidateQueries({ queryKey: ["business"] });
+      await cache.invalidateQueries({ queryKey: ["business", businessId] });
       setOpen(false);
     } catch (error) {
       setError(error as Error);
@@ -85,8 +87,8 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
     setBusy(true);
     setError(null);
     try {
-      await businessRequest("deleteBusinessService", { id: removing.id });
-      await cache.invalidateQueries({ queryKey: ["business"] });
+      await businessRequest("deleteBusinessService", { businessId, id: removing.id });
+      await cache.invalidateQueries({ queryKey: ["business", businessId] });
       setRemoving(null);
     } catch (error) {
       setError(error as Error);

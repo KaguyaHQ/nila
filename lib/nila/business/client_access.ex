@@ -12,7 +12,7 @@ defmodule Nila.Business.ClientAccess do
     access
     |> change()
     |> validate_required([:user_id, :client_id])
-    |> unique_constraint(:user_id)
+    |> unique_constraint([:user_id, :client_id])
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:client_id)
   end

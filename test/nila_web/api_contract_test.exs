@@ -20,7 +20,9 @@ defmodule NilaWeb.ApiContractTest do
     end
 
     ids =
-      for {path, operations} <- spec["paths"], {verb, operation} <- operations do
+      for {path, operations} <- spec["paths"],
+          {verb, operation} <- operations,
+          verb in ~w(get post put patch delete head options trace) do
         assert Enum.any?(routes, &(normalized.(&1.path) == path and to_string(&1.verb) == verb)),
                "OpenAPI documents a route that does not exist: #{verb} #{path}"
 

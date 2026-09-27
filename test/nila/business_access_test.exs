@@ -33,7 +33,7 @@ defmodule Nila.Business.AccessTest do
     assert repeated.user.hashed_password == user.hashed_password
   end
 
-  test "operators, cross-firm clients, and existing firm users are refused", %{
+  test "operators and cross-firm clients are refused; firm users keep firm access", %{
     scope: scope,
     client: client
   } do
@@ -43,20 +43,79 @@ defmodule Nila.Business.AccessTest do
     %{user: other} = user_with_org_fixture()
     assert {:error, :not_found} = Access.invite(Scope.for_user(other), client.id, attrs)
 
-    assert {:error, :firm_user} =
+    assert {:ok, result} =
              Access.invite(scope, client.id, %{name: "Owner", email: other.email})
 
-    refute Repo.exists?(from access in ClientAccess, where: access.client_id == ^client.id)
+    assert result.user.id == other.id
+    assert result.already_active
+    assert is_nil(result.token)
+    assert Access.client_for_user(other.id, client.id).id == client.id
+    assert Scope.for_user(other).current_org.id != client.org_id
+
+    refute Repo.exists?(
+             from m in Nila.Orgs.Membership,
+               where: m.user_id == ^other.id and m.org_id == ^client.org_id
+           )
   end
 
-  test "business user cannot be attached to a second client", %{scope: scope, client: client} do
+  test "business user can access several clients but no other client", %{
+    scope: scope,
+    client: client
+  } do
     attrs = %{name: "Owner", email: unique_user_email()}
     {:ok, _} = Access.invite(scope, client.id, attrs)
 
     {:ok, second} =
       Clients.create_client(%{org_id: client.org_id, name: "Second business", type: "company"})
 
-    assert {:error, :other_business} = Access.invite(scope, second.id, attrs)
+    assert {:ok, _} = Access.invite(scope, second.id, attrs)
+    user = Accounts.get_user_by_email(attrs.email)
+    assert Enum.map(Access.list_clients_for_user(user.id), & &1.id) == [second.id, client.id]
+    assert Access.client_for_user(user.id, Integer.to_string(second.id)).id == second.id
+    assert Access.client_for_user(user.id, "nope") == nil
+    assert Access.client_for_user(user.id, "-1") == nil
+    assert Access.client_for_user(user.id, "999999999999999999999999999") == nil
+    assert Access.client_for_user(user.id, nil) == nil
+    assert Access.client_for_user(user.id, 0) == nil
+    assert Access.client_for_user(user.id, client.id + second.id + 100) == nil
+    assert length(Repo.all(from a in ClientAccess, where: a.user_id == ^user.id)) == 2
+  end
+
+  test "existing user can create two businesses without receiving firm membership" do
+    %{user: user, org: firm} = user_with_org_fixture()
+
+    assert {:ok, first} =
+             Access.create_business_for_user(user, %{name: "Caltech", gstin: "27AAPFU0939F1ZV"})
+
+    assert {:ok, second} =
+             Access.create_business_for_user(user, %{
+               name: "Breeze Tech",
+               gstin: "33AEWPH4158J1Z3"
+             })
+
+    assert first.user.id == user.id
+    assert second.user.id == user.id
+    assert first.org.id != second.org.id
+    assert first.client.org_id == first.org.id
+    assert second.client.org_id == second.org.id
+
+    assert Enum.map(Access.list_clients_for_user(user.id), & &1.id) ==
+             [second.client.id, first.client.id]
+
+    assert Scope.for_user(user).current_org.id == firm.id
+
+    assert Repo.aggregate(from(m in Nila.Orgs.Membership, where: m.user_id == ^user.id), :count) ==
+             1
+  end
+
+  test "invalid business creation for an existing user writes no rows" do
+    %{user: user} = user_with_org_fixture()
+
+    assert {:error, %Ecto.Changeset{}} =
+             Access.create_business_for_user(user, %{name: "Invalid business", gstin: "invalid"})
+
+    assert Access.list_clients_for_user(user.id) == []
+    refute Repo.exists?(from o in Nila.Orgs.Org, where: o.name == "Invalid business")
   end
 
   test "independent signup creates a private business and business-only scope" do

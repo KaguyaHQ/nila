@@ -5,52 +5,93 @@ defmodule Nila.Business.Access do
   alias Nila.Business.ClientAccess
   alias Nila.Clients.Client
   alias Nila.Orgs.Org
-  alias Nila.Orgs.Membership
 
   def client_for_user(user_id) do
-    Repo.one(
+    user_id |> list_clients_for_user() |> List.first()
+  end
+
+  def list_clients_for_user(user_id) when is_integer(user_id) and user_id > 0 do
+    Repo.all(
       from a in ClientAccess,
         join: c in assoc(a, :client),
         where: a.user_id == ^user_id,
+        order_by: [asc: c.name, asc: c.id],
         select: c
     )
   end
+
+  def list_clients_for_user(_), do: []
+
+  def client_for_user(user_id, client_id) when is_integer(user_id) and user_id > 0 do
+    case client_id(client_id) do
+      {:ok, id} ->
+        Repo.one(
+          from a in ClientAccess,
+            join: c in assoc(a, :client),
+            where: a.user_id == ^user_id and c.id == ^id,
+            select: c
+        )
+
+      _ ->
+        nil
+    end
+  end
+
+  def client_for_user(_, _), do: nil
 
   def register_business(user_attrs, business_attrs) do
     with {:ok, user_attrs} <- registration_fields(user_attrs),
          {:ok, business_attrs} <- business_fields(business_attrs) do
       Repo.transact(fn ->
-        # Billing and GST records need an org_id, but no firm membership is granted.
         user_changeset =
           User.registration_changeset(%User{}, user_attrs,
             confirm: false,
             validate_email: true
           )
 
-        with {:ok, user} <- Repo.insert(user_changeset),
-             {:ok, org} <-
-               %Org{}
-               |> Org.changeset(%{
-                 name: business_attrs.business_name,
-                 gstin: business_attrs.gstin
-               })
-               |> Repo.insert(),
-             {:ok, client} <-
-               %Client{}
-               |> Client.changeset(%{
-                 org_id: org.id,
-                 name: business_attrs.business_name,
-                 type: "company",
-                 gstin: business_attrs.gstin
-               })
-               |> Repo.insert(),
-             {:ok, _access} <-
-               %ClientAccess{user_id: user.id, client_id: client.id}
-               |> ClientAccess.changeset()
-               |> Repo.insert() do
-          {:ok, %{user: user, org: org, client: client}}
+        with {:ok, user} <- Repo.insert(user_changeset) do
+          insert_business(user, business_attrs)
         end
       end)
+    end
+  end
+
+  def create_business_for_user(%User{id: id}, business_attrs) when is_integer(id) do
+    with %User{active: true} = user <- Repo.get(User, id),
+         {:ok, fields} <- business_fields(business_attrs) do
+      Repo.transact(fn -> insert_business(user, fields) end)
+    else
+      %User{active: false} -> {:error, :inactive_user}
+      nil -> {:error, :not_found}
+      error -> error
+    end
+  end
+
+  def create_business_for_user(_, _), do: {:error, :not_found}
+
+  defp insert_business(user, business_attrs) do
+    # Billing and GST records need an org_id. Business access grants no firm membership.
+    with {:ok, org} <-
+           %Org{}
+           |> Org.changeset(%{
+             name: business_attrs.business_name,
+             gstin: business_attrs.gstin
+           })
+           |> Repo.insert(),
+         {:ok, client} <-
+           %Client{}
+           |> Client.changeset(%{
+             org_id: org.id,
+             name: business_attrs.business_name,
+             type: "company",
+             gstin: business_attrs.gstin
+           })
+           |> Repo.insert(),
+         {:ok, _access} <-
+           %ClientAccess{user_id: user.id, client_id: client.id}
+           |> ClientAccess.changeset()
+           |> Repo.insert() do
+      {:ok, %{user: user, org: org, client: client}}
     end
   end
 
@@ -93,7 +134,6 @@ defmodule Nila.Business.Access do
          {:ok, fields} <- invitation_fields(attrs) do
       Repo.transact(fn ->
         with {:ok, user} <- find_or_create_user(fields),
-             :ok <- business_only(user),
              {:ok, access} <- grant_access(user, client) do
           token = if is_nil(user.hashed_password), do: invitation_token(user)
 
@@ -151,24 +191,15 @@ defmodule Nila.Business.Access do
     end
   end
 
-  defp business_only(user) do
-    if Repo.exists?(from m in Membership, where: m.user_id == ^user.id),
-      do: {:error, :firm_user},
-      else: :ok
-  end
-
   defp grant_access(user, client) do
-    case Repo.get_by(ClientAccess, user_id: user.id) do
+    case Repo.get_by(ClientAccess, user_id: user.id, client_id: client.id) do
       nil ->
         %ClientAccess{user_id: user.id, client_id: client.id}
         |> ClientAccess.changeset()
         |> Repo.insert()
 
-      %ClientAccess{client_id: id} = access when id == client.id ->
+      %ClientAccess{} = access ->
         {:ok, access}
-
-      _ ->
-        {:error, :other_business}
     end
   end
 

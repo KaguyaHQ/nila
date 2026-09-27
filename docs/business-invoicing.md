@@ -13,9 +13,10 @@ item and draft invoice. See [development and demos](development-and-demos.md).
 
 The business portal serves GST-registered domestic goods and service businesses.
 Business owners can create an account at `/users/business_sign_up` with their
-business name, GSTIN, owner name, email and password. Signup gives the owner
-their own business access; they do not need a CA or firm invitation to begin.
-The business starts in its own workspace without firm membership. A CA can
+business name, GSTIN, owner name, email and password. A signed-in user can add
+another business there without creating another login. Signup gives the owner
+client-specific business access; they do not need a CA or firm invitation to begin.
+An independently created business starts in its own org without firm membership. A CA can
 also invite a business owner from the React client edit page. Connecting an
 independently created business to a CA firm is not implemented yet. The owner sets
 business details, confirms with their CA that e-invoicing does not apply, adds
@@ -49,7 +50,7 @@ address for older callers; the address rows are the selectable source.
 Source comments identify the Midday components and pinned revision adapted to
 Nila's APIs and Base UI shadcn controls.
 
-Saved items live at `/app/business/services`. Each business keeps its own
+Saved items live at `/app/business/:business_id/services`. Each business keeps its own
 description, goods/service type, HSN/SAC, unit, default price and GST rate.
 Goods require a 6 or 8 digit HSN and a supported unit (NOS, KGS, LTR, MTR,
 BOX or SET); services retain six-digit SAC starting 99 and their free-text
@@ -72,11 +73,15 @@ sales source in one transaction. A failed issue leaves a new invoice unsaved or
 an existing draft unchanged, with no number used. **Save draft** remains available
 for unfinished work.
 
-The portal is `/app/business/invoices`. Business users have a separate client
-access record and no firm membership. One business per user is supported.
-Invitation links are returned for the CA to share; Nila does not send them.
+The portal is `/app/business/:business_id/invoices`, where `business_id` is the
+authorized client ID. A user can access several businesses, including clients
+invited from different CA firms, and can also belong to a CA firm. Business
+requests check client-specific access independently of CA firm membership. The
+business selector at `/app/business` appears when the user has more than one
+business. Invitation links are returned for the CA to share; Nila does not send
+them.
 
-Quotations live at `/app/business/quotations` and use the same editor and PDF
+Quotations live at `/app/business/:business_id/quotations` and use the same editor and PDF
 template. They have an optional valid-until date and a separate number series.
 Before the first quotation in a financial year, Business details can set the
 next number and choose either Nila's `QT/2627/0001` format or a simple

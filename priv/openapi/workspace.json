@@ -3010,9 +3010,9 @@
         }
       }
     },
-    "/api/business": {
+    "/api/business/workspaces": {
       "get": {
-        "operationId": "getBusiness",
+        "operationId": "listBusinessWorkspaces",
         "parameters": [],
         "responses": {
           "200": {
@@ -3020,7 +3020,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BusinessBootstrap"
+                  "$ref": "#/components/schemas/BusinessWorkspaceList"
                 }
               }
             }
@@ -3098,7 +3098,8 @@
         }
       }
     },
-    "/api/business/bootstrap": {
+    "/api/business/{business_id}/bootstrap": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "get": {
         "operationId": "getBusinessBootstrap",
         "parameters": [],
@@ -3186,7 +3187,8 @@
         }
       }
     },
-    "/api/business/profile": {
+    "/api/business/{business_id}/profile": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "updateBusinessProfile",
         "parameters": [
@@ -3294,7 +3296,8 @@
         }
       }
     },
-    "/api/business/services": {
+    "/api/business/{business_id}/services": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "get": {
         "operationId": "getBusinessServices",
         "parameters": [],
@@ -3488,7 +3491,8 @@
         }
       }
     },
-    "/api/business/services/{id}": {
+    "/api/business/{business_id}/services/{id}": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "updateBusinessService",
         "parameters": [
@@ -3710,7 +3714,8 @@
         "description": "Requires the Phoenix session and X-CSRF-Token header."
       }
     },
-    "/api/business/customers": {
+    "/api/business/{business_id}/customers": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "createBusinessCustomer",
         "parameters": [
@@ -3818,7 +3823,8 @@
         }
       }
     },
-    "/api/business/customers/{id}": {
+    "/api/business/{business_id}/customers/{id}": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "updateBusinessCustomer",
         "parameters": [
@@ -3935,7 +3941,8 @@
         }
       }
     },
-    "/api/business/customers/{customer_id}/addresses": {
+    "/api/business/{business_id}/customers/{customer_id}/addresses": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "createBusinessCustomerAddress",
         "parameters": [{"name": "customer_id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}],
@@ -3947,7 +3954,8 @@
         }
       }
     },
-    "/api/business/customers/{customer_id}/addresses/{id}": {
+    "/api/business/{business_id}/customers/{customer_id}/addresses/{id}": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "updateBusinessCustomerAddress",
         "parameters": [{"name": "customer_id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}, {"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}],
@@ -3959,7 +3967,8 @@
         }
       }
     },
-    "/api/business/invoices": {
+    "/api/business/{business_id}/invoices": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "createBusinessInvoice",
         "parameters": [
@@ -4067,7 +4076,8 @@
         }
       }
     },
-    "/api/business/invoices/{id}": {
+    "/api/business/{business_id}/invoices/{id}": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "get": {
         "operationId": "getBusinessInvoice",
         "parameters": [
@@ -4280,7 +4290,8 @@
         }
       }
     },
-    "/api/business/invoices/{id}/issue": {
+    "/api/business/{business_id}/invoices/{id}/issue": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "issueBusinessInvoice",
         "parameters": [
@@ -4387,7 +4398,8 @@
         "description": "Requires the Phoenix session and X-CSRF-Token header."
       }
     },
-    "/api/business/invoices/{id}/quotation-status": {
+    "/api/business/{business_id}/invoices/{id}/quotation-status": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "setQuotationStatus",
         "parameters": [
@@ -4504,7 +4516,8 @@
         }
       }
     },
-    "/api/business/invoices/{id}/convert": {
+    "/api/business/{business_id}/invoices/{id}/convert": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "convertQuotation",
         "parameters": [
@@ -4611,7 +4624,8 @@
         "description": "Requires the Phoenix session and X-CSRF-Token header."
       }
     },
-    "/api/business/invoices/calculate": {
+    "/api/business/{business_id}/invoices/calculate": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "calculateBusinessInvoice",
         "parameters": [
@@ -4719,7 +4733,8 @@
         }
       }
     },
-    "/api/business/invoices/preview": {
+    "/api/business/{business_id}/invoices/preview": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "previewBusinessInvoice",
         "parameters": [
@@ -4828,7 +4843,8 @@
         }
       }
     },
-    "/api/business/invoices/{id}/pdf": {
+    "/api/business/{business_id}/invoices/{id}/pdf": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "get": {
         "operationId": "downloadBusinessInvoice",
         "parameters": [
@@ -8233,7 +8249,8 @@
         }
       }
     },
-    "/api/business/invoice-numbering": {
+    "/api/business/{business_id}/invoice-numbering": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "configureBusinessInvoiceNumbering",
         "parameters": [
@@ -8341,7 +8358,8 @@
         }
       }
     },
-    "/api/business/quotation-numbering": {
+    "/api/business/{business_id}/quotation-numbering": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "patch": {
         "operationId": "configureBusinessQuotationNumbering",
         "parameters": [
@@ -8449,7 +8467,8 @@
         }
       }
     },
-    "/api/business/invoices/finalize": {
+    "/api/business/{business_id}/invoices/finalize": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "finalizeBusinessInvoice",
         "parameters": [
@@ -8557,7 +8576,8 @@
         }
       }
     },
-    "/api/business/quotations/finalize": {
+    "/api/business/{business_id}/quotations/finalize": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "finalizeBusinessQuotation",
         "parameters": [
@@ -8665,7 +8685,8 @@
         }
       }
     },
-    "/api/business/invoices/{id}/revise": {
+    "/api/business/{business_id}/invoices/{id}/revise": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "reviseBusinessQuotation",
         "parameters": [
@@ -8772,7 +8793,8 @@
         "description": "Requires the Phoenix session and X-CSRF-Token header."
       }
     },
-    "/api/business/profile/assets/{kind}": {
+    "/api/business/{business_id}/profile/assets/{kind}": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
       "post": {
         "operationId": "uploadBusinessBrandAsset",
         "parameters": [
@@ -12957,6 +12979,27 @@
           "quotation_number_style",
           "invoice_number_style"
         ],
+        "additionalProperties": false
+      },
+      "BusinessWorkspaceList": {
+        "type": "object",
+        "properties": {
+          "businesses": {
+            "type": "array",
+            "items": {"type": "object", "properties": {
+              "id": {"type": "integer"},
+              "name": {"type": "string"},
+              "gstin": {"type": ["string", "null"]}
+            }, "required": ["id", "name", "gstin"], "additionalProperties": false}
+          },
+          "ca_workspace": {
+            "type": "object",
+            "properties": {"available": {"type": "boolean"}},
+            "required": ["available"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["businesses", "ca_workspace"],
         "additionalProperties": false
       },
       "BusinessBootstrap": {

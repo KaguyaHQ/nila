@@ -14,7 +14,13 @@ defmodule NilaWeb.AuthPageController do
 
   def forgot(conn, _), do: page(conn, "forgot")
 
-  def business_signup(conn, _), do: page(conn, "business_signup")
+  def business_signup(conn, _) do
+    case conn.assigns[:current_scope] do
+      %{user: %{confirmed_at: nil}} -> redirect(conn, to: ~p"/users/confirm")
+      %{user: %{email: email}} -> page(conn, "business_signup", %{signedInEmail: email})
+      nil -> page(conn, "business_signup")
+    end
+  end
 
   def reset(conn, %{"token" => token}) do
     page(conn, "reset", %{valid: not is_nil(Accounts.get_user_by_reset_password_token(token))})
@@ -32,7 +38,8 @@ defmodule NilaWeb.AuthPageController do
 
   def confirmation(conn, _) do
     user = conn.assigns.current_scope.user
-    continue_to = if conn.assigns.current_scope.business_client, do: "/app/business", else: "/app"
+    scope = conn.assigns.current_scope
+    continue_to = if scope.membership, do: "/app", else: "/app/business"
 
     page(conn, "confirmation", %{
       email: user.email,

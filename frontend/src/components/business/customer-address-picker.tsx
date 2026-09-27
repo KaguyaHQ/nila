@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { Check, ChevronDown, Plus, Pencil } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export function CustomerAddressPicker({
   onSelect: (address: BusinessCustomerAddress | null) => void;
   disabled?: boolean;
 }) {
+  const { businessId } = useParams({ strict: false }) as { businessId: string };
   const cache = useQueryClient();
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -68,19 +70,19 @@ export function CustomerAddressPicker({
       address: AddressDraft;
     }) => {
       const result = input.editingId
-        ? await businessRequest("updateBusinessCustomerAddress", {
+        ? await businessRequest("updateBusinessCustomerAddress", { businessId,
             customer_id: input.customerId,
             id: input.editingId,
             body: { address: input.address },
           })
-        : await businessRequest("createBusinessCustomerAddress", {
+        : await businessRequest("createBusinessCustomerAddress", { businessId,
             customer_id: input.customerId,
             body: { address: input.address },
           });
       return result.address;
     },
     onSuccess: (address) => {
-      cache.setQueryData<BusinessBootstrap>(["business"], (current) => {
+      cache.setQueryData<BusinessBootstrap>(["business", businessId], (current) => {
         if (!current) return current;
         const currentAddresses = current.customer_addresses ?? [];
         return {
@@ -93,7 +95,7 @@ export function CustomerAddressPicker({
       });
       onSelect(address);
       setFormOpen(false);
-      void cache.invalidateQueries({ queryKey: ["business"] });
+      void cache.invalidateQueries({ queryKey: ["business", businessId] });
     },
   });
   const busy = addressSave.isPending;

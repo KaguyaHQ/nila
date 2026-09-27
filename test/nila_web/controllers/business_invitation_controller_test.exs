@@ -22,7 +22,9 @@ defmodule NilaWeb.BusinessInvitationControllerTest do
       |> log_in_user(user)
       |> post("/api/workspace/clients/#{client.id}/business-invitation", %{invitation: attrs})
 
-    assert %{"invitation_url" => url, "already_active" => false} = contract_response(response, 200)
+    assert %{"invitation_url" => url, "already_active" => false} =
+             contract_response(response, 200)
+
     assert url =~ "/users/invite/"
     {:ok, result} = Access.invite(Scope.for_user(user), client.id, attrs)
 
@@ -31,14 +33,16 @@ defmodule NilaWeb.BusinessInvitationControllerTest do
 
     business_conn = build_conn() |> log_in_user(business_user)
     assert business_conn |> get("/api/workspace/clients") |> contract_response(403)
-    assert business_conn |> get("/app/clients") |> redirected_to() == "/app/business/invoices"
+
+    assert business_conn |> get("/app/clients") |> redirected_to() ==
+             "/app/business/#{client.id}/invoices"
 
     login =
       build_conn()
       |> init_test_session(%{user_return_to: "/app/clients"})
       |> NilaWeb.UserAuth.log_in_user(business_user)
 
-    assert redirected_to(login) == "/app/business/invoices"
+    assert redirected_to(login) == "/app/business/#{client.id}/invoices"
 
     {:ok, disabled} = Nila.Accounts.set_user_active(business_user, false)
 

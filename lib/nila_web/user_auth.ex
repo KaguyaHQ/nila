@@ -7,6 +7,7 @@ defmodule NilaWeb.UserAuth do
   alias Nila.Accounts
   alias Nila.Accounts.Policy
   alias Nila.Accounts.Scope
+  alias Nila.Business.Access
   alias Nila.Clients
 
   @max_age 60 * 60 * 24 * 60
@@ -19,9 +20,9 @@ defmodule NilaWeb.UserAuth do
     {conn, workspace_home} = NilaWeb.WorkspaceNavigation.home(conn, scope)
 
     destination =
-      if scope && scope.business_client,
-        do: "/app/business/invoices",
-        else: user_return_to || workspace_home
+      if firm_scope?(scope),
+        do: user_return_to || workspace_home,
+        else: user_return_to || business_home(user) || workspace_home
 
     conn
     |> create_user_session(user, params)
@@ -241,9 +242,21 @@ defmodule NilaWeb.UserAuth do
 
   defp user_sessions_topic(user), do: "users:#{user.id}:sessions"
 
-  defp signed_in_path(%{assigns: %{current_scope: %{business_client: %{}}}}),
-    do: "/app/business/invoices"
+  defp signed_in_path(%Plug.Conn{} = conn) do
+    scope = conn.assigns[:current_scope]
 
-  defp signed_in_path(%Plug.Conn{} = conn),
-    do: elem(NilaWeb.WorkspaceNavigation.home(conn, conn.assigns[:current_scope]), 1)
+    if firm_scope?(scope),
+      do: elem(NilaWeb.WorkspaceNavigation.home(conn, scope), 1),
+      else: business_home(conn.assigns[:current_user]) || "/app/clients"
+  end
+
+  defp business_home(%{id: user_id}) do
+    case Access.list_clients_for_user(user_id) do
+      [] -> nil
+      [client] -> "/app/business/#{client.id}/invoices"
+      _ -> "/app/business"
+    end
+  end
+
+  defp business_home(_), do: nil
 end

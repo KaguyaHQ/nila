@@ -1,6 +1,7 @@
 defmodule NilaWeb.BusinessController do
   use NilaWeb, :controller
 
+  alias Nila.Business.Access
   alias Nila.Business.Invoicing
 
   def bootstrap(conn, params), do: dispatch(conn, params, :bootstrap)
@@ -34,7 +35,7 @@ defmodule NilaWeb.BusinessController do
   defp dispatch(conn, params, action) do
     conn = put_resp_header(conn, "cache-control", "private, no-store")
 
-    with {:ok, client, user} <- access(conn.assigns[:current_scope]),
+    with {:ok, client, user} <- access(conn.assigns[:current_scope], params),
          :ok <- valid_ids(params),
          {:ok, result} <- perform(action, client, user, params) do
       case result do
@@ -60,16 +61,19 @@ defmodule NilaWeb.BusinessController do
     end
   end
 
-  defp access(nil), do: {:error, :unauthenticated}
+  defp access(nil, _params), do: {:error, :unauthenticated}
 
-  defp access(%{
-         user: %{active: true, confirmed_at: confirmed} = user,
-         business_client: %Nila.Clients.Client{} = client,
-         current_org: nil
+  defp access(%{user: %{active: true, confirmed_at: confirmed} = user}, %{
+         "business_id" => business_id
        })
-       when not is_nil(confirmed), do: {:ok, client, user}
+       when not is_nil(confirmed) do
+    case Access.client_for_user(user.id, business_id) do
+      %Nila.Clients.Client{} = client -> {:ok, client, user}
+      nil -> {:error, :forbidden}
+    end
+  end
 
-  defp access(_), do: {:error, :forbidden}
+  defp access(_, _), do: {:error, :forbidden}
 
   defp perform(:bootstrap, client, _user, _params) do
     {:ok,

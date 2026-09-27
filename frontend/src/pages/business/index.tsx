@@ -47,6 +47,7 @@ import {
   type BusinessInvoice,
   type BusinessLine,
   businessRequest,
+  listBusinessWorkspaces,
   downloadInvoice,
   fetchInvoicePdf,
   type InvoiceInput,
@@ -56,7 +57,7 @@ import { ServicesPage } from "./services";
 
 const SourcePdf = lazy(() => import("@/components/source-pdf"));
 const Workspace = createContext<BusinessBootstrap | null>(null);
-const queryKey = ["business"];
+const businessQueryKey = (businessId: string) => ["business", businessId];
 const retry = (count: number, error: Error) =>
   !(error instanceof BusinessApiError && error.status < 500) && count < 1;
 const money = (paise: number) =>
@@ -65,6 +66,52 @@ function useBusiness() {
   const value = useContext(Workspace);
   if (!value) throw new Error("Business workspace missing");
   return value;
+}
+export function useBusinessId() {
+  const { businessId } = useParams({ strict: false }) as { businessId: string };
+  if (!businessId) throw new Error("Business ID missing");
+  return businessId;
+}
+export function BusinessIndex() {
+  const query = useQuery({
+    queryKey: ["business-workspaces"],
+    queryFn: ({ signal }) => listBusinessWorkspaces(signal),
+    retry,
+  });
+  if (query.isPending) {
+    return <main className="mx-auto max-w-xl p-8"><p role="status">Loading your businesses…</p></main>;
+  }
+  if (query.isError) {
+    return <main className="mx-auto max-w-xl space-y-4 p-8">
+      <Errors error={query.error} />
+      <Button onClick={() => query.refetch()}>Try again</Button>
+    </main>;
+  }
+  const businesses = query.data.businesses;
+  if (businesses.length === 1) {
+    return <Navigate to="/business/$businessId/invoices" params={{ businessId: String(businesses[0].id) }} replace />;
+  }
+  return (
+    <main className="mx-auto max-w-xl space-y-6 p-8">
+      <h1 className="text-2xl font-semibold">Your businesses</h1>
+      {businesses.length ? (
+        <ul className="space-y-2">
+          {businesses.map((business) => (
+            <li key={business.id}>
+              <Link className="block rounded-lg border p-4 hover:bg-muted" to="/business/$businessId/invoices" params={{ businessId: String(business.id) }}>
+                <span className="font-medium">{business.name}</span>
+                {business.gstin && <span className="ml-3 text-sm text-muted-foreground">{business.gstin}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">You don't have a business yet.</p>
+      )}
+      <a className="inline-block underline underline-offset-4" href="/users/business_sign_up">Add a business</a>
+      {query.data.ca_workspace.available && <p><a className="underline underline-offset-4" href="/app">Open CA workspace</a></p>}
+    </main>
+  );
 }
 function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {
   return (
@@ -106,11 +153,17 @@ function StateSelect({
   return <StateCombobox id={id} states={data.states} value={value} onChange={onChange} required />;
 }
 export function BusinessLayout() {
+  const businessId = useBusinessId();
   const location = useLocation();
-  const editingInvoice = /\/business\/(?:invoices|quotations)\/.+/.test(location.pathname);
+  const editingInvoice = /\/business\/[^/]+\/(?:invoices|quotations)\/.+/.test(location.pathname);
   const query = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => businessRequest("getBusiness", { signal }),
+    queryKey: businessQueryKey(businessId),
+    queryFn: ({ signal }) => businessRequest("getBusinessBootstrap", { businessId, signal }),
+    retry,
+  });
+  const workspaces = useQuery({
+    queryKey: ["business-workspaces"],
+    queryFn: ({ signal }) => listBusinessWorkspaces(signal),
     retry,
   });
   if (query.isPending)
@@ -131,12 +184,14 @@ export function BusinessLayout() {
         ) : query.error instanceof BusinessApiError && query.error.status === 403 ? (
           <>
             <p className="text-sm text-muted-foreground">
-              If you use Nila for your CA firm, return to your firm workspace. To open a business,
-              sign out and use the account invited by your CA.
+              You don't have access to this business. Choose another business or return to your CA workspace.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button nativeButton={false} role="link" render={<a href="/app" />}>
-                Go to firm workspace
+                Open Nila
+              </Button>
+              <Button nativeButton={false} variant="outline" role="link" render={<a href="/app/business" />}>
+                Choose business
               </Button>
               <form action="/users/log_out" method="post">
                 <Input type="hidden" name="_method" value="delete" />
@@ -166,12 +221,37 @@ export function BusinessLayout() {
           <div
             className={`mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-8 ${editingInvoice ? "max-w-[1440px]" : "max-w-6xl"}`}
           >
-            <Link to="/business/invoices" className="font-semibold">
+            <Link to="/business/$businessId/invoices" params={{ businessId }} className="font-semibold">
               Nila{" "}
               <span className="ml-3 font-normal text-muted-foreground">
                 {query.data.business.name}
               </span>
             </Link>
+            <div className="flex items-center gap-3">
+              <label htmlFor="business-switcher" className="sr-only">Business</label>
+              <NativeSelect
+                id="business-switcher"
+                aria-label="Business"
+                value={businessId}
+                onChange={(event) => {
+                  window.location.href = event.target.value === "new"
+                    ? "/users/business_sign_up"
+                    : `/app/business/${event.target.value}/invoices`;
+                }}
+              >
+                {(workspaces.data?.businesses ?? [{
+                  id: Number(businessId),
+                  name: query.data.business.name,
+                  gstin: query.data.business.gstin,
+                }]).map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+                <option value="new">Add a business</option>
+              </NativeSelect>
+              {workspaces.data?.ca_workspace.available && (
+                <a href="/app" className="text-sm underline underline-offset-4">CA workspace</a>
+              )}
+            </div>
             <form action="/users/log_out" method="post">
               <Input type="hidden" name="_method" value="delete" />
               <Input
@@ -192,16 +272,17 @@ export function BusinessLayout() {
           >
             {(
               [
-                ["/business/invoices", "Invoices"],
-                ["/business/quotations", "Quotations"],
-                ["/business/customers", "Customers"],
-                ["/business/services", "Items"],
-                ["/business/settings", "Business details"],
+                ["/business/$businessId/invoices", "Invoices"],
+                ["/business/$businessId/quotations", "Quotations"],
+                ["/business/$businessId/customers", "Customers"],
+                ["/business/$businessId/services", "Items"],
+                ["/business/$businessId/settings", "Business details"],
               ] as const
             ).map(([path, title]) => (
               <Link
                 key={path}
                 to={path}
+                params={{ businessId }}
                 activeOptions={{ includeSearch: false }}
                 className="border-b-2 py-3 text-sm whitespace-nowrap"
                 activeProps={{ className: "border-foreground font-medium" }}
@@ -215,7 +296,7 @@ export function BusinessLayout() {
         <main
           className={`mx-auto px-4 py-6 sm:px-8 ${editingInvoice ? "max-w-[1440px]" : "max-w-6xl"}`}
         >
-          <Outlet />
+          <Outlet key={businessId} />
         </main>
       </div>
     </Workspace.Provider>
@@ -232,6 +313,7 @@ function quotationLabel(invoice: BusinessInvoice) {
   return "Ready";
 }
 export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quotation" }) {
+  const businessId = useBusinessId();
   const data = useBusiness();
   const quotation = mode === "quotation";
   const documents = data.invoices.filter(
@@ -251,7 +333,7 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
         <Button
           nativeButton={false}
           role="link"
-          render={<Link to={quotation ? "/business/quotations/new" : "/business/invoices/new"} />}
+          render={<Link to={quotation ? "/business/$businessId/quotations/new" : "/business/$businessId/invoices/new"} params={{ businessId }} />}
         >
           <Plus />
           {quotation ? "New quotation" : "New invoice"}
@@ -277,10 +359,10 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
                     className="font-medium underline-offset-4 hover:underline"
                     to={
                       quotation
-                        ? "/business/quotations/$invoiceId"
-                        : "/business/invoices/$invoiceId"
+                        ? "/business/$businessId/quotations/$invoiceId"
+                        : "/business/$businessId/invoices/$invoiceId"
                     }
-                    params={{ invoiceId: String(invoice.id) }}
+                    params={{ businessId, invoiceId: String(invoice.id) }}
                   >
                     {invoice.number || "Draft"}
                     {invoice.document_type === "credit_note" ? " · Credit note" : ""}
@@ -334,6 +416,8 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
 }
 
 export function BusinessCustomers() {
+  const businessId = useBusinessId();
+  const queryKey = businessQueryKey(businessId);
   const data = useBusiness();
   const cache = useQueryClient();
   const empty = { name: "", gstin: "", address: "", state_code: "" };
@@ -348,7 +432,7 @@ export function BusinessCustomers() {
     setBusy(true);
     setError(null);
     try {
-      await businessRequest(editing ? "updateBusinessCustomer" : "createBusinessCustomer", {
+      await businessRequest(editing ? "updateBusinessCustomer" : "createBusinessCustomer", { businessId,
         id: editing ?? undefined,
         body: { customer: form },
       });
@@ -556,6 +640,8 @@ export function BusinessServices() {
 }
 
 export function BusinessSettings() {
+  const businessId = useBusinessId();
+  const queryKey = businessQueryKey(businessId);
   const data = useBusiness();
   const cache = useQueryClient();
   const [form, setForm] = useState<
@@ -587,7 +673,7 @@ export function BusinessSettings() {
     }
     setBusy(true);
     try {
-      await uploadBusinessBrandAsset(kind, file);
+      await uploadBusinessBrandAsset(businessId, kind, file);
       await cache.invalidateQueries({ queryKey });
       setAssetVersion((current) => current + 1);
     } catch (error) {
@@ -602,7 +688,7 @@ export function BusinessSettings() {
     setBusy(true);
     setError(null);
     try {
-      await businessRequest("removeBusinessBrandAsset", { kind });
+      await businessRequest("removeBusinessBrandAsset", { businessId, kind });
       await cache.invalidateQueries({ queryKey });
       setAssetVersion((current) => current + 1);
     } catch (error) {
@@ -617,7 +703,7 @@ export function BusinessSettings() {
     setBusy(true);
     setError(null);
     try {
-      const result = await businessRequest("configureBusinessQuotationNumbering", {
+      const result = await businessRequest("configureBusinessQuotationNumbering", { businessId,
         body: { numbering: { style: numbering.style, next_number: numbering.next_number } },
       });
       setNumbering(result.quotation_numbering);
@@ -634,7 +720,7 @@ export function BusinessSettings() {
     setBusy(true);
     setError(null);
     try {
-      const result = await businessRequest("configureBusinessInvoiceNumbering", {
+      const result = await businessRequest("configureBusinessInvoiceNumbering", { businessId,
         body: { numbering: { style: invoiceNumbering.style, next_number: invoiceNumbering.next_number } },
       });
       setInvoiceNumbering(result.invoice_numbering);
@@ -653,7 +739,7 @@ export function BusinessSettings() {
     setError(null);
     setSaved(false);
     try {
-      await businessRequest("updateBusinessProfile", { body: { profile: form } });
+      await businessRequest("updateBusinessProfile", { businessId, body: { profile: form } });
       await cache.invalidateQueries({ queryKey });
       setSaved(true);
     } catch (error) {
@@ -867,7 +953,7 @@ export function BusinessSettings() {
               </label>
               {present && (
                 <img
-                  src={`/api/business/profile/assets/${kind}?v=${assetVersion}`}
+                  src={`/api/business/${businessId}/profile/assets/${kind}?v=${assetVersion}`}
                   alt={kind === "logo" ? "Current business logo" : "Current signature or stamp"}
                   className="max-h-24 max-w-48 object-contain"
                 />
@@ -897,13 +983,14 @@ export function BusinessSettings() {
 }
 
 export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" | "quotation" }) {
+  const businessId = useBusinessId();
   const { invoiceId } = useParams({ strict: false });
   const params = useSearch({ strict: false });
   const originalId = mode === "invoice" ? params.credit_for : null;
   const query = useQuery({
-    queryKey: ["business-invoice", invoiceId ?? originalId],
+    queryKey: ["business-invoice", businessId, invoiceId ?? originalId],
     queryFn: ({ signal }) =>
-      businessRequest("getBusinessInvoice", { id: invoiceId ?? originalId!, signal }),
+      businessRequest("getBusinessInvoice", { businessId, id: invoiceId ?? originalId!, signal }),
     enabled: Boolean(invoiceId ?? originalId),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -914,9 +1001,9 @@ export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" |
       ? query.data.invoice.original_invoice_id
       : null;
   const linkedOriginal = useQuery({
-    queryKey: ["business-original-invoice", linkedOriginalId],
+    queryKey: ["business-original-invoice", businessId, linkedOriginalId],
     queryFn: ({ signal }) =>
-      businessRequest("getBusinessInvoice", { id: linkedOriginalId!, signal }),
+      businessRequest("getBusinessInvoice", { businessId, id: linkedOriginalId!, signal }),
     enabled: Boolean(linkedOriginalId),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -938,7 +1025,7 @@ export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" |
       <div className="space-y-4">
         <Errors error={query.error} />
         <Button onClick={() => query.refetch()}>Try again</Button>
-        <Link className="ml-4 underline" to="/business/invoices">
+        <Link className="ml-4 underline" to="/business/$businessId/invoices" params={{ businessId }}>
           Back to invoices
         </Link>
       </div>
@@ -953,10 +1040,10 @@ export function BusinessInvoiceEditor({ mode = "invoice" }: { mode?: "invoice" |
         replace
         to={
           query.data.invoice.document_type === "quotation"
-            ? "/business/quotations/$invoiceId"
-            : "/business/invoices/$invoiceId"
+            ? "/business/$businessId/quotations/$invoiceId"
+            : "/business/$businessId/invoices/$invoiceId"
         }
-        params={{ invoiceId }}
+        params={{ businessId, invoiceId }}
       />
     );
   return (
@@ -989,6 +1076,8 @@ function InvoiceForm({
   original?: BusinessInvoice;
   mode: "invoice" | "quotation";
 }) {
+  const businessId = useBusinessId();
+  const queryKey = businessQueryKey(businessId);
   const data = useBusiness();
   const navigate = useNavigate();
   const cache = useQueryClient();
@@ -1028,7 +1117,7 @@ function InvoiceForm({
   const issued = Boolean(saved && saved.status !== "draft");
   const credit = form.document_type === "credit_note";
   const quotation = form.document_type === "quotation";
-  const documentPath = quotation ? "/business/quotations" : "/business/invoices";
+  const documentPath = quotation ? "/business/$businessId/quotations" : "/business/$businessId/invoices";
   const [previewOpen, setPreviewOpen] = useState(false);
   const calculation = useInvoiceCalculation(form, issued ? saved : undefined);
   const configured = Boolean(
@@ -1084,15 +1173,15 @@ function InvoiceForm({
     try {
       const result = await businessRequest(
         saved ? "updateBusinessInvoice" : "createBusinessInvoice",
-        { id: saved?.id, body: { invoice: form } },
+        { businessId, id: saved?.id, body: { invoice: form } },
       );
-      cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+      cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
       setSaved(result.invoice);
       await cache.invalidateQueries({ queryKey });
       if (!saved)
         navigate({
-          to: quotation ? "/business/quotations/$invoiceId" : "/business/invoices/$invoiceId",
-          params: { invoiceId: String(result.invoice.id) },
+          to: quotation ? "/business/$businessId/quotations/$invoiceId" : "/business/$businessId/invoices/$invoiceId",
+          params: { businessId, invoiceId: String(result.invoice.id) },
           replace: true,
         });
       else setMessage("Draft saved.");
@@ -1111,17 +1200,17 @@ function InvoiceForm({
       setError(null);
       setMessage("");
       try {
-        const result = await businessRequest("finalizeBusinessQuotation", {
+        const result = await businessRequest("finalizeBusinessQuotation", { businessId,
           body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
         });
-        cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+        cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
         setSaved(result.invoice);
         await cache.invalidateQueries({ queryKey });
         setMessage("Quotation ready to download.");
         if (!saved)
           navigate({
-            to: "/business/quotations/$invoiceId",
-            params: { invoiceId: String(result.invoice.id) },
+            to: "/business/$businessId/quotations/$invoiceId",
+            params: { businessId, invoiceId: String(result.invoice.id) },
             replace: true,
           });
       } catch (error) {
@@ -1137,17 +1226,17 @@ function InvoiceForm({
     setError(null);
     setMessage("");
     try {
-      const result = await businessRequest("finalizeBusinessInvoice", {
+      const result = await businessRequest("finalizeBusinessInvoice", { businessId,
         body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
       });
-      cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+      cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
       setSaved(result.invoice);
       await cache.invalidateQueries({ queryKey });
       setMessage("Issued and shared with your CA.");
       if (!saved)
         navigate({
-          to: "/business/invoices/$invoiceId",
-          params: { invoiceId: String(result.invoice.id) },
+          to: "/business/$businessId/invoices/$invoiceId",
+          params: { businessId, invoiceId: String(result.invoice.id) },
           replace: true,
         });
     } catch (error) {
@@ -1162,6 +1251,7 @@ function InvoiceForm({
     setError(null);
     try {
       await downloadInvoice(
+        businessId,
         saved.id,
         quotation && saved.number
           ? `quotation-${saved.number.replaceAll("/", "-")}.pdf`
@@ -1180,24 +1270,24 @@ function InvoiceForm({
     setMessage("");
     try {
       if (action === "convert") {
-        const result = await businessRequest("convertQuotation", { id: saved.id });
-        cache.setQueryData(["business-invoice", String(result.quotation.id)], {
+        const result = await businessRequest("convertQuotation", { businessId, id: saved.id });
+        cache.setQueryData(["business-invoice", businessId, String(result.quotation.id)], {
           invoice: result.quotation,
         });
-        cache.setQueryData(["business-invoice", String(result.invoice.id)], {
+        cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], {
           invoice: result.invoice,
         });
         await cache.invalidateQueries({ queryKey });
         navigate({
-          to: "/business/invoices/$invoiceId",
-          params: { invoiceId: String(result.invoice.id) },
+          to: "/business/$businessId/invoices/$invoiceId",
+          params: { businessId, invoiceId: String(result.invoice.id) },
         });
       } else {
-        const result = await businessRequest("setQuotationStatus", {
+        const result = await businessRequest("setQuotationStatus", { businessId,
           id: saved.id,
           body: { status: action },
         });
-        cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+        cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
         setSaved(result.invoice);
         await cache.invalidateQueries({ queryKey });
         setMessage(
@@ -1215,12 +1305,12 @@ function InvoiceForm({
     setBusy("revise");
     setError(null);
     try {
-      const result = await businessRequest("reviseBusinessQuotation", { id: saved.id });
-      cache.setQueryData(["business-invoice", String(result.invoice.id)], result);
+      const result = await businessRequest("reviseBusinessQuotation", { businessId, id: saved.id });
+      cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
       await cache.invalidateQueries({ queryKey });
       navigate({
-        to: "/business/quotations/$invoiceId",
-        params: { invoiceId: String(result.invoice.id) },
+        to: "/business/$businessId/quotations/$invoiceId",
+        params: { businessId, invoiceId: String(result.invoice.id) },
       });
     } catch (error) {
       setError(error as Error);
@@ -1237,7 +1327,7 @@ function InvoiceForm({
             size="sm"
             nativeButton={false}
             role="link"
-            render={<Link to={documentPath} />}
+            render={<Link to={documentPath} params={{ businessId }} />}
           >
             <ArrowLeft />
             {quotation ? "Quotations" : "Invoices"}
@@ -1258,7 +1348,7 @@ function InvoiceForm({
                   nativeButton={false}
                   role="link"
                   render={
-                    <Link to="/business/invoices/new" search={{ credit_for: String(saved!.id) }} />
+                    <Link to="/business/$businessId/invoices/new" params={{ businessId }} search={{ credit_for: String(saved!.id) }} />
                   }
                 >
                   Create credit note
@@ -1317,8 +1407,8 @@ function InvoiceForm({
                 role="link"
                 render={
                   <Link
-                    to="/business/invoices/$invoiceId"
-                    params={{ invoiceId: String(saved.converted_invoice_id) }}
+                    to="/business/$businessId/invoices/$invoiceId"
+                    params={{ businessId, invoiceId: String(saved.converted_invoice_id) }}
                   />
                 }
               >
@@ -1363,7 +1453,7 @@ function InvoiceForm({
       {!configured && !issued && (
         <p className="text-sm text-muted-foreground">
           Complete your{" "}
-          <Link to="/business/settings" className="underline underline-offset-4">
+          <Link to="/business/$businessId/settings" params={{ businessId }} className="underline underline-offset-4">
             business details
           </Link>{" "}
           {quotation
@@ -1432,7 +1522,8 @@ function InvoiceForm({
 }
 
 function useInvoiceCalculation(invoice: InvoiceInput, issued?: BusinessInvoice) {
-  const key = JSON.stringify({ lines: invoice.lines, place_of_supply: invoice.place_of_supply });
+  const businessId = useBusinessId();
+  const key = JSON.stringify({ businessId, lines: invoice.lines, place_of_supply: invoice.place_of_supply });
   const token = useMemo(() => Symbol(key), [key]);
   const [result, setResult] = useState<{
     token: symbol;
@@ -1451,7 +1542,7 @@ function useInvoiceCalculation(invoice: InvoiceInput, issued?: BusinessInvoice) 
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const value = await businessRequest("calculateBusinessInvoice", {
+        const value = await businessRequest("calculateBusinessInvoice", { businessId,
           body: { invoice: { lines: invoice.lines, place_of_supply: invoice.place_of_supply } },
           signal: controller.signal,
         });
@@ -1471,7 +1562,7 @@ function useInvoiceCalculation(invoice: InvoiceInput, issued?: BusinessInvoice) 
       clearTimeout(timer);
       controller.abort();
     };
-  }, [token, ready, issued]);
+  }, [businessId, token, ready, issued]);
   if (issued)
     return {
       value: {
@@ -1486,6 +1577,7 @@ function useInvoiceCalculation(invoice: InvoiceInput, issued?: BusinessInvoice) 
 }
 
 function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId?: number }) {
+  const businessId = useBusinessId();
   const quotation = invoice.document_type === "quotation";
   const data = useBusiness();
   const [attempt, setAttempt] = useState(0);
@@ -1507,8 +1599,9 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
   );
   // Include party details so refreshing a customer or profile also refreshes the PDF.
   const requestKey = issuedId
-    ? `issued:${issuedId}`
+    ? `issued:${businessId}:${issuedId}`
     : JSON.stringify({
+        businessId,
         invoice,
         profile: data.profile,
         customer: data.customers.find((customer) => customer.id === Number(invoice.customer_id)),
@@ -1527,7 +1620,7 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
     const timer = setTimeout(
       async () => {
         try {
-          const blob = await fetchInvoicePdf(issuedId ?? invoice, controller.signal);
+          const blob = await fetchInvoicePdf(businessId, issuedId ?? invoice, controller.signal);
           if (controller.signal.aborted) return;
           objectUrl = URL.createObjectURL(blob);
           setResult({ token: requestToken, url: objectUrl });
@@ -1542,7 +1635,7 @@ function InvoicePreview({ invoice, issuedId }: { invoice: InvoiceInput; issuedId
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [requestToken, complete, issuedId, attempt]);
+  }, [businessId, requestToken, complete, issuedId, attempt]);
   const current = result?.token === requestToken ? result : null;
   const ready = issuedId || complete;
   return (

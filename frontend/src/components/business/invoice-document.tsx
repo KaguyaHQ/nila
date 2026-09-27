@@ -7,7 +7,7 @@
  * template settings, and every calculated amount comes from Phoenix.
  */
 
-import { Link } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ export function InvoiceDocument({
   onShippingInteraction: (interacted: boolean) => void;
   disabled: boolean;
 }) {
+  const { businessId } = useParams({ strict: false }) as { businessId: string };
   const [showReference, setShowReference] = useState(
     Boolean(value.purchase_order_number || value.purchase_order_date),
   );
@@ -119,8 +120,8 @@ export function InvoiceDocument({
               <>
                 <span className="text-muted-foreground">Revised from</span>
                 <Link
-                  to="/business/quotations/$invoiceId"
-                  params={{ invoiceId: String(saved.revised_from_id) }}
+                  to="/business/$businessId/quotations/$invoiceId"
+                  params={{ businessId, invoiceId: String(saved.revised_from_id) }}
                   className="py-1 underline underline-offset-4"
                 >
                   {business.invoices.find((item) => item.id === saved.revised_from_id)?.number ??
@@ -242,7 +243,7 @@ export function InvoiceDocument({
           {supplier?.phone && <p className="text-muted-foreground">{supplier.phone}</p>}
           {supplier?.email && <p className="text-muted-foreground">{supplier.email}</p>}
           {!issued && !supplier?.address && (
-            <Link to="/business/settings" className="inline-block underline underline-offset-4">
+            <Link to="/business/$businessId/settings" params={{ businessId }} className="inline-block underline underline-offset-4">
               Add business details
             </Link>
           )}

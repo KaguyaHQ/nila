@@ -13,6 +13,24 @@ defmodule NilaWeb.PageControllerTest do
     assert html =~ ~s(rel="canonical")
     assert html =~ "Try one client free"
     assert html =~ ~s(href="/contact")
+    assert html =~ ~s(href="/business")
+    assert html =~ "Invoices and quotations"
+    assert html =~ "GST preparation. With the evidence attached."
+  end
+
+  test "GET /business explains billing before signup", %{conn: conn} do
+    html = conn |> get(~p"/business") |> html_response(200)
+
+    assert html =~ "Make a quote."
+    assert html =~ "Send an invoice."
+    assert html =~ "Quotations and invoices for your business."
+    refute html =~ "GST preparation. With the evidence attached."
+    refute html =~ "where e-invoicing does not apply"
+    assert html =~ ~s(href="/users/business_sign_up")
+    assert html =~ ~s(href="/users/log_in")
+    assert html =~ ~s(rel="canonical" href="https://nila.tax/business")
+    refute html =~ ~s(class="public-footer-business")
+    refute html =~ ~s(src="/frontend/)
   end
 
   test "GET /privacy", %{conn: conn} do

@@ -417,14 +417,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business": {
+    "/api/business/workspaces": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getBusiness"];
+        get: operations["listBusinessWorkspaces"];
         put?: never;
         post?: never;
         delete?: never;
@@ -433,11 +433,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/bootstrap": {
+    "/api/business/{business_id}/bootstrap": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get: operations["getBusinessBootstrap"];
@@ -449,11 +451,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/profile": {
+    "/api/business/{business_id}/profile": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -466,11 +470,13 @@ export interface paths {
         patch: operations["updateBusinessProfile"];
         trace?: never;
     };
-    "/api/business/services": {
+    "/api/business/{business_id}/services": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get: operations["getBusinessServices"];
@@ -483,11 +489,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/services/{id}": {
+    "/api/business/{business_id}/services/{id}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -501,11 +509,13 @@ export interface paths {
         patch: operations["updateBusinessService"];
         trace?: never;
     };
-    "/api/business/customers": {
+    "/api/business/{business_id}/customers": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -518,11 +528,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/customers/{id}": {
+    "/api/business/{business_id}/customers/{id}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -535,11 +547,13 @@ export interface paths {
         patch: operations["updateBusinessCustomer"];
         trace?: never;
     };
-    "/api/business/customers/{customer_id}/addresses": {
+    "/api/business/{business_id}/customers/{customer_id}/addresses": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -551,11 +565,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/customers/{customer_id}/addresses/{id}": {
+    "/api/business/{business_id}/customers/{customer_id}/addresses/{id}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -567,11 +583,13 @@ export interface paths {
         patch: operations["updateBusinessCustomerAddress"];
         trace?: never;
     };
-    "/api/business/invoices": {
+    "/api/business/{business_id}/invoices": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -584,11 +602,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/{id}": {
+    "/api/business/{business_id}/invoices/{id}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get: operations["getBusinessInvoice"];
@@ -601,11 +621,13 @@ export interface paths {
         patch: operations["updateBusinessInvoice"];
         trace?: never;
     };
-    "/api/business/invoices/{id}/issue": {
+    "/api/business/{business_id}/invoices/{id}/issue": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -618,11 +640,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/{id}/quotation-status": {
+    "/api/business/{business_id}/invoices/{id}/quotation-status": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -635,11 +659,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/{id}/convert": {
+    "/api/business/{business_id}/invoices/{id}/convert": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -652,11 +678,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/calculate": {
+    "/api/business/{business_id}/invoices/calculate": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -669,11 +697,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/preview": {
+    "/api/business/{business_id}/invoices/preview": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -686,11 +716,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/{id}/pdf": {
+    "/api/business/{business_id}/invoices/{id}/pdf": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get: operations["downloadBusinessInvoice"];
@@ -1283,11 +1315,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoice-numbering": {
+    "/api/business/{business_id}/invoice-numbering": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -1300,11 +1334,13 @@ export interface paths {
         patch: operations["configureBusinessInvoiceNumbering"];
         trace?: never;
     };
-    "/api/business/quotation-numbering": {
+    "/api/business/{business_id}/quotation-numbering": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -1317,11 +1353,13 @@ export interface paths {
         patch: operations["configureBusinessQuotationNumbering"];
         trace?: never;
     };
-    "/api/business/invoices/finalize": {
+    "/api/business/{business_id}/invoices/finalize": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -1334,11 +1372,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/quotations/finalize": {
+    "/api/business/{business_id}/quotations/finalize": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -1351,11 +1391,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/invoices/{id}/revise": {
+    "/api/business/{business_id}/invoices/{id}/revise": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get?: never;
@@ -1368,11 +1410,13 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/business/profile/assets/{kind}": {
+    "/api/business/{business_id}/profile/assets/{kind}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         get: operations["getBusinessBrandAsset"];
@@ -2132,6 +2176,16 @@ export interface components {
             quotation_number_style: "nila" | "serial_fy";
             /** @enum {string} */
             invoice_number_style: "nila" | "serial_fy";
+        };
+        BusinessWorkspaceList: {
+            businesses: {
+                id: number;
+                name: string;
+                gstin: string | null;
+            }[];
+            ca_workspace: {
+                available: boolean;
+            };
         };
         BusinessBootstrap: {
             business: {
@@ -4945,7 +4999,7 @@ export interface operations {
             };
         };
     };
-    getBusiness: {
+    listBusinessWorkspaces: {
         parameters: {
             query?: never;
             header?: never;
@@ -4960,7 +5014,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BusinessBootstrap"];
+                    "application/json": components["schemas"]["BusinessWorkspaceList"];
                 };
             };
             /** @description Request failed; no successful write is implied. */
@@ -5032,7 +5086,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5117,7 +5173,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5204,7 +5262,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5289,7 +5349,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5379,6 +5441,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -5466,6 +5529,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -5556,7 +5620,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5646,6 +5712,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -5735,6 +5802,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                business_id: number;
                 customer_id: number;
             };
             cookie?: never;
@@ -5779,6 +5847,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                business_id: number;
                 customer_id: number;
                 id: number;
             };
@@ -5825,7 +5894,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -5913,6 +5984,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -6000,6 +6072,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -6091,6 +6164,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -6178,6 +6252,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -6269,6 +6344,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -6355,7 +6431,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -6444,7 +6522,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -6532,6 +6612,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -9093,7 +9174,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9182,7 +9265,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9271,7 +9356,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9360,7 +9447,9 @@ export interface operations {
             header: {
                 "X-CSRF-Token": string;
             };
-            path?: never;
+            path: {
+                business_id: number;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -9450,6 +9539,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 id: number;
             };
             cookie?: never;
@@ -9535,6 +9625,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                business_id: number;
                 kind: "logo" | "signature";
             };
             cookie?: never;
@@ -9623,6 +9714,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 kind: "logo" | "signature";
             };
             cookie?: never;
@@ -9717,6 +9809,7 @@ export interface operations {
                 "X-CSRF-Token": string;
             };
             path: {
+                business_id: number;
                 kind: "logo" | "signature";
             };
             cookie?: never;

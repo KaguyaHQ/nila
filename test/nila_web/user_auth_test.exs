@@ -2,6 +2,7 @@ defmodule NilaWeb.UserAuthTest do
   use NilaWeb.ConnCase, async: true
 
   alias Nila.Accounts.Scope
+  alias Nila.Business.Access
   alias Nila.Clients
   alias NilaWeb.UserAuth
 
@@ -43,6 +44,38 @@ defmodule NilaWeb.UserAuthTest do
   test "app root opens the React directory when no clients exist", %{conn: conn} do
     %{user: user} = user_with_org_fixture()
     assert conn |> log_in_user(user) |> get(~p"/app") |> redirected_to() == ~p"/app/clients"
+  end
+
+  test "a user with two businesses enters the business chooser", %{conn: conn} do
+    user = user_fixture()
+
+    assert {:ok, _} =
+             Access.create_business_for_user(user, %{name: "Caltech", gstin: "27AAPFU0939F1ZV"})
+
+    assert {:ok, _} =
+             Access.create_business_for_user(user, %{
+               name: "Breeze Tech",
+               gstin: "33AEWPH4158J1Z3"
+             })
+
+    assert conn |> init_test_session(%{}) |> UserAuth.log_in_user(user) |> redirected_to() ==
+             "/app/business"
+
+    assert conn |> log_in_user(user) |> get("/app") |> redirected_to() == "/app/business"
+  end
+
+  test "business login preserves a direct invoice link", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, %{client: client}} =
+      Access.create_business_for_user(user, %{name: "Caltech", gstin: "27AAPFU0939F1ZV"})
+
+    destination = "/app/business/#{client.id}/invoices/new"
+
+    assert conn
+           |> init_test_session(%{user_return_to: destination})
+           |> UserAuth.log_in_user(user)
+           |> redirected_to() == destination
   end
 
   test "fetch_current_scope_for_user assigns user and current org", %{conn: conn} do

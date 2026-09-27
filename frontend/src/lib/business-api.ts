@@ -17,8 +17,20 @@ export class BusinessApiError extends Error {
     super(message);
   }
 }
+export type BusinessWorkspaceList = components["schemas"]["BusinessWorkspaceList"];
+export async function listBusinessWorkspaces(signal?: AbortSignal): Promise<BusinessWorkspaceList> {
+  const response = await fetch("/api/business/workspaces", {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new BusinessApiError(response.status, "We couldn't load your businesses. Please try again.");
+  }
+  return response.json();
+}
 const businessOperations = {
-  getBusiness: ["GET", ""],
+  getBusinessBootstrap: ["GET", "/bootstrap"],
   getBusinessServices: ["GET", "/services"],
   updateBusinessProfile: ["PATCH", "/profile"],
   configureBusinessQuotationNumbering: ["PATCH", "/quotation-numbering"],
@@ -47,7 +59,7 @@ const businessOperations = {
 } as const;
 type BusinessOperation = keyof typeof businessOperations;
 type BusinessOptions<K extends BusinessOperation> = K extends BusinessOperation
-  ? { signal?: AbortSignal } & ((typeof businessOperations)[K][1] extends
+  ? { businessId: string | number; signal?: AbortSignal } & ((typeof businessOperations)[K][1] extends
       | `${string}{id}`
       | `${string}{id}/${string}`
       ? { id: string | number } & ((typeof businessOperations)[K][1] extends
@@ -73,7 +85,7 @@ export async function businessRequest<K extends BusinessOperation>(
     .replace("{id}", encodeURIComponent(id ?? ""))
     .replace("{customer_id}", encodeURIComponent(customerId ?? ""))
     .replace("{kind}", "kind" in options ? encodeURIComponent(options.kind ?? "") : "");
-  const response = await fetch(`/api/business${path}`, {
+  const response = await fetch(`/api/business/${encodeURIComponent(options.businessId)}${path}`, {
     method,
     credentials: "same-origin",
     signal: options.signal,
@@ -102,10 +114,10 @@ export async function businessRequest<K extends BusinessOperation>(
   return response.json();
 }
 
-export async function uploadBusinessBrandAsset(kind: "logo" | "signature", file: File) {
+export async function uploadBusinessBrandAsset(businessId: string | number, kind: "logo" | "signature", file: File) {
   const body = new FormData();
   body.set("image", file);
-  const response = await fetch(`/api/business/profile/assets/${kind}`, {
+  const response = await fetch(`/api/business/${encodeURIComponent(businessId)}/profile/assets/${kind}`, {
     method: "POST",
     credentials: "same-origin",
     headers: {
@@ -121,12 +133,13 @@ export async function uploadBusinessBrandAsset(kind: "logo" | "signature", file:
   return data as { profile: BusinessProfile };
 }
 export async function fetchInvoicePdf(
+  businessId: string | number,
   invoice: InvoiceInput | number,
   signal?: AbortSignal,
 ): Promise<Blob> {
   const issued = typeof invoice === "number";
   const response = await fetch(
-    issued ? `/api/business/invoices/${invoice}/pdf` : "/api/business/invoices/preview",
+    issued ? `/api/business/${encodeURIComponent(businessId)}/invoices/${invoice}/pdf` : `/api/business/${encodeURIComponent(businessId)}/invoices/preview`,
     {
       method: issued ? "GET" : "POST",
       credentials: "same-origin",
@@ -162,8 +175,8 @@ export async function fetchInvoicePdf(
   return blob;
 }
 
-export async function downloadInvoice(id: number, filename = `invoice-${id}.pdf`) {
-  const blob = await fetchInvoicePdf(id);
+export async function downloadInvoice(businessId: string | number, id: number, filename = `invoice-${id}.pdf`) {
+  const blob = await fetchInvoicePdf(businessId, id);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

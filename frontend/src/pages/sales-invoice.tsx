@@ -1,3 +1,5 @@
+import { InvoiceRateDetails } from "@/components/invoice-rate-details";
+import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { SalesRemovalActions } from "@/components/sales-removal-actions";
 import { MoveSalesUpload } from "@/components/move-sales-upload";
 import { InvoiceQueue } from "@/components/invoice-queue";
@@ -253,6 +255,7 @@ function InvoiceReview({
       void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
       setNotice(change ? "Changes saved." : "Decision saved.");
       setDialogOpen(false);
+      if (rateRows) restoreEditorFocus();
     },
     onError: (failure, { controller }) => {
       if (
@@ -290,13 +293,33 @@ function InvoiceReview({
   const status = data.queue.find((item) => item.id === data.invoice.id)?.status;
   const canEdit = data.can_edit && !refreshing && !busy;
   const fieldErrors = error instanceof ReviewApiError ? error.fields : {};
-  const activeFields = edit ? data.editable_fields[edit.section] : [];
+  const rateRows = data.source?.spreadsheet?.granularity === "invoice_rate_components";
+  const inlineEditor = Boolean(rateRows && edit && dialogOpen && !confirmation);
+  const activeFields = (edit ? data.editable_fields[edit.section] : []).filter(
+    (field) =>
+      !rateRows ||
+      edit?.section === "facts" ||
+      (edit?.section === "totals"
+        ? field === "printed_grand_total"
+        : [
+            "taxable_value",
+            "cgst_rate",
+            "sgst_rate",
+            "igst_rate",
+            "cgst_amount",
+            "sgst_amount",
+            "igst_amount",
+          ].includes(field)),
+  );
   const needsAttention = data.checks.filter((check) => check.status === "failed").length;
   const openIssues = data.issues.filter((issue) => issue.status === "open");
   const spreadsheet = data.source?.spreadsheet;
-  const rateRows = spreadsheet?.granularity === "invoice_rate_components";
 
   useEffect(() => () => operation.current?.abort(), []);
+  useEffect(() => {
+    if (inlineEditor)
+      document.querySelector<HTMLElement>('[aria-label="Edit invoice values"] input')?.focus();
+  }, [inlineEditor, edit]);
   useEffect(() => {
     document.title = `Invoice ${data.invoice.number} · Nila`;
   }, [data.invoice.number]);
@@ -330,6 +353,11 @@ function InvoiceReview({
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       const target = event.target;
+      if (event.key === "Escape" && inlineEditor && !busy && !navigationShortcutBlocked(event)) {
+        event.preventDefault();
+        closeInlineEditor();
+        return;
+      }
       if (
         event.key === "Escape" &&
         !event.altKey &&
@@ -389,6 +417,21 @@ function InvoiceReview({
     setEdit({ section, index });
     setDialogOpen(true);
   }
+  function restoreEditorFocus() {
+    requestAnimationFrame(() => {
+      if (rateRows && edit?.section === "line")
+        document
+          .querySelector<HTMLButtonElement>(
+            `[aria-label="Edit rate component ${(edit.index ?? 0) + 1}"]`,
+          )
+          ?.focus();
+      else opener.current?.focus();
+    });
+  }
+  function closeInlineEditor() {
+    setDialogOpen(false);
+    restoreEditorFocus();
+  }
   function save(event: FormEvent) {
     event.preventDefault();
     if (!canEdit || !dialogOpen || operation.current || (!edit && !confirmation)) return;
@@ -396,7 +439,8 @@ function InvoiceReview({
       Object.entries(values).filter(([field, value]) => value !== initialValues.current[field]),
     );
     if (edit && !Object.keys(changes).length) {
-      setDialogOpen(false);
+      if (inlineEditor) closeInlineEditor();
+      else setDialogOpen(false);
       return;
     }
     const controller = new AbortController();
@@ -415,6 +459,153 @@ function InvoiceReview({
     );
   }
 
+  const editorForm = (
+    <form
+      onSubmit={save}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && inlineEditor && !busy) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeInlineEditor();
+          return;
+        }
+        if (
+          edit &&
+          canEdit &&
+          event.key === "Enter" &&
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          !event.repeat &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          event.currentTarget.requestSubmit();
+        }
+      }}
+      className="space-y-4"
+      aria-label="Edit invoice values"
+    >
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error.message}
+        </p>
+      )}
+      {!data.can_edit && (
+        <p className="text-sm text-muted-foreground">
+          {data.lock_reason || "This invoice is read-only."}
+        </p>
+      )}
+      {confirmation ? (
+        <p className="text-sm leading-6">{confirmation.message}</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {activeFields.map((field) => {
+            const errors =
+              fieldErrors[field] ??
+              (edit?.index === undefined
+                ? undefined
+                : fieldErrors[`line_items[${edit.index}].${field}`]);
+            const id = `invoice-edit-${field}`;
+            return (
+              <Field
+                data-invalid={Boolean(errors)}
+                key={field}
+                className={`space-y-2 ${["description", "item_name", "buyer_name", "narration", ...(inlineEditor ? ["taxable_value"] : [])].includes(field) ? "sm:col-span-2" : ""}`}
+              >
+                <FieldLabel htmlFor={id}>
+                  {spreadsheet
+                    ? (fieldLabels[field] ?? field).replace(/^Printed /, "Reported ")
+                    : (fieldLabels[field] ?? field)}
+                </FieldLabel>
+                {field === "place_of_supply" ? (
+                  <NativeSelect
+                    id={id}
+                    value={values[field] ?? ""}
+                    disabled={busy || !data.can_edit}
+                    onChange={(event) =>
+                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    }
+                    aria-invalid={Boolean(errors)}
+                    aria-describedby={errors ? `${id}-error` : undefined}
+                  >
+                    <option value="">Not provided</option>
+                    {values[field] &&
+                      !data.states.some((state) => state.value === values[field]) && (
+                        <option value={values[field]}>{values[field]} (current value)</option>
+                      )}
+                    {data.states.map((state) => (
+                      <option key={state.value} value={state.value}>
+                        {state.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                ) : field === "original_sale_category" ? (
+                  <NativeSelect
+                    id={id}
+                    value={values[field] ?? ""}
+                    disabled={busy || !data.can_edit}
+                    onChange={(event) =>
+                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    }
+                  >
+                    <option value="">Not provided / not applicable</option>
+                    <option value="b2cs">B2C other / small</option>
+                    <option value="b2cl">B2C large (interstate)</option>
+                  </NativeSelect>
+                ) : field === "line_amount_tax_inclusion" ? (
+                  <NativeSelect
+                    id={id}
+                    value={values[field] || "unknown"}
+                    disabled={busy || !data.can_edit}
+                    onChange={(event) =>
+                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    }
+                  >
+                    <option value="unknown">Not known</option>
+                    <option value="inclusive">Includes tax</option>
+                    <option value="exclusive">Excludes tax</option>
+                  </NativeSelect>
+                ) : (
+                  <Input
+                    id={id}
+                    type={field === "invoice_date" ? "date" : "text"}
+                    inputMode={decimalFields.has(field) ? "decimal" : undefined}
+                    value={values[field] ?? ""}
+                    disabled={busy || !data.can_edit}
+                    onChange={(event) =>
+                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    }
+                    aria-invalid={Boolean(errors)}
+                    aria-describedby={errors ? `${id}-error` : undefined}
+                  />
+                )}
+                {errors && <FieldError id={`${id}-error`}>{errors.join(". ")}</FieldError>}
+              </Field>
+            );
+          })}
+        </div>
+      )}
+      <div className="flex justify-end gap-2 border-t pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={() => (inlineEditor ? closeInlineEditor() : setDialogOpen(false))}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!canEdit}>
+          {busy
+            ? "Saving…"
+            : confirmation
+              ? confirmation.action_label || "Confirm"
+              : "Save changes"}
+        </Button>
+      </div>
+    </form>
+  );
+
   return (
     <main className="flex h-dvh min-h-0 flex-col bg-background">
       <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
@@ -431,7 +622,7 @@ function InvoiceReview({
                 search={registerSearch}
               />
             }
-            disabled={busy}
+            disabled={busy || inlineEditor}
           >
             <ArrowLeft /> Back to register <Kbd aria-hidden="true">Esc</Kbd>
           </Button>
@@ -450,7 +641,7 @@ function InvoiceReview({
             aria-label="Filter invoices"
             size="sm"
             value={[filter]}
-            disabled={busy}
+            disabled={busy || inlineEditor}
             onValueChange={(selected) => {
               if (selected[0]) changeFilter(selected[0]);
             }}
@@ -586,7 +777,7 @@ function InvoiceReview({
                         batchRef={data.upload_ref}
                         activeIds={[data.invoice.id]}
                         invoiceNumber={data.invoice.number || data.invoice.id}
-                        disabled={!canEdit}
+                        disabled={!canEdit || inlineEditor}
                         afterRemoveUrl={
                           next
                             ? `/gst/${clientId}/${period}/sales/invoices/${encodeURIComponent(next.id)}?filter=${filter}`
@@ -598,7 +789,7 @@ function InvoiceReview({
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Edit invoice details"
-                      disabled={!canEdit}
+                      disabled={!canEdit || inlineEditor}
                       aria-describedby={!data.can_edit ? "invoice-lock" : undefined}
                       onClick={(event) => openEditor("facts", event.currentTarget)}
                     >
@@ -620,213 +811,230 @@ function InvoiceReview({
                     <p className="mt-2 text-sm text-muted-foreground">{data.facts.narration}</p>
                   )}
                 </div>
-                <section aria-label="Invoice lines">
-                  <div className="overflow-hidden rounded-lg border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead className="pl-4">
-                            {rateRows ? "Tax breakdown" : "Description"}
-                          </TableHead>
-                          <TableHead className="text-right">Taxable</TableHead>
-                          <TableHead className="text-right">GST</TableHead>
-                          <TableHead className="w-10">
-                            <span className="sr-only">Edit</span>
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.lines.map((line) => (
-                          <TableRow key={line.index}>
-                            <TableCell className="py-2 pl-4">
-                              <p className="max-w-72 font-medium whitespace-normal">
-                                {line.values.description ||
-                                  line.values.item_name ||
-                                  `Line ${line.index + 1}`}
-                              </p>
-                              {!rateRows && (
-                                <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                                  <span>HSN {line.display.hsn_sac || "—"}</span>
-                                  <span>
-                                    {line.display.quantity || "—"} {line.display.uom} ×{" "}
-                                    {line.display.printed_unit_price || "—"}
-                                  </span>
-                                </p>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right align-top pt-2 tabular-nums">
-                              {line.display.taxable_value || "—"}
-                            </TableCell>
-                            <TableCell className="text-right align-top pt-2 leading-5 tabular-nums">
-                              {["cgst", "sgst", "igst"]
-                                .filter(
-                                  (head) =>
-                                    line.values[`${head}_rate`] || line.values[`${head}_amount`],
-                                )
-                                .map((head) => (
-                                  <p key={head} className="whitespace-nowrap">
-                                    <span className="mr-2 text-xs text-muted-foreground">
-                                      {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}%
-                                    </span>
-                                    {line.display[`${head}_amount`] || "—"}
-                                  </p>
-                                ))}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label={`Edit line ${line.index + 1}`}
-                                disabled={!canEdit}
-                                onClick={(event) =>
-                                  openEditor("line", event.currentTarget, line.index)
-                                }
-                              >
-                                <Pencil />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {data.lines.length === 0 && (
-                          <TableRow>
-                            <TableCell
-                              colSpan={4}
-                              className="py-8 text-center text-muted-foreground"
-                            >
-                              No invoice lines were extracted.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </section>
-                <Collapsible
-                  render={<section aria-labelledby="invoice-totals" />}
-                  defaultOpen={data.totals.some((total) => total.status !== "matches")}
-                >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h2 id="invoice-totals" className="text-sm font-semibold">
-                      Calculated totals
-                    </h2>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!canEdit}
-                      onClick={(event) => openEditor("totals", event.currentTarget)}
-                    >
-                      <Pencil /> {spreadsheet ? "Edit reported totals" : "Edit printed totals"}
-                    </Button>
-                  </div>
-                  <dl className="mb-2 grid grid-cols-3 gap-3 py-2">
-                    {data.totals.map((total) => (
-                      <div key={total.field}>
-                        <dt className="text-xs text-muted-foreground">{total.label}</dt>
-                        <dd className="mt-1 text-sm font-semibold tabular-nums">
-                          {total.calculated}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <CollapsibleTrigger
-                    render={<Button variant="ghost" size="sm" className="group mb-2" />}
-                  >
-                    {spreadsheet ? "Compare with report totals" : "Compare with printed totals"}{" "}
-                    <ChevronDown className="group-data-panel-open:rotate-180" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="overflow-hidden rounded-lg border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/30">
-                            <TableHead className="pl-4">Total</TableHead>
-                            <TableHead className="text-right">From lines</TableHead>
-                            <TableHead className="text-right">
-                              {spreadsheet ? "In client’s report" : "Printed on bill"}
-                            </TableHead>
-                            <TableHead>Comparison</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {data.totals.map((total) => (
-                            <TableRow key={total.field}>
-                              <TableCell className="pl-4">{total.label}</TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {total.calculated}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {total.printed}
-                              </TableCell>
-                              <TableCell>
-                                <span
-                                  className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
-                                >
-                                  {total.status === "matches"
-                                    ? "Matches"
-                                    : total.status === "mismatch"
-                                      ? `${total.difference ?? "—"} difference`
-                                      : "Not compared"}
-                                </span>
-                              </TableCell>
+                {inlineEditor && edit?.section === "facts" && editorForm}
+                {rateRows ? (
+                  <InvoiceRateDetails
+                    data={data}
+                    disabled={!canEdit || inlineEditor}
+                    editing={inlineEditor ? edit : null}
+                    editor={editorForm}
+                    onEdit={openEditor}
+                  />
+                ) : (
+                  <>
+                    <section aria-label="Invoice lines">
+                      <div className="overflow-hidden rounded-lg border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/30">
+                              <TableHead className="pl-4">
+                                {rateRows ? "Tax breakdown" : "Description"}
+                              </TableHead>
+                              <TableHead className="text-right">Taxable</TableHead>
+                              <TableHead className="text-right">GST</TableHead>
+                              <TableHead className="w-10">
+                                <span className="sr-only">Edit</span>
+                              </TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                          </TableHeader>
+                          <TableBody>
+                            {data.lines.map((line) => (
+                              <TableRow key={line.index}>
+                                <TableCell className="py-2 pl-4">
+                                  <p className="max-w-72 font-medium whitespace-normal">
+                                    {line.values.description ||
+                                      line.values.item_name ||
+                                      `Line ${line.index + 1}`}
+                                  </p>
+                                  {!rateRows && (
+                                    <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                                      <span>HSN {line.display.hsn_sac || "—"}</span>
+                                      <span>
+                                        {line.display.quantity || "—"} {line.display.uom} ×{" "}
+                                        {line.display.printed_unit_price || "—"}
+                                      </span>
+                                    </p>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right align-top pt-2 tabular-nums">
+                                  {line.display.taxable_value || "—"}
+                                </TableCell>
+                                <TableCell className="text-right align-top pt-2 leading-5 tabular-nums">
+                                  {["cgst", "sgst", "igst"]
+                                    .filter(
+                                      (head) =>
+                                        line.values[`${head}_rate`] ||
+                                        line.values[`${head}_amount`],
+                                    )
+                                    .map((head) => (
+                                      <p key={head} className="whitespace-nowrap">
+                                        <span className="mr-2 text-xs text-muted-foreground">
+                                          {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}
+                                          %
+                                        </span>
+                                        {line.display[`${head}_amount`] || "—"}
+                                      </p>
+                                    ))}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    aria-label={`Edit line ${line.index + 1}`}
+                                    disabled={!canEdit || inlineEditor}
+                                    onClick={(event) =>
+                                      openEditor("line", event.currentTarget, line.index)
+                                    }
+                                  >
+                                    <Pencil />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {data.lines.length === 0 && (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={4}
+                                  className="py-8 text-center text-muted-foreground"
+                                >
+                                  No invoice lines were extracted.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </section>
+                    <Collapsible
+                      render={<section aria-labelledby="invoice-totals" />}
+                      defaultOpen={data.totals.some((total) => total.status !== "matches")}
+                    >
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h2 id="invoice-totals" className="text-sm font-semibold">
+                          Calculated totals
+                        </h2>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!canEdit || inlineEditor}
+                          onClick={(event) => openEditor("totals", event.currentTarget)}
+                        >
+                          <Pencil /> {spreadsheet ? "Edit reported totals" : "Edit printed totals"}
+                        </Button>
+                      </div>
+                      <dl className="mb-2 grid grid-cols-3 gap-3 py-2">
+                        {data.totals.map((total) => (
+                          <div key={total.field}>
+                            <dt className="text-xs text-muted-foreground">{total.label}</dt>
+                            <dd className="mt-1 text-sm font-semibold tabular-nums">
+                              {total.calculated}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <CollapsibleTrigger
+                        render={<Button variant="ghost" size="sm" className="group mb-2" />}
+                      >
+                        {spreadsheet ? "Compare with report totals" : "Compare with printed totals"}{" "}
+                        <ChevronDown className="group-data-panel-open:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="overflow-hidden rounded-lg border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/30">
+                                <TableHead className="pl-4">Total</TableHead>
+                                <TableHead className="text-right">From lines</TableHead>
+                                <TableHead className="text-right">
+                                  {spreadsheet ? "In client’s report" : "Printed on bill"}
+                                </TableHead>
+                                <TableHead>Comparison</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {data.totals.map((total) => (
+                                <TableRow key={total.field}>
+                                  <TableCell className="pl-4">{total.label}</TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {total.calculated}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {total.printed}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span
+                                      className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
+                                    >
+                                      {total.status === "matches"
+                                        ? "Matches"
+                                        : total.status === "mismatch"
+                                          ? `${total.difference ?? "—"} difference`
+                                          : "Not compared"}
+                                    </span>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </>
+                )}
                 {openIssues.length > 0 && (
                   <section aria-label="Needs your review" className="space-y-3">
-                    {openIssues.map((issue) => (
-                      <div key={issue.target} className="rounded-lg border px-4 py-3">
-                        <p className="text-sm font-medium">{issue.title}</p>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                          {issue.message}
-                        </p>
-                        {issue.lookup_details && (
-                          <Collapsible className="mt-2">
-                            <CollapsibleTrigger
-                              render={<Button variant="ghost" size="sm" className="group px-0" />}
-                            >
-                              GST lookup details{" "}
-                              <ChevronDown className="group-data-panel-open:rotate-180" />
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 text-sm leading-6 text-muted-foreground">
-                              {issue.lookup_details}
-                            </CollapsibleContent>
-                          </Collapsible>
-                        )}
-                        {issue.code === "seller_identity_mismatch" &&
-                          data.upload_ref &&
-                          canEdit && (
-                            <div className="mt-3">
-                              <MoveSalesUpload
-                                clientId={data.client.id}
-                                clientName={data.client.name}
-                                period={data.period}
-                                batchRef={data.upload_ref}
-                              />
-                            </div>
+                    {openIssues
+                      .filter((issue) => !rateRows || issue.code !== "grand_total_mismatch")
+                      .map((issue) => (
+                        <div key={issue.target} className="rounded-lg border px-4 py-3">
+                          <p className="text-sm font-medium">{issue.title}</p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {issue.message}
+                          </p>
+                          {issue.lookup_details && (
+                            <Collapsible className="mt-2">
+                              <CollapsibleTrigger
+                                render={<Button variant="ghost" size="sm" className="group px-0" />}
+                              >
+                                GST lookup details{" "}
+                                <ChevronDown className="group-data-panel-open:rotate-180" />
+                              </CollapsibleTrigger>
+                              <CollapsibleContent className="pt-1 text-sm leading-6 text-muted-foreground">
+                                {issue.lookup_details}
+                              </CollapsibleContent>
+                            </Collapsible>
                           )}
-                        {issue.can_confirm && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            disabled={!canEdit}
-                            onClick={(event) => {
-                              opener.current = event.currentTarget;
-                              setConfirmation(issue);
-                              setEdit(null);
-                              mutation.reset();
-                              setDialogOpen(true);
-                            }}
-                          >
-                            {issue.action_label || "Confirm"}
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                          {issue.code === "seller_identity_mismatch" &&
+                            data.upload_ref &&
+                            canEdit && (
+                              <div className="mt-3">
+                                <MoveSalesUpload
+                                  clientId={data.client.id}
+                                  clientName={data.client.name}
+                                  period={data.period}
+                                  batchRef={data.upload_ref}
+                                />
+                              </div>
+                            )}
+                          {issue.can_confirm && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                              disabled={!canEdit || inlineEditor}
+                              onClick={(event) => {
+                                opener.current = event.currentTarget;
+                                setConfirmation(issue);
+                                setEdit(null);
+                                mutation.reset();
+                                setDialogOpen(true);
+                              }}
+                            >
+                              {issue.action_label || "Confirm"}
+                            </Button>
+                          )}
+                        </div>
+                      ))}
                   </section>
                 )}
               </div>
@@ -916,7 +1124,7 @@ function InvoiceReview({
         </ResizablePanel>
       </ResizablePanelGroup>
       <Dialog
-        open={dialogOpen}
+        open={dialogOpen && !inlineEditor}
         onOpenChange={(open) => {
           if (!open && !busy) setDialogOpen(false);
         }}
@@ -944,146 +1152,7 @@ function InvoiceReview({
                 : `Correct the values against the source ${spreadsheet ? "report" : "bill"}. Changes apply wherever this invoice is used.`}
             </DialogDescription>
           </DialogHeader>
-          <form
-            onSubmit={save}
-            onKeyDown={(event) => {
-              if (
-                edit &&
-                canEdit &&
-                event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey) &&
-                !event.altKey &&
-                !event.shiftKey &&
-                !event.repeat &&
-                !event.nativeEvent.isComposing
-              ) {
-                event.preventDefault();
-                event.currentTarget.requestSubmit();
-              }
-            }}
-            className="space-y-4"
-          >
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error.message}
-              </p>
-            )}
-            {!data.can_edit && (
-              <p className="text-sm text-muted-foreground">
-                {data.lock_reason || "This invoice is read-only."}
-              </p>
-            )}
-            {confirmation ? (
-              <p className="text-sm leading-6">{confirmation.message}</p>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {activeFields.map((field) => {
-                  const errors =
-                    fieldErrors[field] ??
-                    (edit?.index === undefined
-                      ? undefined
-                      : fieldErrors[`line_items[${edit.index}].${field}`]);
-                  const id = `invoice-edit-${field}`;
-                  return (
-                    <div
-                      key={field}
-                      className={`space-y-2 ${["description", "item_name", "buyer_name", "narration"].includes(field) ? "sm:col-span-2" : ""}`}
-                    >
-                      <label htmlFor={id} className="text-sm font-medium">
-                        {spreadsheet
-                          ? (fieldLabels[field] ?? field).replace(/^Printed /, "Reported ")
-                          : (fieldLabels[field] ?? field)}
-                      </label>
-                      {field === "place_of_supply" ? (
-                        <NativeSelect
-                          id={id}
-                          value={values[field] ?? ""}
-                          disabled={busy || !data.can_edit}
-                          onChange={(event) =>
-                            setValues((previous) => ({ ...previous, [field]: event.target.value }))
-                          }
-                          aria-invalid={Boolean(errors)}
-                          aria-describedby={errors ? `${id}-error` : undefined}
-                        >
-                          <option value="">Not provided</option>
-                          {values[field] &&
-                            !data.states.some((state) => state.value === values[field]) && (
-                              <option value={values[field]}>{values[field]} (current value)</option>
-                            )}
-                          {data.states.map((state) => (
-                            <option key={state.value} value={state.value}>
-                              {state.label}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      ) : field === "original_sale_category" ? (
-                        <NativeSelect
-                          id={id}
-                          value={values[field] ?? ""}
-                          disabled={busy || !data.can_edit}
-                          onChange={(event) =>
-                            setValues((previous) => ({ ...previous, [field]: event.target.value }))
-                          }
-                        >
-                          <option value="">Not provided / not applicable</option>
-                          <option value="b2cs">B2C other / small</option>
-                          <option value="b2cl">B2C large (interstate)</option>
-                        </NativeSelect>
-                      ) : field === "line_amount_tax_inclusion" ? (
-                        <NativeSelect
-                          id={id}
-                          value={values[field] || "unknown"}
-                          disabled={busy || !data.can_edit}
-                          onChange={(event) =>
-                            setValues((previous) => ({ ...previous, [field]: event.target.value }))
-                          }
-                        >
-                          <option value="unknown">Not known</option>
-                          <option value="inclusive">Includes tax</option>
-                          <option value="exclusive">Excludes tax</option>
-                        </NativeSelect>
-                      ) : (
-                        <Input
-                          id={id}
-                          type={field === "invoice_date" ? "date" : "text"}
-                          inputMode={decimalFields.has(field) ? "decimal" : undefined}
-                          value={values[field] ?? ""}
-                          disabled={busy || !data.can_edit}
-                          onChange={(event) =>
-                            setValues((previous) => ({ ...previous, [field]: event.target.value }))
-                          }
-                          aria-invalid={Boolean(errors)}
-                          aria-describedby={errors ? `${id}-error` : undefined}
-                        />
-                      )}
-                      {errors && (
-                        <p id={`${id}-error`} className="text-sm text-destructive">
-                          {errors.join(". ")}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() => setDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!canEdit}>
-                {busy
-                  ? "Saving…"
-                  : confirmation
-                    ? confirmation.action_label || "Confirm"
-                    : "Save changes"}
-              </Button>
-            </div>
-          </form>
+          {editorForm}
         </DialogContent>
       </Dialog>
     </main>

@@ -189,6 +189,7 @@ test("Excel review browses original rows, finds distant evidence and reuses the 
 }, testInfo) => {
   await setup(page);
   let sourceRequests = 0;
+  let correctedTaxable: string | undefined;
   let releaseSecond: (() => void) | undefined;
   const secondResponse = new Promise<void>((resolve) => {
     releaseSecond = resolve;
@@ -197,6 +198,15 @@ test("Excel review browses original rows, finds distant evidence and reuses the 
     const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
     if (id === "two") await secondResponse;
     const data = invoice(id);
+    if (route.request().method() === "PATCH") {
+      const change = route.request().postDataJSON();
+      expect(change).toEqual({ section: "line", line_index: 0, values: { taxable_value: "1200" } });
+      correctedTaxable = change.values.taxable_value;
+    }
+    if (correctedTaxable) {
+      data.lines[0].values.taxable_value = correctedTaxable;
+      data.lines[0].display.taxable_value = "₹1,200.00";
+    }
     data.upload_ref = "excel-38";
     data.source = {
       name: "B2B.xlsx",
@@ -255,7 +265,30 @@ test("Excel review browses original rows, finds distant evidence and reuses the 
   await page.getByRole("button", { name: "Jump to invoice rows", exact: true }).click();
   await expect(source.locator('[data-source-row="2"]')).toBeVisible();
   await expect(page.getByText("No source document is available for this invoice.")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit reported totals" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit value" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Calculated totals" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit rate component 1", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(source).toBeVisible();
+  await expect(page.getByLabel("Taxable value", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("Item name", { exact: true })).toHaveCount(0);
+  await page.getByLabel("CGST rate (%)", { exact: true }).fill("12");
+  await expect(page.getByLabel("CGST rate (%)", { exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Next invoice", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("form", { name: "Edit invoice values" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Edit rate component 1", exact: true }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(/invoices\/one$/);
+  await page.getByRole("button", { name: "Edit rate component 1", exact: true }).click();
+  await page.getByLabel("Taxable value", { exact: true }).fill("1200");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("form", { name: "Edit invoice values" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Tax breakdown", exact: true })).toContainText(
+    "₹1,200.00",
+  );
+  await expect(source.locator('[data-source-row="2"] td').nth(3)).toHaveText("");
   const initialSourceRequests = sourceRequests;
   await page.getByLabel("Find in spreadsheet").fill("Omitted source row");
   await page.getByRole("button", { name: "Find next", exact: true }).click();
@@ -268,7 +301,7 @@ test("Excel review browses original rows, finds distant evidence and reuses the 
   await expect(source).toBeVisible();
   await expect(source.locator('[data-source-row="2503"]')).toBeVisible();
   await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit reported totals" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit value" })).toHaveCount(0);
   releaseSecond?.();
   await expect(page.getByRole("heading", { name: "Invoice INV-002", exact: true })).toBeVisible();
   await expect(source.locator('[data-source-row="2503"][data-selected="true"]')).toBeVisible();
@@ -469,7 +502,9 @@ test("facts keep field errors and save only server-authorized raw fields", async
   await page.getByLabel("Invoice number", { exact: true }).fill("DUPLICATE");
   await page.getByLabel("Place of supply").selectOption("29");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Check the invoice number.");
+  await expect(page.getByRole("alert").filter({ hasText: "Check the invoice number." })).toHaveText(
+    "Check the invoice number.",
+  );
   await expect(page.getByLabel("Invoice number", { exact: true })).toHaveAttribute(
     "aria-invalid",
     "true",

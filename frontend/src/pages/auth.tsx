@@ -18,6 +18,7 @@ export type AuthPageData = {
   confirmed?: boolean;
   continueTo?: string;
   business_name?: string | null;
+  signedInEmail?: string | null;
   gstin?: string | null;
   errors?: Record<string, string[]>;
   users?: { name: string; email: string }[];
@@ -43,7 +44,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
         reset: "Choose a new password",
         invite: "Welcome to Nila",
         confirmation: data.confirmed ? "Email verified" : "Verify your email",
-        business_signup: "Create your business account",
+        business_signup: data.signedInEmail ? "Add a business" : "Create your business account",
       }[data.kind];
   const description = invalid
     ? data.kind === "invite"
@@ -57,7 +58,9 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
         confirmation: data.confirmed
           ? `${data.email} is verified.`
           : `Open the verification email sent to ${data.email}.`,
-        business_signup: "Enter your business and owner details to get started.",
+        business_signup: data.signedInEmail
+          ? `You're signed in as ${data.signedInEmail}. Add a business to this account.`
+          : "Enter your business and owner details to get started.",
       }[data.kind];
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6">
@@ -107,7 +110,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                     forgot: "Send reset instructions",
                     reset: "Reset password",
                     invite: "Set password and sign in",
-                    business_signup: "Create business account",
+                    business_signup: data.signedInEmail ? "Create business" : "Create business account",
                   }[data.kind]
                 }
               >
@@ -128,8 +131,8 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                   <>
                     <TextField name="business[name]" id="business_name" label="Business name" autoComplete="organization" value={data.business_name ?? ""} errors={data.errors?.business_name} />
                     <TextField name="business[gstin]" id="business_gstin" label="GSTIN" autoComplete="off" value={data.gstin ?? ""} errors={data.errors?.gstin} />
-                    <TextField name="user[name]" id="user_name" label="Your name" autoComplete="name" value={data.name ?? ""} errors={data.errors?.name} />
-                    <TextField name="user[email]" id="user_email" label="Email" type="email" autoComplete="email" value={data.email ?? ""} errors={data.errors?.email} />
+                    {!data.signedInEmail && <TextField name="user[name]" id="user_name" label="Your name" autoComplete="name" value={data.name ?? ""} errors={data.errors?.name} />}
+                    {!data.signedInEmail && <TextField name="user[email]" id="user_email" label="Email" type="email" autoComplete="email" value={data.email ?? ""} errors={data.errors?.email} />}
                   </>
                 )}
                 {data.kind !== "forgot" && data.kind !== "business_signup" && (
@@ -140,10 +143,10 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                     errors={data.errors?.password}
                   />
                 )}
-                {data.kind === "business_signup" && (
+                {data.kind === "business_signup" && !data.signedInEmail && (
                   <PasswordField name="password" label="Password" errors={data.errors?.password} />
                 )}
-                {(data.kind === "reset" || data.kind === "invite" || data.kind === "business_signup") && (
+                {(data.kind === "reset" || data.kind === "invite" || (data.kind === "business_signup" && !data.signedInEmail)) && (
                   <PasswordField
                     name="password_confirmation"
                     label="Confirm password"
@@ -174,8 +177,8 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
               </form>
             ) : (
               <p className="text-center text-sm">
-                <a href="/users/log_in" className="underline underline-offset-4">
-                  Back to sign in
+                <a href={data.kind === "business_signup" && data.signedInEmail ? "/app" : "/users/log_in"} className="underline underline-offset-4">
+                  {data.kind === "business_signup" && data.signedInEmail ? "Back to Nila" : "Back to sign in"}
                 </a>
               </p>
             )}

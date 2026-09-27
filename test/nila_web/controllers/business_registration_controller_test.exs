@@ -2,6 +2,7 @@ defmodule NilaWeb.BusinessRegistrationControllerTest do
   use NilaWeb.ConnCase, async: true
   import Swoosh.TestAssertions
   alias Nila.Accounts
+  alias Nila.Business.Access
 
   defp attrs(email \\ "new-business@example.com") do
     %{
@@ -29,6 +30,25 @@ defmodule NilaWeb.BusinessRegistrationControllerTest do
 
     conn = recycle(conn) |> get("/users/confirm")
     assert html_response(conn, 200) =~ "new-business@example.com"
+  end
+
+  test "signed-in firm user creates a business with the same login", %{conn: conn} do
+    %{user: firm_user} = user_with_org_fixture()
+    conn = log_in_user(conn, firm_user)
+
+    signup = get(conn, "/users/business_sign_up") |> html_response(200)
+    assert signup =~ "business_signup"
+    assert signup =~ firm_user.email
+
+    created = post(conn, "/users/business_sign_up", attrs())
+    [client] = Access.list_clients_for_user(firm_user.id)
+
+    assert redirected_to(created) == "/app/business/#{client.id}/invoices"
+
+    assert Accounts.get_user_by_session_token(get_session(created, :user_token)).id ==
+             firm_user.id
+
+    refute Accounts.get_user_by_email("new-business@example.com")
   end
 
   test "invalid GSTIN and duplicate email render signup errors without creating rows", %{

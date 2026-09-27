@@ -5,6 +5,7 @@
 // leaving the invoice. Nila supplies domestic GST fields and its Phoenix API.
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ type Props = {
 type CustomerForm = { name: string; gstin: string; address: string; state_code: string };
 
 export function CustomerPicker({ customers, states, value, onSelect, disabled }: Props) {
+  const { businessId } = useParams({ strict: false }) as { businessId: string };
   const cache = useQueryClient();
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -83,9 +85,9 @@ export function CustomerPicker({ customers, states, value, onSelect, disabled }:
     try {
       const { customer } = await businessRequest(
         editing ? "updateBusinessCustomer" : "createBusinessCustomer",
-        { id: editing ?? undefined, body: { customer: form } },
+        { businessId, id: editing ?? undefined, body: { customer: form } },
       );
-      cache.setQueryData<BusinessBootstrap>(["business"], (data) =>
+      cache.setQueryData<BusinessBootstrap>(["business", businessId], (data) =>
         data
           ? {
               ...data,
@@ -96,7 +98,7 @@ export function CustomerPicker({ customers, states, value, onSelect, disabled }:
       onSelect(customer);
       setSheetOpen(false);
       setSearch("");
-      void cache.invalidateQueries({ queryKey: ["business"] });
+      void cache.invalidateQueries({ queryKey: ["business", businessId] });
     } catch (failure) {
       setError(failure instanceof Error ? failure : new Error("The customer could not be saved."));
     } finally {

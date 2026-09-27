@@ -168,7 +168,11 @@ defmodule NilaWeb.Router do
 
   scope "/api/business", NilaWeb do
     pipe_through :business_api
-    get "/", BusinessController, :bootstrap
+    get "/workspaces", BusinessWorkspaceController, :index
+  end
+
+  scope "/api/business/:business_id", NilaWeb do
+    pipe_through :business_api
     get "/bootstrap", BusinessController, :bootstrap
     patch "/profile", BusinessController, :profile
     post "/profile/assets/:kind", BusinessController, :upload_asset
@@ -199,6 +203,11 @@ defmodule NilaWeb.Router do
   end
 
   scope "/app/business", NilaWeb do
+    pipe_through [:browser, :authenticated_browser, :verified_browser]
+    get "/", ReactAppController, :index
+  end
+
+  scope "/app/business/:business_id", NilaWeb do
     pipe_through [:browser, :authenticated_browser, :verified_browser]
     get "/", ReactAppController, :index
     get "/invoices", ReactAppController, :index
@@ -257,6 +266,7 @@ defmodule NilaWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/business", PageController, :business
     get "/privacy", PageController, :privacy
     get "/terms", PageController, :terms
     get "/data-deletion", PageController, :data_deletion
@@ -269,14 +279,19 @@ defmodule NilaWeb.Router do
     pipe_through [:browser, :redirect_if_authenticated]
 
     get "/users/sign_up", PageController, :signup_redirect
-    get "/users/business_sign_up", AuthPageController, :business_signup
-    post "/users/business_sign_up", BusinessRegistrationController, :create
 
     get "/users/log_in", AuthPageController, :login
     get "/users/reset_password", AuthPageController, :forgot
     post "/users/reset_password", AuthPageController, :forgot_submit
     get "/users/reset_password/:token", AuthPageController, :reset
     post "/users/reset_password/:token", AuthPageController, :reset_submit
+  end
+
+  scope "/", NilaWeb do
+    pipe_through :browser
+
+    get "/users/business_sign_up", AuthPageController, :business_signup
+    post "/users/business_sign_up", BusinessRegistrationController, :create
   end
 
   scope "/", NilaWeb do
