@@ -90,7 +90,11 @@ function SelectField({
       >
         <SelectValue placeholder={placeholder ?? items.find((item) => item.value === "")?.label} />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false}>
+      <SelectContent
+        align="start"
+        alignItemWithTrigger={false}
+        className="w-max min-w-(--anchor-width) max-w-[min(32rem,calc(100vw-2rem))] [&_[data-slot=select-item-text]]:min-w-0 [&_[data-slot=select-item-text]]:shrink [&_[data-slot=select-item-text]]:break-words [&_[data-slot=select-item-text]]:whitespace-normal"
+      >
         {options.map((option, index) => (
           <SelectItem
             key={option.key ?? index}
