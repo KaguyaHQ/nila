@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
   Navigate,
@@ -27,7 +27,7 @@ import { StateCombobox } from "@/components/business/state-combobox";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
@@ -703,7 +703,8 @@ export function BusinessSettings() {
     setBusy(true);
     setError(null);
     try {
-      const result = await businessRequest("configureBusinessQuotationNumbering", { businessId,
+      const result = await businessRequest("configureBusinessQuotationNumbering", {
+        businessId,
         body: { numbering: { style: numbering.style, next_number: numbering.next_number } },
       });
       setNumbering(result.quotation_numbering);
@@ -720,8 +721,11 @@ export function BusinessSettings() {
     setBusy(true);
     setError(null);
     try {
-      const result = await businessRequest("configureBusinessInvoiceNumbering", { businessId,
-        body: { numbering: { style: invoiceNumbering.style, next_number: invoiceNumbering.next_number } },
+      const result = await businessRequest("configureBusinessInvoiceNumbering", {
+        businessId,
+        body: {
+          numbering: { style: invoiceNumbering.style, next_number: invoiceNumbering.next_number },
+        },
       });
       setInvoiceNumbering(result.invoice_numbering);
       await cache.invalidateQueries({ queryKey });
@@ -749,7 +753,7 @@ export function BusinessSettings() {
     }
   }
   return (
-    <form onSubmit={submit} className="max-w-xl space-y-6">
+    <form onSubmit={submit} className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Business details</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -762,222 +766,226 @@ export function BusinessSettings() {
           Business details saved.
         </p>
       )}
-      <fieldset disabled={busy} className="space-y-5">
-        <Field label="Legal name" id="business-name">
-          <Input
-            id="business-name"
-            required
-            value={form.legal_name ?? ""}
-            onChange={(e) => {
-              setSaved(false);
-              setForm({ ...form, legal_name: e.target.value });
-            }}
-          />
-        </Field>
-        <Field label="GSTIN" id="business-gstin">
-          <Input id="business-gstin" readOnly value={data.business.gstin ?? ""} />
-          <p className="text-sm text-muted-foreground">
-            Ask your CA to correct your GSTIN if needed.
-          </p>
-        </Field>
-        <Field label="Business address" id="business-address">
-          <Input
-            id="business-address"
-            required
-            value={form.address ?? ""}
-            onChange={(e) => {
-              setSaved(false);
-              setForm({ ...form, address: e.target.value });
-            }}
-          />
-        </Field>
-        <Field label="Phone (optional)" id="business-phone">
-          <Input
-            id="business-phone"
-            type="tel"
-            maxLength={40}
-            value={form.phone ?? ""}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-        </Field>
-        <Field label="Email (optional)" id="business-email">
-          <Input
-            id="business-email"
-            type="email"
-            maxLength={254}
-            value={form.email ?? ""}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-        </Field>
-        <Field label="State" id="business-state">
-          <StateSelect
-            id="business-state"
-            value={form.state_code ?? ""}
-            onChange={(value) => {
-              setSaved(false);
-              setForm({ ...form, state_code: value });
-            }}
-          />
-        </Field>
-        <Field label="Sales covered" id="business-domestic">
-          <NativeSelect
-            id="business-domestic"
-            value={
-              form.domestic_goods_and_services_only
-                ? "goods"
-                : form.domestic_services_only
-                  ? "services"
-                  : "no"
-            }
-            onChange={(e) => {
-              setSaved(false);
-              setForm({
-                ...form,
-                domestic_services_only: e.target.value === "services",
-                domestic_goods_and_services_only: e.target.value === "goods",
-              });
-            }}
-          >
-            <option value="no">Not confirmed</option>
-            <option value="services">Domestic taxable services only</option>
-            <option value="goods">Domestic taxable goods and services</option>
-          </NativeSelect>
-        </Field>
-        <Field label="E-invoicing applicability" id="business-einvoice">
-          <NativeSelect
-            id="business-einvoice"
-            value={form.e_invoice_not_applicable ? "yes" : "no"}
-            onChange={(e) => {
-              setSaved(false);
-              setForm({ ...form, e_invoice_not_applicable: e.target.value === "yes" });
-            }}
-          >
-            <option value="no">Not confirmed with my CA</option>
-            <option value="yes">My CA confirmed e-invoicing does not apply</option>
-          </NativeSelect>
-          <p className="text-sm text-muted-foreground">
-            Confirm this with your CA before issuing invoices. Nila does not generate an IRN.
-          </p>
-        </Field>
-        <Button type="submit">{busy ? "Saving…" : "Save business details"}</Button>
-      </fieldset>
-      <section className="space-y-4 border-t pt-5" aria-label="Invoice numbering">
-        <div>
-          <h2 className="font-medium">Invoice numbers</h2>
-          <p className="text-sm text-muted-foreground">
-            Set the next number for {invoiceNumbering.financial_year}–{invoiceNumbering.financial_year + 1} before issuing the first invoice of this financial year.
-          </p>
-        </div>
-        <Field label="Number format" id="business-invoice-style">
-          <NativeSelect
-            id="business-invoice-style"
-            disabled={!invoiceNumbering.editable || busy}
-            value={invoiceNumbering.style}
-            onChange={(e) => setInvoiceNumbering({ ...invoiceNumbering, style: e.target.value as typeof invoiceNumbering.style })}
-          >
-            <option value="nila">INV/{financialYearShort}/{String(invoiceNumbering.next_number).padStart(4, "0")} style</option>
-            <option value="serial_fy">{invoiceNumbering.next_number}/{invoiceNumbering.financial_year}-{String(invoiceNumbering.financial_year + 1).slice(-2)} style</option>
-          </NativeSelect>
-        </Field>
-        <Field label="Next number" id="business-invoice-next">
-          <Input
-            id="business-invoice-next"
-            type="number"
-            min={1}
-            max={999999}
-            disabled={!invoiceNumbering.editable || busy}
-            value={invoiceNumbering.next_number}
-            onChange={(e) => setInvoiceNumbering({ ...invoiceNumbering, next_number: Number(e.target.value) })}
-          />
-        </Field>
-        <Button type="button" variant="outline" disabled={!invoiceNumbering.editable || busy} onClick={saveInvoiceNumbering}>
-          Save invoice numbering
-        </Button>
-        {!invoiceNumbering.editable && (
-          <p className="text-sm text-muted-foreground">
-            Numbering is locked for this financial year because an invoice has been issued.
-          </p>
-        )}
-      </section>
-      <section className="space-y-4 border-t pt-5" aria-label="Quotation numbering">
-        <div>
-          <h2 className="font-medium">Quotation numbers</h2>
-          <p className="text-sm text-muted-foreground">
-            Set the next number for {numbering.financial_year}–{numbering.financial_year + 1}{" "}
-            before finalizing the first quotation of this financial year.
-          </p>
-        </div>
-        <Field label="Number format" id="business-quote-style">
-          <NativeSelect
-            id="business-quote-style"
-            disabled={!numbering.editable || busy}
-            value={numbering.style}
-            onChange={(e) =>
-              setNumbering({ ...numbering, style: e.target.value as typeof numbering.style })
-            }
-          >
-            <option value="nila">QT/{financialYearShort}/0001 style</option>
-            <option value="serial_fy">
-              1/{numbering.financial_year}-{String(numbering.financial_year + 1).slice(-2)} style
-            </option>
-          </NativeSelect>
-        </Field>
-        <Field label="Next number" id="business-quote-next">
-          <Input
-            id="business-quote-next"
-            type="number"
-            min={1}
-            max={999999}
-            disabled={!numbering.editable || busy}
-            value={numbering.next_number}
-            onChange={(e) => setNumbering({ ...numbering, next_number: Number(e.target.value) })}
-          />
-        </Field>
-        <Button type="button" variant="outline" disabled={!numbering.editable || busy} onClick={saveNumbering}>
-          Save quotation numbering
-        </Button>
-        {!numbering.editable && (
-          <p className="text-sm text-muted-foreground">
-            Numbering is locked for this financial year because a quotation has been finalized.
-          </p>
-        )}
-      </section>
-      <section className="space-y-4 border-t pt-5" aria-label="Business branding">
-        <h2 className="font-medium">Quotation and invoice branding</h2>
-        {(["logo", "signature"] as const).map((kind) => {
-          const present = kind === "logo" ? data.profile?.has_logo : data.profile?.has_signature;
-          return (
-            <div key={kind} className="space-y-2">
-              <label className="block text-sm font-medium" htmlFor={`business-${kind}`}>
-                {kind === "logo" ? "Logo" : "Signature or stamp"} (optional)
-              </label>
-              {present && (
-                <img
-                  src={`/api/business/${businessId}/profile/assets/${kind}?v=${assetVersion}`}
-                  alt={kind === "logo" ? "Current business logo" : "Current signature or stamp"}
-                  className="max-h-24 max-w-48 object-contain"
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.85fr)] lg:gap-12">
+        <div className="min-w-0 space-y-8">
+          <fieldset disabled={busy} className="space-y-6">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Legal name" id="business-name">
+                <Input
+                  id="business-name"
+                  required
+                  value={form.legal_name ?? ""}
+                  onChange={(e) => {
+                    setSaved(false);
+                    setForm({ ...form, legal_name: e.target.value });
+                  }}
                 />
-              )}
-              <Input
-                id={`business-${kind}`}
-                type="file"
-                accept="image/png,image/jpeg"
-                disabled={busy}
-                onChange={(e) => {
-                  void changeAsset(kind, e.target.files?.[0]);
-                  e.target.value = "";
-                }}
-              />
-              {present && (
-                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => removeAsset(kind)}>
-                  Remove {kind === "logo" ? "logo" : "signature"}
-                </Button>
-              )}
+              </Field>
+              <Field label="GSTIN" id="business-gstin">
+                <Input id="business-gstin" readOnly value={data.business.gstin ?? ""} />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Business address" id="business-address">
+                  <Input
+                    id="business-address"
+                    required
+                    value={form.address ?? ""}
+                    onChange={(e) => {
+                      setSaved(false);
+                      setForm({ ...form, address: e.target.value });
+                    }}
+                  />
+                </Field>
+              </div>
+              <Field label="Phone (optional)" id="business-phone">
+                <Input
+                  id="business-phone"
+                  type="tel"
+                  maxLength={40}
+                  value={form.phone ?? ""}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
+              </Field>
+              <Field label="Email (optional)" id="business-email">
+                <Input
+                  id="business-email"
+                  type="email"
+                  maxLength={254}
+                  value={form.email ?? ""}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
+              </Field>
+              <Field label="State" id="business-state">
+                <StateSelect
+                  id="business-state"
+                  value={form.state_code ?? ""}
+                  onChange={(value) => {
+                    setSaved(false);
+                    setForm({ ...form, state_code: value });
+                  }}
+                />
+              </Field>
             </div>
-          );
-        })}
-        <p className="text-sm text-muted-foreground">Save business details before adding images. PNG or JPEG, up to 500 KB each.</p>
-      </section>
+            <Button type="submit">{busy ? "Saving…" : "Save business details"}</Button>
+          </fieldset>
+        </div>
+        <div className="min-w-0 space-y-8 lg:border-l lg:pl-10">
+          <section className="space-y-4" aria-label="Invoice numbering">
+            <div>
+              <h2 className="font-medium">Invoice numbers</h2>
+              <p className="text-sm text-muted-foreground">
+                Set the next number for {invoiceNumbering.financial_year}–
+                {invoiceNumbering.financial_year + 1} before issuing the first invoice of this
+                financial year.
+              </p>
+            </div>
+            <Field label="Number format" id="business-invoice-style">
+              <NativeSelect
+                id="business-invoice-style"
+                disabled={!invoiceNumbering.editable || busy}
+                value={invoiceNumbering.style}
+                onChange={(e) =>
+                  setInvoiceNumbering({
+                    ...invoiceNumbering,
+                    style: e.target.value as typeof invoiceNumbering.style,
+                  })
+                }
+              >
+                <option value="nila">
+                  INV/{financialYearShort}/{String(invoiceNumbering.next_number).padStart(4, "0")}{" "}
+                  style
+                </option>
+                <option value="serial_fy">
+                  {invoiceNumbering.next_number}/{invoiceNumbering.financial_year}-
+                  {String(invoiceNumbering.financial_year + 1).slice(-2)} style
+                </option>
+              </NativeSelect>
+            </Field>
+            <Field label="Next number" id="business-invoice-next">
+              <Input
+                id="business-invoice-next"
+                type="number"
+                min={1}
+                max={999999}
+                disabled={!invoiceNumbering.editable || busy}
+                value={invoiceNumbering.next_number}
+                onChange={(e) =>
+                  setInvoiceNumbering({ ...invoiceNumbering, next_number: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!invoiceNumbering.editable || busy}
+              onClick={saveInvoiceNumbering}
+            >
+              Save invoice numbering
+            </Button>
+            {!invoiceNumbering.editable && (
+              <p className="text-sm text-muted-foreground">
+                Numbering is locked for this financial year because an invoice has been issued.
+              </p>
+            )}
+          </section>
+          <section className="space-y-4 border-t pt-5" aria-label="Quotation numbering">
+            <div>
+              <h2 className="font-medium">Quotation numbers</h2>
+              <p className="text-sm text-muted-foreground">
+                Set the next number for {numbering.financial_year}–{numbering.financial_year + 1}{" "}
+                before finalizing the first quotation of this financial year.
+              </p>
+            </div>
+            <Field label="Number format" id="business-quote-style">
+              <NativeSelect
+                id="business-quote-style"
+                disabled={!numbering.editable || busy}
+                value={numbering.style}
+                onChange={(e) =>
+                  setNumbering({ ...numbering, style: e.target.value as typeof numbering.style })
+                }
+              >
+                <option value="nila">QT/{financialYearShort}/0001 style</option>
+                <option value="serial_fy">
+                  1/{numbering.financial_year}-{String(numbering.financial_year + 1).slice(-2)}{" "}
+                  style
+                </option>
+              </NativeSelect>
+            </Field>
+            <Field label="Next number" id="business-quote-next">
+              <Input
+                id="business-quote-next"
+                type="number"
+                min={1}
+                max={999999}
+                disabled={!numbering.editable || busy}
+                value={numbering.next_number}
+                onChange={(e) =>
+                  setNumbering({ ...numbering, next_number: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!numbering.editable || busy}
+              onClick={saveNumbering}
+            >
+              Save quotation numbering
+            </Button>
+            {!numbering.editable && (
+              <p className="text-sm text-muted-foreground">
+                Numbering is locked for this financial year because a quotation has been finalized.
+              </p>
+            )}
+          </section>
+          <section className="space-y-4 border-t pt-5" aria-label="Business branding">
+            <h2 className="font-medium">Quotation and invoice branding</h2>
+            {(["logo", "signature"] as const).map((kind) => {
+              const present =
+                kind === "logo" ? data.profile?.has_logo : data.profile?.has_signature;
+              return (
+                <div key={kind} className="space-y-2">
+                  <label className="block text-sm font-medium" htmlFor={`business-${kind}`}>
+                    {kind === "logo" ? "Logo" : "Signature or stamp"} (optional)
+                  </label>
+                  {present && (
+                    <img
+                      src={`/api/business/${businessId}/profile/assets/${kind}?v=${assetVersion}`}
+                      alt={kind === "logo" ? "Current business logo" : "Current signature or stamp"}
+                      className="max-h-24 max-w-48 object-contain"
+                    />
+                  )}
+                  <Input
+                    id={`business-${kind}`}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    disabled={busy}
+                    onChange={(e) => {
+                      void changeAsset(kind, e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                  {present && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => removeAsset(kind)}
+                    >
+                      Remove {kind === "logo" ? "logo" : "signature"}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-sm text-muted-foreground">
+              Save business details before adding images. PNG or JPEG, up to 500 KB each.
+            </p>
+          </section>
+        </div>
+      </div>
     </form>
   );
 }
@@ -1067,6 +1075,12 @@ function localDate() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
+function quotationNumber(numbering: BusinessBootstrap["quotation_numbering"]) {
+  const year = numbering.financial_year;
+  return numbering.style === "serial_fy"
+    ? `${numbering.next_number}/${year}-${String(year + 1).slice(-2)}`
+    : `QT/${String(year).slice(-2)}${String(year + 1).slice(-2)}/${String(numbering.next_number).padStart(4, "0")}`;
+}
 function InvoiceForm({
   invoice,
   original,
@@ -1119,16 +1133,38 @@ function InvoiceForm({
   const quotation = form.document_type === "quotation";
   const documentPath = quotation ? "/business/$businessId/quotations" : "/business/$businessId/invoices";
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [numberingOpen, setNumberingOpen] = useState(false);
+  const [numberingDraft, setNumberingDraft] = useState(data.quotation_numbering);
+  const [numberingError, setNumberingError] = useState<Error | null>(null);
+  const numberingMutation = useMutation({
+    mutationFn: (numbering: typeof numberingDraft) =>
+      businessRequest("configureBusinessQuotationNumbering", {
+        businessId,
+        body: { numbering: { style: numbering.style, next_number: numbering.next_number } },
+      }),
+    retry: false,
+    networkMode: "always",
+  });
+  const quoteYear = Number(form.invoice_date.slice(0, 4)) -
+    (Number(form.invoice_date.slice(5, 7)) < 4 ? 1 : 0);
+  const currentQuoteYear = quoteYear === data.quotation_numbering.financial_year;
+  async function saveQuotationNumbering(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (numberingMutation.isPending) return;
+    setNumberingError(null);
+    try {
+      const result = await numberingMutation.mutateAsync(numberingDraft);
+      cache.setQueryData<BusinessBootstrap>(queryKey, (current) =>
+        current ? { ...current, quotation_numbering: result.quotation_numbering } : current,
+      );
+      setNumberingOpen(false);
+    } catch (error) {
+      setNumberingError(error as Error);
+    }
+  }
   const calculation = useInvoiceCalculation(form, issued ? saved : undefined);
   const configured = Boolean(
-    data.profile?.legal_name &&
-      data.profile?.address &&
-      data.profile?.state_code &&
-      (quotation ||
-        (data.profile?.e_invoice_not_applicable &&
-          (data.profile?.domestic_goods_and_services_only ||
-            (data.profile?.domestic_services_only &&
-              form.lines.every((line) => line.kind !== "goods"))))),
+    data.profile?.legal_name && data.profile?.address && data.profile?.state_code,
   );
   function change(next: Partial<InvoiceInput>) {
     setForm({ ...form, ...next });
@@ -1458,7 +1494,7 @@ function InvoiceForm({
           </Link>{" "}
           {quotation
             ? "before finalizing. You can still save a draft."
-            : "and confirm the invoice scope with your CA before issuing. You can still save a draft."}
+            : "before issuing. You can still save a draft."}
         </p>
       )}
       {original && (
@@ -1476,9 +1512,65 @@ function InvoiceForm({
           calculating={calculation.pending}
           onChange={change}
           onShippingInteraction={setShippingTouched}
+          nextQuotationNumber={
+            quotation && !issued && currentQuoteYear
+              ? quotationNumber(data.quotation_numbering)
+              : undefined
+          }
+          onChangeQuotationNumbering={
+            quotation && !issued && currentQuoteYear && data.quotation_numbering.editable
+              ? () => {
+                  setNumberingDraft(data.quotation_numbering);
+                  setNumberingError(null);
+                  setNumberingOpen(true);
+                }
+              : undefined
+          }
           disabled={issued || Boolean(busy)}
         />
       </form>
+      <Dialog open={numberingOpen} onOpenChange={(open) => !numberingMutation.isPending && setNumberingOpen(open)}>
+        <DialogContent>
+          <DialogTitle>Quotation numbering</DialogTitle>
+          <DialogDescription>
+            Set the next number before finalizing your first quotation for {data.quotation_numbering.financial_year}–{data.quotation_numbering.financial_year + 1}.
+          </DialogDescription>
+          <form onSubmit={saveQuotationNumbering} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="quote-number-style" className="text-sm font-medium">Number format</label>
+              <NativeSelect
+                id="quote-number-style"
+                value={numberingDraft.style}
+                disabled={numberingMutation.isPending}
+                onChange={(event) => setNumberingDraft({ ...numberingDraft, style: event.target.value as typeof numberingDraft.style })}
+              >
+                <option value="nila">{quotationNumber({ ...numberingDraft, style: "nila", next_number: 1 })} style</option>
+                <option value="serial_fy">{quotationNumber({ ...numberingDraft, style: "serial_fy", next_number: 1 })} style</option>
+              </NativeSelect>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="quote-next-number" className="text-sm font-medium">Next number</label>
+              <Input
+                id="quote-next-number"
+                type="number"
+                min={1}
+                max={999999}
+                required
+                value={numberingDraft.next_number}
+                disabled={numberingMutation.isPending}
+                onChange={(event) => setNumberingDraft({ ...numberingDraft, next_number: Number(event.target.value) })}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">Next quotation: <span className="font-medium text-foreground">{quotationNumber(numberingDraft)}</span></p>
+            {numberingError && <Errors error={numberingError} />}
+            <DialogFooter>
+              <Button type="submit" disabled={numberingMutation.isPending}>
+                {numberingMutation.isPending ? "Saving…" : "Save numbering"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {calculation.error && (
         <p role="alert" className="mx-auto max-w-[920px] text-sm text-destructive">
           {calculation.error}

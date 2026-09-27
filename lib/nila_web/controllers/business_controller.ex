@@ -376,7 +376,7 @@ defmodule NilaWeb.BusinessController do
            "Your CA has already filed this month. Contact them before issuing this document."}
 
         :profile_incomplete ->
-          {422, "Complete your business details and confirm the invoicing requirements first."}
+          {422, "Complete your business details first."}
 
         :numbering_started ->
           {409,

@@ -774,13 +774,7 @@ defmodule Nila.Business.Invoicing do
         {:error, :profile_incomplete}
 
       invoice.document_type != "quotation" and
-          (is_nil(profile.id) or not profile.e_invoice_not_applicable or
-             not (profile.domestic_services_only or profile.domestic_goods_and_services_only)) ->
-        {:error, :profile_incomplete}
-
-      invoice.document_type != "quotation" and
-        Enum.any?(invoice.lines, &(line_kind(string_keys(&1)) == "goods")) and
-          not profile.domestic_goods_and_services_only ->
+          (is_nil(profile.id) or not Profile.changeset(profile, %{}).valid?) ->
         {:error, :profile_incomplete}
 
       profile.state_code != Nila.Gst.StateCodes.from_gstin(client.gstin) ->
@@ -1277,7 +1271,7 @@ defmodule Nila.Business.Invoicing do
     do: "Choose another primary shipping address first."
 
   def error_message(:profile_incomplete),
-    do: "Complete your business details and confirm the supported billing scope first."
+    do: "Complete your business details first."
 
   def error_message(:seller_gstin_required),
     do: "A valid business GSTIN is required. Ask your CA to update it."

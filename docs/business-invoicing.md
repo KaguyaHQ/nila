@@ -19,8 +19,8 @@ client-specific business access; they do not need a CA or firm invitation to beg
 An independently created business starts in its own org without firm membership. A CA can
 also invite a business owner from the React client edit page. Connecting an
 independently created business to a CA firm is not implemented yet. The owner sets
-business details, confirms with their CA that e-invoicing does not apply, adds
-customers, saves drafts when work is unfinished, or issues directly from the filled editor, then downloads PDFs.
+business details, adds customers, saves drafts when work is unfinished, or issues
+directly from the filled editor, then downloads PDFs.
 
 The invoice editor adapts Midday's editable document composition, inline fields,
 line-item table, and customer picker/create/edit flow. The document is visible
@@ -58,11 +58,6 @@ unit. Invoice and quotation lines copy these defaults when selected; they remain
 editable and independent of the catalogue. Editing or deleting a saved item
 never rewrites an existing draft, issued snapshot or retained PDF. Ad hoc items
 remain supported. There is no stock tracking.
-
-Before issuing a goods invoice, the business must confirm in Business details
-that it will use Nila only for domestic taxable goods and services. Existing
-services-only confirmations continue to allow service invoices, but do not
-authorize goods invoices. Quotations can be finalized before that confirmation.
 
 Before the first invoice in the current financial year, Business details can set
 the next invoice number and choose either Nila's `INV/2627/0001` format or a

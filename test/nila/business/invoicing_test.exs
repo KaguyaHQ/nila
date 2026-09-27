@@ -284,9 +284,7 @@ defmodule Nila.Business.InvoicingTest do
       Invoicing.save_profile(client, %{
         legal_name: "Service Business",
         address: "Chennai",
-        state_code: "33",
-        e_invoice_not_applicable: true,
-        domestic_services_only: true
+        state_code: "33"
       })
 
     {:ok, customer} =
@@ -355,15 +353,6 @@ defmodule Nila.Business.InvoicingTest do
         }
       ]
     }
-
-    assert {:error, :profile_incomplete} =
-             Invoicing.finalize_invoice(ctx.client, ctx.actor, attrs)
-
-    assert Invoicing.list_invoices(ctx.client) == []
-    assert Invoicing.invoice_numbering(ctx.client).next_number == 129
-
-    {:ok, _} =
-      Invoicing.save_profile(ctx.client, %{domestic_goods_and_services_only: true})
 
     assert {:error, :renderer_down} =
              Invoicing.finalize_invoice(ctx.client, ctx.actor, attrs, nil,
@@ -603,11 +592,6 @@ defmodule Nila.Business.InvoicingTest do
              Invoicing.convert_quotation(ctx.client, quote.id, ctx.actor)
 
     assert hd(invoice.lines)["kind"] == "goods"
-    assert {:error, :profile_incomplete} = issue(ctx, invoice)
-
-    {:ok, _} =
-      Invoicing.save_profile(ctx.client, %{domestic_goods_and_services_only: true})
-
     assert {:ok, issued} = issue(ctx, invoice)
     assert issued.totals["total_paise"] == 118_000
     dump = Repo.get!(Nila.Gst.Intake.Dump, issued.dump_id)
@@ -939,17 +923,11 @@ defmodule Nila.Business.InvoicingTest do
              Invoicing.quotation_status(ctx.client, invoice.id, ctx.actor, "accepted")
   end
 
-  test "quotation does not require invoice acknowledgments and bypasses filed sales month", ctx do
+  test "quotation bypasses filed sales month", ctx do
     {:ok, invoice} = draft(ctx)
     {:ok, _} = issue(ctx, invoice)
     {:ok, month} = Months.get_by_period(ctx.client.org_id, ctx.client.id, "2026-09")
     month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
-
-    {:ok, _} =
-      Invoicing.save_profile(ctx.client, %{
-        e_invoice_not_applicable: false,
-        domestic_services_only: false
-      })
 
     {:ok, quote} = draft(ctx, %{"document_type" => "quotation"})
     assert {:ok, quote} = issue(ctx, quote)
