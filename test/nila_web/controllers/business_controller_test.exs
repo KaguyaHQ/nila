@@ -496,14 +496,14 @@ defmodule NilaWeb.BusinessControllerTest do
 
     assert build_conn()
            |> patch("#{business_root(client)}/quotation-numbering", %{
-             numbering: %{style: "serial_fy", next_number: 79}
+             numbering: %{next_quotation_number: "GR-79"}
            })
            |> contract_response(401)
 
     assert build_conn()
            |> log_in_user(ca)
            |> patch("#{business_root(client)}/quotation-numbering", %{
-             numbering: %{style: "serial_fy", next_number: 79}
+             numbering: %{next_quotation_number: "GR-79"}
            })
            |> contract_response(403)
 
@@ -519,12 +519,13 @@ defmodule NilaWeb.BusinessControllerTest do
     response =
       conn
       |> patch("#{business_root(client)}/quotation-numbering", %{
-        numbering: %{style: "serial_fy", next_number: 79}
+        numbering: %{next_quotation_number: "GR-79"}
       })
       |> contract_response(200)
 
     assert response["quotation_numbering"]["next_number"] == 79
-    assert response["quotation_numbering"]["style"] == "serial_fy"
+    assert response["quotation_numbering"]["style"] == "custom"
+    assert response["quotation_numbering"]["next_quotation_number"] == "GR-79"
 
     invoice_numbering =
       conn

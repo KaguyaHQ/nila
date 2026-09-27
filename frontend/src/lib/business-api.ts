@@ -29,6 +29,30 @@ export async function listBusinessWorkspaces(signal?: AbortSignal): Promise<Busi
   }
   return response.json();
 }
+export async function createBusinessWorkspace(
+  body: ApiBody<"createBusinessWorkspace">,
+): Promise<ApiResult<"createBusinessWorkspace">> {
+  const response = await fetch("/api/business/workspaces", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-CSRF-Token":
+        document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new BusinessApiError(
+      response.status,
+      typeof data?.error === "string" ? data.error : "Could not add the business.",
+      data?.errors ?? {},
+    );
+  }
+  return response.json();
+}
 const businessOperations = {
   getBusinessBootstrap: ["GET", "/bootstrap"],
   getBusinessServices: ["GET", "/services"],

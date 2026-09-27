@@ -43,6 +43,8 @@ export function InvoiceDocument({
   calculating,
   onChange,
   onShippingInteraction,
+  nextQuotationNumber,
+  onChangeQuotationNumbering,
   disabled,
 }: {
   value: InvoiceInput;
@@ -53,15 +55,17 @@ export function InvoiceDocument({
   calculating: boolean;
   onChange: (next: Partial<InvoiceInput>) => void;
   onShippingInteraction: (interacted: boolean) => void;
+  nextQuotationNumber?: string;
+  onChangeQuotationNumbering?: () => void;
   disabled: boolean;
 }) {
   const { businessId } = useParams({ strict: false }) as { businessId: string };
+  const quotation = value.document_type === "quotation";
   const [showReference, setShowReference] = useState(
-    Boolean(value.purchase_order_number || value.purchase_order_date),
+    Boolean(value.purchase_order_number || (!quotation && value.purchase_order_date)),
   );
   const [showDelivery, setShowDelivery] = useState(Boolean(value.delivery_address));
   const issued = Boolean(saved && saved.status !== "draft");
-  const quotation = value.document_type === "quotation";
   const showSubject = quotation || Boolean(saved?.subject || original?.subject);
   const credit = value.document_type === "credit_note";
   const supplier = issued
@@ -109,12 +113,22 @@ export function InvoiceDocument({
           <h1 className="mb-5 text-2xl font-semibold tracking-tight">
             {quotation ? "Quotation" : credit ? "Credit note" : "Tax invoice"}
           </h1>
-          <div className="grid max-w-sm grid-cols-[110px_minmax(0,1fr)] sm:grid-cols-[140px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 text-sm">
+          <div className={`grid ${quotation ? "max-w-md" : "max-w-sm"} grid-cols-[110px_minmax(0,1fr)] sm:grid-cols-[140px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 text-sm`}>
             <span className="text-muted-foreground">
               {quotation ? "Quotation no." : credit ? "Credit note no." : "Invoice no."}
             </span>
-            <span className="py-1 font-medium">
-              {saved?.number || (quotation ? "Assigned on finalizing" : "Assigned on issue")}
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1 font-medium">
+              {saved?.number ||
+                (quotation && nextQuotationNumber
+                  ? nextQuotationNumber
+                  : quotation
+                    ? "Assigned on finalizing"
+                    : "Assigned on issue")}
+              {quotation && !issued && onChangeQuotationNumbering && (
+                <Button type="button" variant="link" size="sm" className="h-auto p-0 font-normal" disabled={disabled} onClick={onChangeQuotationNumbering}>
+                  Edit
+                </Button>
+              )}
             </span>
             {saved?.revised_from_id && (
               <>
@@ -181,27 +195,31 @@ export function InvoiceDocument({
             {showReference && (
               <>
                 <label htmlFor="invoice-reference" className="text-muted-foreground">
-                  Reference / PO no.
+                  {quotation ? "Customer reference" : "Customer PO number"}
                 </label>
                 <InlineInput
                   id="invoice-reference"
-                  aria-label="Reference / PO number (optional)"
+                  aria-label={quotation ? "Customer reference (optional)" : "Customer PO number (optional)"}
                   disabled={disabled}
                   maxLength={100}
                   placeholder="Optional"
                   value={value.purchase_order_number || ""}
                   onChange={(e) => onChange({ purchase_order_number: e.target.value })}
                 />
-                <label htmlFor="invoice-reference-date" className="text-muted-foreground">
-                  Reference date
-                </label>
-                <BusinessDateField
-                  id="invoice-reference-date"
-                  label="Reference date"
-                  disabled={disabled}
-                  value={value.purchase_order_date || ""}
-                  onChange={(date) => onChange({ purchase_order_date: date })}
-                />
+                {!quotation && (
+                  <>
+                    <label htmlFor="invoice-reference-date" className="text-muted-foreground">
+                      PO date
+                    </label>
+                    <BusinessDateField
+                      id="invoice-reference-date"
+                      label="PO date"
+                      disabled={disabled}
+                      value={value.purchase_order_date || ""}
+                      onChange={(date) => onChange({ purchase_order_date: date })}
+                    />
+                  </>
+                )}
               </>
             )}
           </div>
@@ -214,7 +232,7 @@ export function InvoiceDocument({
               className="-ml-2 mt-1 text-muted-foreground"
               onClick={() => setShowReference(true)}
             >
-              <Plus /> Add reference / PO
+              <Plus /> {quotation ? "Add customer reference" : "Add customer PO"}
             </Button>
           )}
         </div>
@@ -243,7 +261,7 @@ export function InvoiceDocument({
           {supplier?.phone && <p className="text-muted-foreground">{supplier.phone}</p>}
           {supplier?.email && <p className="text-muted-foreground">{supplier.email}</p>}
           {!issued && !supplier?.address && (
-            <Link to="/business/$businessId/settings" params={{ businessId }} className="inline-block underline underline-offset-4">
+            <Link to="/business/$businessId/settings/$section" params={{ businessId, section: "business" }} className="inline-block underline underline-offset-4">
               Add business details
             </Link>
           )}

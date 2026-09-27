@@ -29,6 +29,7 @@ const bootstrap: BusinessBootstrap = {
   quotation_numbering: {
     financial_year: 2026,
     style: "nila",
+    next_quotation_number: "QT/2627/0001",
     next_number: 1,
     editable: true,
   },
@@ -159,9 +160,38 @@ test("one login opens two businesses without mixing their invoices", async ({ pa
   await page.getByRole("link", { name: /Caltech/ }).click();
   await expect(page).toHaveURL(/\/app\/business\/2\/invoices$/);
   await expect(page.getByText("CAL-21")).toBeVisible();
-  await page.getByRole("combobox", { name: "Business" }).selectOption("1");
+  await page.getByRole("button", { name: "Business" }).click();
+  await page.getByRole("menuitem", { name: "Breeze Services" }).click();
   await expect(page).toHaveURL(/\/app\/business\/1\/invoices$/);
   await expect(page.getByText("CAL-21")).toHaveCount(0);
+});
+
+test("workspace switcher adds a business without leaving the app", async ({ page }, testInfo) => {
+  await setup(page);
+  let submitted: unknown;
+  await page.unroute(/\/api\/business\/workspaces$/);
+  await page.route(/\/api\/business\/workspaces$/, (route) => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON();
+      return route.fulfill({ status: 201, json: { business: { id: 3, name: "Caltech", gstin: "27AAPFU0939F1ZV" } } });
+    }
+    return route.fulfill({ json: { businesses: [{ id: 1, name: "Breeze Services", gstin: "33AABCT3518Q1ZF" }], ca_workspace: { available: false } } });
+  });
+  await page.route(/\/api\/business\/3\/bootstrap$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, business: { ...bootstrap.business, id: 3, name: "Caltech", gstin: "27AAPFU0939F1ZV", address: null }, profile: { ...bootstrap.profile, address: null } } }),
+  );
+  await page.goto("/app/business/1/invoices");
+  await page.getByRole("button", { name: "Business" }).click();
+  await page.getByRole("menuitem", { name: "Add business" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a business" });
+  await expect(dialog).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("add-business-dialog.png") });
+  await dialog.getByLabel("Business name").fill("Caltech");
+  await dialog.getByLabel("GSTIN").fill("27AAPFU0939F1ZV");
+  await dialog.getByRole("button", { name: "Add business" }).click();
+  await expect(page).toHaveURL(/\/app\/business\/3\/settings\/business$/);
+  await expect(page.getByRole("heading", { name: "Finish setting up your business" })).toBeVisible();
+  expect(submitted).toEqual({ business: { name: "Caltech", gstin: "27AAPFU0939F1ZV" } });
 });
 async function chooseState(page: Page, trigger: string, label = "State", stateName = "Tamil Nadu") {
   await page.locator(trigger).click();
@@ -475,10 +505,10 @@ test("customer saves scoped and business profile confirms save", async ({ page }
     expect(route.request().postDataJSON().profile.address).toBe("New address");
     return route.fulfill({ json: { profile: bootstrap.profile } });
   });
-  await page.getByRole("link", { name: "Business details", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByLabel("Business address").fill("New address");
   await page.getByRole("button", { name: "Save business details" }).click();
-  await expect(page.getByRole("status")).toHaveText("Business details saved.");
+  await expect(page.getByRole("status")).toHaveText("Settings saved.");
 });
 
 test("business details save contact info, numbering and a logo", async ({ page }, testInfo) => {
@@ -518,14 +548,17 @@ test("business details save contact info, numbering and a logo", async ({ page }
   await page.locator("#business-email").fill("quotes@example.com");
   await page.getByRole("button", { name: "Save business details" }).click();
   await expect(page.getByRole("status")).toContainText("saved");
-  await page.locator("#business-quote-style").selectOption("serial_fy");
-  await page.locator("#business-quote-next").fill("79");
+  await page.screenshot({ path: testInfo.outputPath("business-profile-settings.png"), fullPage: true });
+  await page.getByRole("link", { name: "Document numbers" }).click();
+  await page.locator("#business-quote-next").fill("79/2026-27");
   await page.getByRole("button", { name: "Save quotation numbering" }).click();
-  await expect(page.locator("#business-quote-next")).toHaveValue("79");
+  await expect(page.locator("#business-quote-next")).toHaveValue("79/2026-27");
   await page.locator("#business-invoice-style").selectOption("serial_fy");
   await page.locator("#business-invoice-next").fill("129");
   await page.getByRole("button", { name: "Save invoice numbering" }).click();
   await expect(page.locator("#business-invoice-next")).toHaveValue("129");
+  await page.screenshot({ path: testInfo.outputPath("business-document-numbers.png"), fullPage: true });
+  await page.getByRole("link", { name: "Branding" }).click();
   await page.locator("#business-logo").setInputFiles({
     name: "logo.png",
     mimeType: "image/png",
@@ -538,8 +571,18 @@ test("business details save contact info, numbering and a logo", async ({ page }
   await page.screenshot({ path: testInfo.outputPath("business-branding-settings.png"), fullPage: true });
   expect(state.profile?.phone).toBe("9962550448");
   expect(state.profile?.email).toBe("quotes@example.com");
-  expect(state.quotation_numbering.style).toBe("serial_fy");
+  expect(state.quotation_numbering.next_quotation_number).toBe("79/2026-27");
   expect(state.invoice_numbering.style).toBe("serial_fy");
+  state = {
+    ...state,
+    quotation_numbering: { ...state.quotation_numbering, editable: false },
+    invoice_numbering: { ...state.invoice_numbering, editable: false },
+  };
+  await page.goto("/app/business/1/settings/document-numbers");
+  await expect(page.getByText("Next invoice: 129/2026-27")).toBeVisible();
+  await expect(page.locator("#business-quote-next")).toHaveValue("79/2026-27");
+  await expect(page.locator("#business-invoice-next")).toHaveCount(0);
+  await expect(page.locator("#business-quote-next")).toBeVisible();
 });
 test("credit note carries original customer and services with explicit save and issue", async ({
   page,
@@ -925,6 +968,32 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   expect(submitted.delivery_address).toBe("Parvathi Hospital, Chennai");
 });
 
+test("quotation editor sets the next number without losing the draft", async ({ page }, testInfo) => {
+  await setup(page);
+  let state = bootstrap;
+  let writes = 0;
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) => route.fulfill({ json: state }));
+  await page.route(/\/api\/business\/1\/quotation-numbering$/, (route) => {
+    const update = route.request().postDataJSON().numbering;
+    state = { ...state, quotation_numbering: { ...state.quotation_numbering, ...update } };
+    writes++;
+    return route.fulfill({ json: { quotation_numbering: state.quotation_numbering } });
+  });
+  await page.goto("/app/business/1/quotations/new");
+  await expect(page.getByRole("article", { name: "Editable invoice" })).toContainText("QT/2627/0001");
+  await page.locator("#invoice-subject").fill("Descaling for F70");
+  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page).toHaveURL(/\/quotations\/new$/);
+  await page.locator("#quotation-number-input").fill("GR-50");
+  await expect(page.getByText("Next quotations: GR-51, GR-52, …")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("quotation-numbering-dialog.png"), fullPage: true });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Editable invoice" })).toContainText("GR-50");
+  await expect(page.locator("#invoice-subject")).toHaveValue("Descaling for F70");
+  await page.screenshot({ path: testInfo.outputPath("quotation-numbering-editor.png"), fullPage: true });
+  expect(writes).toBe(1);
+});
+
 test("finalized quotation creates a linked editable revision", async ({ page }) => {
   await setup(page);
   const original = {
@@ -976,6 +1045,8 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     id: 22,
     document_type: "invoice" as const,
     valid_until: null,
+    purchase_order_number: null,
+    purchase_order_date: null,
     status: "draft" as const,
     number: null,
   };
@@ -997,7 +1068,7 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.route(/\/api\/business\/1\/invoices\/22$/, (route) =>
     route.fulfill({
       json: {
-        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null },
+        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null, purchase_order_number: null, purchase_order_date: null },
       },
     }),
   );
@@ -1012,7 +1083,7 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     current = { ...current, status: "converted", converted_invoice_id: 22 };
     await route.fulfill({
       json: {
-        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null },
+        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null, purchase_order_number: null, purchase_order_date: null },
         quotation: current,
       },
     });
@@ -1034,8 +1105,9 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.locator("#invoice-delivery").fill("IndiraGandhi Hospital, Puducherry");
   await chooseState(page, "#invoice-delivery-state", "Ship-to state", "Puducherry");
   await expect(page.getByText(/Billing and delivery states differ/)).toBeVisible();
-  await page.getByRole("button", { name: "Add reference / PO" }).click();
+  await page.getByRole("button", { name: "Add customer reference" }).click();
   await page.locator("#invoice-reference").fill("WO-4821");
+  await expect(page.locator("#invoice-reference-date")).toHaveCount(0);
   await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
   await expect(page).toHaveURL(/\/quotations\/21$/);
   expect(finalizations).toBe(1);
@@ -1055,7 +1127,10 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   expect(conversions).toBe(1);
   await expect(page.getByRole("heading", { name: "Tax invoice", exact: true })).toBeVisible();
   await expect(page.locator("#line-0-description")).toHaveValue("Quoted consulting");
-  await expect(page.locator("#invoice-reference")).toHaveValue("WO-4821");
+  await expect(page.locator("#invoice-reference")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add customer PO" }).click();
+  await expect(page.locator("#invoice-reference")).toHaveValue("");
+  await expect(page.locator("#invoice-reference-date")).toBeVisible();
   await expect(page.locator("#invoice-notes")).toHaveValue("Payment within 15 days.");
   await expect(page.locator("#invoice-subject")).toHaveValue(
     "Compressor and Pipe Supply and Insulation",
@@ -1221,7 +1296,7 @@ test("nullable profile facts become blank editable fields", async ({ page }, tes
   await expect(page.locator("#business-address")).toHaveValue("");
   await page.locator("#business-address").fill("Chennai");
   await page.getByRole("button", { name: "Save business details" }).click();
-  await expect(page.getByRole("status")).toHaveText("Business details saved.");
+  await expect(page.getByRole("status")).toHaveText("Settings saved.");
   expect(submitted).toMatchObject({
     profile: { legal_name: "Breeze Services", address: "Chennai", state_code: "33" },
   });

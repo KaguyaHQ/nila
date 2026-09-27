@@ -10,7 +10,7 @@ export type ApiResult<K extends keyof operations> = operations[K] extends {
   responses: infer Responses;
 }
   ? {
-      [S in keyof Responses]: S extends 200 | 202
+      [S in keyof Responses]: S extends 200 | 201 | 202
         ? Responses[S] extends { content: { "application/json": infer Body } }
           ? Body
           : never

@@ -36,7 +36,9 @@ defmodule Nila.Business.PdfTest do
         Map.merge(snapshot(), %{
           "document_type" => "quotation",
           "number" => "QT/2627/0001",
-          "valid_until" => "2026-10-15"
+          "valid_until" => "2026-10-15",
+          "purchase_order_number" => "RFQ-23",
+          "purchase_order_date" => "2026-09-01"
         })
 
       assert {:ok, bytes} = Pdf.render(data)
@@ -45,6 +47,10 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "QT/2627/0001"
       assert text =~ "Valid until"
       assert text =~ "2026-10-15"
+      assert text =~ "Customer reference"
+      assert text =~ "RFQ-23"
+      refute text =~ "PO date"
+      refute text =~ "2026-09-01"
       assert text =~ "not a tax invoice"
       refute text =~ "TAX INVOICE"
       refute text =~ "Issued"
@@ -155,6 +161,8 @@ defmodule Nila.Business.PdfTest do
       assert {:ok, bytes} = Pdf.render(data)
       text = pdf_text(bytes)
       assert text =~ "WO-4821"
+      assert text =~ "Customer PO number"
+      assert text =~ "PO date"
       assert text =~ "2026-09-01"
       assert text =~ "Military Hospital Secunderabad"
       assert text =~ "Twenty Three Thousand Three Hundred Sixty Four"

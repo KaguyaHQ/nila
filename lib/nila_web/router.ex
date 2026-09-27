@@ -169,6 +169,7 @@ defmodule NilaWeb.Router do
   scope "/api/business", NilaWeb do
     pipe_through :business_api
     get "/workspaces", BusinessWorkspaceController, :index
+    post "/workspaces", BusinessWorkspaceController, :create
   end
 
   scope "/api/business/:business_id", NilaWeb do

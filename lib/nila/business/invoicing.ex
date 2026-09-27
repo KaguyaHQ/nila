@@ -52,10 +52,10 @@ defmodule Nila.Business.Invoicing do
              [client.id, year, type]
            ).rows do
         [[last]] -> last + 1
-        [] -> 1
+        [] -> initial_sequence(client, year, type, profile)
       end
 
-    %{
+    numbering = %{
       financial_year: year,
       style:
         if(type == "invoice",
@@ -63,12 +63,61 @@ defmodule Nila.Business.Invoicing do
           else: profile.quotation_number_style
         ),
       next_number: next_number,
-      editable: not issued_in_year?(client, year, type)
+      editable: type == "quotation" or not issued_in_year?(client, year, type)
     }
+
+    if type == "quotation" do
+      Map.put(
+        numbering,
+        :next_quotation_number,
+        format_quotation_number(profile, year, next_number)
+      )
+    else
+      numbering
+    end
   end
 
   def configure_quotation_numbering(%Client{} = client, attrs) do
-    configure_numbering(client, attrs, "quotation")
+    attrs = string_keys(attrs)
+    year = financial_year(Date.utc_today())
+
+    with {:ok, config} <- parse_quotation_number(attrs["next_quotation_number"], year) do
+      Repo.transact(fn ->
+        current =
+          Repo.one!(
+            from c in Client,
+              where: c.id == ^client.id and c.org_id == ^client.org_id,
+              lock: "FOR UPDATE"
+          )
+
+        with %Profile{} = profile <- Repo.get_by(Profile, client_id: current.id),
+             false <-
+               Repo.exists?(
+                 from i in Invoice,
+                   where:
+                     i.client_id == ^current.id and i.number == ^attrs["next_quotation_number"]
+               ),
+             {:ok, _profile} <-
+               profile
+               |> change(%{
+                 quotation_number_style: config.style,
+                 quotation_number_prefix: config.prefix,
+                 quotation_number_min_digits: config.min_digits
+               })
+               |> Repo.update() do
+          Repo.query!(
+            "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1, $2, 'quotation', $3) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = EXCLUDED.last_number",
+            [current.id, year, config.next_number - 1]
+          )
+
+          {:ok, quotation_numbering(current)}
+        else
+          nil -> {:error, :profile_incomplete}
+          true -> {:error, :number_already_used}
+          error -> error
+        end
+      end)
+    end
   end
 
   def configure_invoice_numbering(%Client{} = client, attrs) do
@@ -613,8 +662,6 @@ defmodule Nila.Business.Invoicing do
                 :place_of_supply,
                 :lines,
                 :notes,
-                :purchase_order_number,
-                :purchase_order_date,
                 :delivery_address,
                 :delivery_state_code,
                 :subject
@@ -659,7 +706,6 @@ defmodule Nila.Business.Invoicing do
             :lines,
             :notes,
             :purchase_order_number,
-            :purchase_order_date,
             :delivery_address,
             :delivery_state_code,
             :subject
@@ -959,21 +1005,101 @@ defmodule Nila.Business.Invoicing do
   defp next_number(client, invoice, profile) do
     date = invoice.invoice_date
     year = financial_year(date)
+    initial = initial_sequence(client, year, invoice.document_type, profile)
 
     %{rows: [[sequence]]} =
       Repo.query!(
-        "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1,$2,$3,1) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = business_invoice_counters.last_number + 1 RETURNING last_number",
-        [client.id, year, invoice.document_type]
+        "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1,$2,$3,$4) ON CONFLICT (client_id, financial_year, document_type) DO UPDATE SET last_number = business_invoice_counters.last_number + 1 RETURNING last_number",
+        [client.id, year, invoice.document_type, initial]
       )
 
     prefix =
       %{"credit_note" => "CN", "invoice" => "INV", "quotation" => "QT"}[invoice.document_type]
 
-    if (invoice.document_type == "quotation" and profile.quotation_number_style == "serial_fy") or
-         (invoice.document_type == "invoice" and profile.invoice_number_style == "serial_fy") do
+    if invoice.document_type == "quotation" do
+      format_quotation_number(profile, year, sequence)
+    else
+      format_invoice_number(profile, year, sequence, prefix)
+    end
+  end
+
+  defp initial_sequence(client, year, "quotation", %Profile{quotation_number_style: "custom"}) do
+    case Repo.query!(
+           "SELECT last_number FROM business_invoice_counters WHERE client_id = $1 AND financial_year < $2 AND document_type = 'quotation' ORDER BY financial_year DESC LIMIT 1",
+           [client.id, year]
+         ).rows do
+      [[last]] -> last + 1
+      [] -> 1
+    end
+  end
+
+  defp initial_sequence(_client, _year, _type, _profile), do: 1
+
+  defp format_invoice_number(profile, year, sequence, prefix) do
+    if profile.invoice_number_style == "serial_fy" do
       "#{sequence}/#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
     else
       "#{prefix}/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
+    end
+  end
+
+  defp format_quotation_number(%Profile{quotation_number_style: "serial_fy"}, year, sequence),
+    do: "#{sequence}/#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
+
+  defp format_quotation_number(
+         %Profile{quotation_number_style: "custom"} = profile,
+         _year,
+         sequence
+       ),
+       do:
+         "#{profile.quotation_number_prefix}#{String.pad_leading(to_string(sequence), profile.quotation_number_min_digits, "0")}"
+
+  defp format_quotation_number(_profile, year, sequence),
+    do:
+      "QT/#{rem(year, 100)}#{rem(year + 1, 100)}/#{String.pad_leading(to_string(sequence), 4, "0")}"
+
+  defp parse_quotation_number(value, year) when is_binary(value) do
+    year_suffix = "#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
+    nila_prefix = "QT/#{rem(year, 100)}#{rem(year + 1, 100)}/"
+
+    if String.ends_with?(value, "/#{year_suffix}") and
+         Regex.match?(~r/\A\d+\z/, String.replace_suffix(value, "/#{year_suffix}", "")) do
+      next_number = value |> String.replace_suffix("/#{year_suffix}", "") |> parse_number()
+
+      if next_number in 1..999_999 do
+        {:ok, %{style: "serial_fy", prefix: nil, min_digits: 1, next_number: next_number}}
+      else
+        {:error, :invalid_quotation_numbering}
+      end
+    else
+      parse_quotation_number_suffix(value, nila_prefix)
+    end
+  end
+
+  defp parse_quotation_number(_, _), do: {:error, :invalid_quotation_numbering}
+
+  defp parse_quotation_number_suffix(value, nila_prefix) do
+    case Regex.run(~r/^(.*?)(\d+)$/u, value) do
+      [_, prefix, digits] ->
+        next_number = parse_number(digits)
+        min_digits = String.length(digits)
+
+        cond do
+          String.length(value) > 60 or String.length(prefix) > 40 or min_digits > 8 or
+            next_number not in 1..999_999 or String.trim(value) != value or
+              not Regex.match?(~r/\A[[:alnum:]\/._-]*\z/u, prefix) ->
+            {:error, :invalid_quotation_numbering}
+
+          prefix == nila_prefix and min_digits == 4 ->
+            {:ok, %{style: "nila", prefix: nil, min_digits: 1, next_number: next_number}}
+
+          true ->
+            {:ok,
+             %{style: "custom", prefix: prefix, min_digits: min_digits, next_number: next_number}}
+        end
+
+      _ ->
+        {:error, :invalid_quotation_numbering}
     end
   end
 

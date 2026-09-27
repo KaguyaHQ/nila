@@ -614,12 +614,12 @@ defmodule Nila.Business.InvoicingTest do
        ctx do
     assert {:ok, numbering} =
              Invoicing.configure_quotation_numbering(ctx.client, %{
-               "style" => "serial_fy",
-               "next_number" => 79
+               "next_quotation_number" => "GR-79"
              })
 
     assert numbering.next_number == 79
-    assert numbering.style == "serial_fy"
+    assert numbering.style == "custom"
+    assert numbering.next_quotation_number == "GR-79"
 
     {:ok, _} =
       Invoicing.save_profile(ctx.client, %{phone: "9962550448", email: "quotes@example.com"})
@@ -657,7 +657,7 @@ defmodule Nila.Business.InvoicingTest do
     assert {:ok, quote} =
              Invoicing.finalize_quotation(ctx.client, ctx.actor, attrs, nil, render_pdf: render)
 
-    assert quote.number == "79/2026-27"
+    assert quote.number == "GR-79"
     assert quote.snapshot["subject"] == attrs["subject"]
     assert quote.snapshot["delivery_state_code"] == "34"
     assert quote.snapshot["supplier"]["phone"] == "9962550448"
@@ -665,11 +665,12 @@ defmodule Nila.Business.InvoicingTest do
     assert quote.dump_id == nil
     assert {:ok, original_pdf} = Invoicing.download(ctx.client, quote.id)
 
-    assert {:error, :numbering_started} =
+    assert {:ok, reconfigured} =
              Invoicing.configure_quotation_numbering(ctx.client, %{
-               "style" => "nila",
-               "next_number" => 1
+               "next_quotation_number" => "QTN/0156"
              })
+
+    assert reconfigured.next_quotation_number == "QTN/0156"
 
     assert {:ok, revision} = Invoicing.revise_quotation(ctx.client, quote.id, ctx.actor)
     assert revision.status == "draft"
@@ -677,9 +678,36 @@ defmodule Nila.Business.InvoicingTest do
     assert revision.subject == attrs["subject"]
     assert revision.delivery_state_code == "34"
     assert {:ok, revised} = issue(ctx, revision)
-    assert revised.number == "80/2026-27"
+    assert revised.number == "QTN/0156"
     assert revised.snapshot["revised_from_number"] == quote.number
     assert {:ok, ^original_pdf} = Invoicing.download(ctx.client, quote.id)
+  end
+
+  test "custom quotation numbers continue across financial years", ctx do
+    {:ok, numbering} =
+      Invoicing.configure_quotation_numbering(ctx.client, %{"next_quotation_number" => "GR-50"})
+
+    year = numbering.financial_year
+
+    Repo.query!(
+      "DELETE FROM business_invoice_counters WHERE client_id = $1 AND financial_year = $2 AND document_type = 'quotation'",
+      [ctx.client.id, year]
+    )
+
+    Repo.query!(
+      "INSERT INTO business_invoice_counters (client_id, financial_year, document_type, last_number) VALUES ($1, $2, 'quotation', 50)",
+      [ctx.client.id, year - 1]
+    )
+
+    assert Invoicing.quotation_numbering(ctx.client).next_quotation_number == "GR-51"
+
+    {:ok, draft} =
+      draft(ctx, %{
+        "document_type" => "quotation",
+        "invoice_date" => Date.to_iso8601(Date.utc_today())
+      })
+
+    assert {:ok, %{number: "GR-51"}} = issue(ctx, draft)
   end
 
   test "quotation finalization rejects an invoice draft without changing it", ctx do
@@ -808,7 +836,7 @@ defmodule Nila.Business.InvoicingTest do
     attrs = %{
       "document_type" => "quotation",
       "valid_until" => "2026-10-01",
-      "purchase_order_number" => "PO-23",
+      "purchase_order_number" => "RFQ-23",
       "purchase_order_date" => "2026-09-01",
       "delivery_address" => "Site office",
       "notes" => "Payment on completion"
@@ -840,14 +868,15 @@ defmodule Nila.Business.InvoicingTest do
     assert invoice.valid_until == nil
     assert invoice.due_date == nil
     assert invoice.number == nil
+    assert quote.purchase_order_number == "RFQ-23"
+    assert invoice.purchase_order_number == nil
+    assert invoice.purchase_order_date == nil
 
     for field <- [
           :customer_id,
           :place_of_supply,
           :lines,
           :notes,
-          :purchase_order_number,
-          :purchase_order_date,
           :delivery_address
         ] do
       assert Map.get(invoice, field) == Map.get(quote, field)

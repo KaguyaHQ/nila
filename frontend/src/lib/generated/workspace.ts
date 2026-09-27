@@ -426,7 +426,7 @@ export interface paths {
         };
         get: operations["listBusinessWorkspaces"];
         put?: never;
-        post?: never;
+        post: operations["createBusinessWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2173,7 +2173,7 @@ export interface components {
             has_logo: boolean;
             has_signature: boolean;
             /** @enum {string} */
-            quotation_number_style: "nila" | "serial_fy";
+            quotation_number_style: "nila" | "serial_fy" | "custom";
             /** @enum {string} */
             invoice_number_style: "nila" | "serial_fy";
         };
@@ -2732,7 +2732,8 @@ export interface components {
         BusinessQuotationNumbering: {
             financial_year: number;
             /** @enum {string} */
-            style: "nila" | "serial_fy";
+            style: "nila" | "serial_fy" | "custom";
+            next_quotation_number: string;
             next_number: number;
             editable: boolean;
         };
@@ -2745,9 +2746,7 @@ export interface components {
         };
         BusinessQuotationNumberingWrite: {
             numbering: {
-                /** @enum {string} */
-                style: "nila" | "serial_fy";
-                next_number: number;
+                next_quotation_number: string;
             };
         };
         BusinessInvoiceNumberingResult: {
@@ -5073,6 +5072,68 @@ export interface operations {
             };
             /** @description Request failed; no successful write is implied. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    createBusinessWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    business: {
+                        name: string;
+                        gstin: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Business created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        business: {
+                            id: number;
+                            name: string;
+                            gstin: string;
+                        };
+                    };
+                };
+            };
+            /** @description Sign in required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Email verification required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Invalid business details */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

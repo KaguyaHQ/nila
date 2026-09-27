@@ -62,11 +62,11 @@
     ]
     #if data.at("purchase_order_number", default: none) not in (none, "") [
       #v(6pt)
-      #label("Reference / PO No.") #data.purchase_order_number
+      #label(if quotation { "Customer reference" } else { "Customer PO number" }) #data.purchase_order_number
     ]
-    #if data.at("purchase_order_date", default: none) != none [
+    #if not quotation and data.at("purchase_order_date", default: none) != none [
       #v(4pt)
-      #label("Reference date") #data.purchase_order_date
+      #label("PO date") #data.purchase_order_date
     ]
   ],
 )

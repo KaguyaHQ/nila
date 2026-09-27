@@ -127,7 +127,13 @@ const businessIndex = createRoute({
 const businessHome = createRoute({
   getParentRoute: () => business,
   path: "/",
-  component: () => <Navigate to="/business/$businessId/invoices" params={{ businessId: business.useParams().businessId }} replace />,
+  component: () => (
+    <Navigate
+      to="/business/$businessId/invoices"
+      params={{ businessId: business.useParams().businessId }}
+      replace
+    />
+  ),
 });
 const businessInvoices = createRoute({
   getParentRoute: () => business,
@@ -173,6 +179,17 @@ const businessServices = createRoute({
 const businessSettings = createRoute({
   getParentRoute: () => business,
   path: "settings",
+  component: () => (
+    <Navigate
+      to="/business/$businessId/settings/$section"
+      params={{ businessId: business.useParams().businessId, section: "business" }}
+      replace
+    />
+  ),
+});
+const businessSettingsSection = createRoute({
+  getParentRoute: () => business,
+  path: "settings/$section",
   component: BusinessSettings,
 });
 const invoice = createRoute({
@@ -320,6 +337,7 @@ const routeTree = root.addChildren([
     businessCustomers,
     businessServices,
     businessSettings,
+    businessSettingsSection,
   ]),
   invoice,
   purchaseReview,

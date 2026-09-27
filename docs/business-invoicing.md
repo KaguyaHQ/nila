@@ -14,7 +14,9 @@ item and draft invoice. See [development and demos](development-and-demos.md).
 The business portal serves GST-registered domestic goods and service businesses.
 Business owners can create an account at `/users/business_sign_up` with their
 business name, GSTIN, owner name, email and password. A signed-in user can add
-another business there without creating another login. Signup gives the owner
+another business from the workspace switcher and lands on its Business profile.
+The full signup page remains available for someone creating their first account.
+Signup gives the owner
 client-specific business access; they do not need a CA or firm invitation to begin.
 An independently created business starts in its own org without firm membership. A CA can
 also invite a business owner from the React client edit page. Connecting an
@@ -59,8 +61,8 @@ editable and independent of the catalogue. Editing or deleting a saved item
 never rewrites an existing draft, issued snapshot or retained PDF. Ad hoc items
 remain supported. There is no stock tracking.
 
-Before the first invoice in the current financial year, Business details can set
-the next invoice number and choose either Nila's `INV/2627/0001` format or a
+Before the first invoice in the current financial year, Settings → Document
+numbers can set the next invoice number and choose either Nila's `INV/2627/0001` format or a
 simple `129/2026-27` format. The choice and next number lock after that year's
 first invoice is issued. Drafts have no number. **Issue invoice** saves the
 current editor values, allocates the number, renders the PDF, and creates the CA
@@ -78,23 +80,26 @@ them.
 
 Quotations live at `/app/business/:business_id/quotations` and use the same editor and PDF
 template. They have an optional valid-until date and a separate number series.
-Before the first quotation in a financial year, Business details can set the
-next number and choose either Nila's `QT/2627/0001` format or a simple
-`79/2026-27` format. The format and next number lock once that year's first
-quotation is finalized. A quotation can be finalized directly from the editor;
+The quotation editor shows the next number and lets the business edit it in a
+small dialog without leaving the draft. Enter the full number, such as `GR-50`
+or `QT/2627/0050`; Nila shows the following numbers and saves the same sequence
+shown in Settings → Document numbers. Changing the sequence affects future
+quotations, not numbers or PDFs already finalized. A quotation can be finalized directly from the editor;
 Phoenix saves the draft, allocates its number, renders and retains the PDF in
 one transaction. A failed finalization leaves no partial draft or used number.
 
 The optional Work / subject appears above the items in the editor and PDF.
-Business details supply the seller phone, email, logo and optional signature
-for new PDFs. These assets are scoped to the business; old finalized PDFs stay
+Settings → Business profile supplies the seller phone and email. Settings →
+Branding supplies the logo and optional signature for new PDFs. These assets are
+scoped to the business; old finalized PDFs stay
 unchanged when branding is updated. Goods lines require an explicit unit.
 
 A finalized quotation cannot be edited. **Revise quotation** creates a linked
 draft with its own number when finalized; the original PDF stays intact. The
 business can mark a finalized quotation accepted or declined. Accepted
 quotations convert into an invoice draft with the customer, items, prices,
-subject, delivery address/state, place of supply, notes and references copied.
+subject, delivery address/state, place of supply and notes copied. The quote's
+customer reference stays on the quote; the invoice's PO number and date start blank.
 Conversion keeps a link to that invoice and retries return the same invoice.
 The invoice date is today; quotation validity does not become a payment due
 date.

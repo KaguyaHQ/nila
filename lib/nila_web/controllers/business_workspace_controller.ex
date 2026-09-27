@@ -28,4 +28,40 @@ defmodule NilaWeb.BusinessWorkspaceController do
         conn |> put_status(:forbidden) |> json(%{error: "Verify your email first."})
     end
   end
+
+  def create(conn, %{"business" => attrs}) do
+    case conn.assigns[:current_scope] do
+      %{user: %{active: true, confirmed_at: confirmed} = user} when not is_nil(confirmed) ->
+        case Access.create_business_for_user(user, attrs) do
+          {:ok, %{client: client}} ->
+            conn
+            |> put_status(:created)
+            |> json(%{business: Map.take(client, [:id, :name, :gstin])})
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            errors = NilaWeb.AuthPageController.errors(changeset)
+
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: "Check the business details.", errors: errors})
+
+          {:error, _} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: "Could not add the business."})
+        end
+
+      nil ->
+        conn |> put_status(:unauthorized) |> json(%{error: "Sign in to continue."})
+
+      _ ->
+        conn |> put_status(:forbidden) |> json(%{error: "Verify your email first."})
+    end
+  end
+
+  def create(conn, _params),
+    do:
+      conn
+      |> put_status(:unprocessable_entity)
+      |> json(%{error: "Enter a business name and GSTIN."})
 end

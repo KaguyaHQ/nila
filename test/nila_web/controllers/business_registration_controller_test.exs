@@ -51,6 +51,43 @@ defmodule NilaWeb.BusinessRegistrationControllerTest do
     refute Accounts.get_user_by_email("new-business@example.com")
   end
 
+  test "signed-in user adds a business from the workspace switcher", %{conn: conn} do
+    %{user: user} = user_with_org_fixture()
+    conn = log_in_user(conn, user)
+
+    created =
+      conn
+      |> put_req_header("accept", "application/json")
+      |> post("/api/business/workspaces", %{
+        "business" => %{"name" => "Caltech", "gstin" => "27AAPFU0939F1ZV"}
+      })
+
+    %{"business" => %{"id" => id, "name" => "Caltech", "gstin" => "27AAPFU0939F1ZV"}} =
+      json_response(created, 201)
+
+    assert Enum.any?(Access.list_clients_for_user(user.id), &(&1.id == id))
+
+    invalid =
+      conn
+      |> put_req_header("accept", "application/json")
+      |> post("/api/business/workspaces", %{
+        "business" => %{"name" => "Another", "gstin" => "invalid"}
+      })
+
+    assert %{"errors" => %{"gstin" => _}} = json_response(invalid, 422)
+  end
+
+  test "business creation API requires sign-in", %{conn: conn} do
+    conn =
+      conn
+      |> put_req_header("accept", "application/json")
+      |> post("/api/business/workspaces", %{
+        "business" => %{"name" => "Caltech", "gstin" => "27AAPFU0939F1ZV"}
+      })
+
+    assert json_response(conn, 401)["error"] == "Sign in to continue."
+  end
+
   test "invalid GSTIN and duplicate email render signup errors without creating rows", %{
     conn: conn
   } do

@@ -385,6 +385,12 @@ defmodule NilaWeb.BusinessController do
         :invalid_numbering ->
           {422, "Choose a number format and a next number between 1 and 999999."}
 
+        :invalid_quotation_numbering ->
+          {422, "Enter a quotation number ending in digits, such as GR-50."}
+
+        :number_already_used ->
+          {409, "That document number has already been used. Choose the next unused number."}
+
         :invalid_asset ->
           {422, "Choose a PNG or JPEG image smaller than 500 KB."}
 
