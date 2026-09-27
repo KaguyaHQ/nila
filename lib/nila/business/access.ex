@@ -3,6 +3,8 @@ defmodule Nila.Business.Access do
   alias Nila.{Accounts, Clients, Repo}
   alias Nila.Accounts.{Policy, User, UserToken}
   alias Nila.Business.ClientAccess
+  alias Nila.Clients.Client
+  alias Nila.Orgs.Org
   alias Nila.Orgs.Membership
 
   def client_for_user(user_id) do
@@ -13,6 +15,76 @@ defmodule Nila.Business.Access do
         select: c
     )
   end
+
+  def register_business(user_attrs, business_attrs) do
+    with {:ok, user_attrs} <- registration_fields(user_attrs),
+         {:ok, business_attrs} <- business_fields(business_attrs) do
+      Repo.transact(fn ->
+        # Billing and GST records need an org_id, but no firm membership is granted.
+        user_changeset =
+          User.registration_changeset(%User{}, user_attrs,
+            confirm: false,
+            validate_email: true
+          )
+
+        with {:ok, user} <- Repo.insert(user_changeset),
+             {:ok, org} <-
+               %Org{}
+               |> Org.changeset(%{
+                 name: business_attrs.business_name,
+                 gstin: business_attrs.gstin
+               })
+               |> Repo.insert(),
+             {:ok, client} <-
+               %Client{}
+               |> Client.changeset(%{
+                 org_id: org.id,
+                 name: business_attrs.business_name,
+                 type: "company",
+                 gstin: business_attrs.gstin
+               })
+               |> Repo.insert(),
+             {:ok, _access} <-
+               %ClientAccess{user_id: user.id, client_id: client.id}
+               |> ClientAccess.changeset()
+               |> Repo.insert() do
+          {:ok, %{user: user, org: org, client: client}}
+        end
+      end)
+    end
+  end
+
+  defp registration_fields(attrs) when is_map(attrs) do
+    {%{}, %{name: :string, email: :string, password: :string, password_confirmation: :string}}
+    |> Ecto.Changeset.cast(attrs, [:name, :email, :password, :password_confirmation])
+    |> Ecto.Changeset.update_change(:name, &String.trim/1)
+    |> Ecto.Changeset.update_change(:email, &(String.trim(&1) |> String.downcase()))
+    |> Ecto.Changeset.validate_required([:name, :email, :password, :password_confirmation])
+    |> Ecto.Changeset.validate_length(:name, max: 255)
+    |> Ecto.Changeset.validate_length(:email, max: 255)
+    |> Ecto.Changeset.validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
+    |> Ecto.Changeset.apply_action(:insert)
+  end
+
+  defp registration_fields(_), do: {:error, :invalid_attrs}
+
+  defp business_fields(attrs) when is_map(attrs) do
+    attrs = %{
+      "business_name" => Map.get(attrs, "name") || Map.get(attrs, :name),
+      "gstin" => Map.get(attrs, "gstin") || Map.get(attrs, :gstin)
+    }
+
+    {%{}, %{business_name: :string, gstin: :string}}
+    |> Ecto.Changeset.cast(attrs, [:business_name, :gstin])
+    |> Ecto.Changeset.update_change(:business_name, &String.trim/1)
+    |> Ecto.Changeset.update_change(:gstin, &(String.trim(&1) |> String.upcase()))
+    |> Ecto.Changeset.validate_required([:business_name, :gstin])
+    |> Ecto.Changeset.validate_length(:business_name, max: 255)
+    |> Nila.Gstin.validate_gstin(:gstin)
+    |> Ecto.Changeset.apply_action(:insert)
+  end
+
+  defp business_fields(_), do: {:error, :invalid_attrs}
 
   def invite(scope, client_id, attrs) do
     with :ok <- authorize(scope),

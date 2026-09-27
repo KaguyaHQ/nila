@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useToastManager } from "@/components/ui/toast";
 
 export type AuthPageData = {
-  kind: "login" | "forgot" | "reset" | "invite" | "confirmation";
+  kind: "login" | "forgot" | "reset" | "invite" | "confirmation" | "business_signup";
   action: string;
   email?: string | null;
   name?: string | null;
@@ -16,6 +16,9 @@ export type AuthPageData = {
   error?: string | null;
   valid?: boolean;
   confirmed?: boolean;
+  continueTo?: string;
+  business_name?: string | null;
+  gstin?: string | null;
   errors?: Record<string, string[]>;
   users?: { name: string; email: string }[];
 };
@@ -40,6 +43,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
         reset: "Choose a new password",
         invite: "Welcome to Nila",
         confirmation: data.confirmed ? "Email verified" : "Verify your email",
+        business_signup: "Create your business account",
       }[data.kind];
   const description = invalid
     ? data.kind === "invite"
@@ -53,6 +57,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
         confirmation: data.confirmed
           ? `${data.email} is verified.`
           : `Open the verification email sent to ${data.email}.`,
+        business_signup: "Enter your business and owner details to get started.",
       }[data.kind];
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6">
@@ -87,7 +92,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
               </Button>
             ) : data.kind === "confirmation" ? (
               data.confirmed ? (
-                <Button className="w-full" nativeButton={false} render={<a href="/app" />}>
+                <Button className="w-full" nativeButton={false} role="link" render={<a href={data.continueTo ?? "/app"} />}>
                   Continue to Nila
                 </Button>
               ) : (
@@ -102,6 +107,7 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                     forgot: "Send reset instructions",
                     reset: "Reset password",
                     invite: "Set password and sign in",
+                    business_signup: "Create business account",
                   }[data.kind]
                 }
               >
@@ -118,7 +124,15 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                     />
                   </Field>
                 )}
-                {data.kind !== "forgot" && (
+                {data.kind === "business_signup" && (
+                  <>
+                    <TextField name="business[name]" id="business_name" label="Business name" autoComplete="organization" value={data.business_name ?? ""} errors={data.errors?.business_name} />
+                    <TextField name="business[gstin]" id="business_gstin" label="GSTIN" autoComplete="off" value={data.gstin ?? ""} errors={data.errors?.gstin} />
+                    <TextField name="user[name]" id="user_name" label="Your name" autoComplete="name" value={data.name ?? ""} errors={data.errors?.name} />
+                    <TextField name="user[email]" id="user_email" label="Email" type="email" autoComplete="email" value={data.email ?? ""} errors={data.errors?.email} />
+                  </>
+                )}
+                {data.kind !== "forgot" && data.kind !== "business_signup" && (
                   <PasswordField
                     name="password"
                     label={data.kind === "login" ? "Password" : "New password"}
@@ -126,7 +140,10 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
                     errors={data.errors?.password}
                   />
                 )}
-                {(data.kind === "reset" || data.kind === "invite") && (
+                {data.kind === "business_signup" && (
+                  <PasswordField name="password" label="Password" errors={data.errors?.password} />
+                )}
+                {(data.kind === "reset" || data.kind === "invite" || data.kind === "business_signup") && (
                   <PasswordField
                     name="password_confirmation"
                     label="Confirm password"
@@ -143,10 +160,9 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
             )}
             {data.kind === "login" ? (
               <p className="text-center text-sm text-muted-foreground">
-                New to Nila?{" "}
-                <a href="/contact" className="underline underline-offset-4">
-                  Arrange a test
-                </a>
+                <a href="/users/business_sign_up" className="underline underline-offset-4">Create a business account</a>
+                <span className="mx-2">·</span>
+                <a href="/contact" className="underline underline-offset-4">CA / firm? Arrange a test</a>
               </p>
             ) : data.kind === "confirmation" ? (
               <form method="post" action="/users/log_out">
@@ -184,6 +200,15 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
         )}
       </div>
     </main>
+  );
+}
+function TextField({ name, id, label, type = "text", autoComplete, value, errors }: { name: string; id: string; label: string; type?: string; autoComplete?: string; value?: string; errors?: string[] }) {
+  return (
+    <Field data-invalid={!!errors?.length}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input id={id} name={name} type={type} autoComplete={autoComplete} defaultValue={value} required aria-invalid={!!errors?.length} aria-describedby={errors?.length ? `${id}-error` : undefined} />
+      <FieldError id={`${id}-error`} errors={errors?.map((message) => ({ message }))} />
+    </Field>
   );
 }
 function Csrf() {

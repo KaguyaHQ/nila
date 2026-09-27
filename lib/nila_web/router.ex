@@ -268,6 +268,8 @@ defmodule NilaWeb.Router do
     pipe_through [:browser, :redirect_if_authenticated]
 
     get "/users/sign_up", PageController, :signup_redirect
+    get "/users/business_sign_up", AuthPageController, :business_signup
+    post "/users/business_sign_up", BusinessRegistrationController, :create
 
     get "/users/log_in", AuthPageController, :login
     get "/users/reset_password", AuthPageController, :forgot

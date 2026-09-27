@@ -12,7 +12,12 @@ item and draft invoice. See [development and demos](development-and-demos.md).
 ## Workflow
 
 The business portal serves GST-registered domestic goods and service businesses.
-The CA invites a business owner from the React client edit page. The owner sets
+Business owners can create an account at `/users/business_sign_up` with their
+business name, GSTIN, owner name, email and password. Signup gives the owner
+their own business access; they do not need a CA or firm invitation to begin.
+The business starts in its own workspace without firm membership. A CA can
+also invite a business owner from the React client edit page. Connecting an
+independently created business to a CA firm is not implemented yet. The owner sets
 business details, confirms with their CA that e-invoicing does not apply, adds
 customers, saves drafts when work is unfinished, or issues directly from the filled editor, then downloads PDFs.
 

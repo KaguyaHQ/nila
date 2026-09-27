@@ -13,9 +13,7 @@ defmodule NilaWeb.PageController do
   end
 
   def signup_redirect(conn, _params) do
-    conn
-    |> put_flash(:info, "Nila is currently invite-only. Arrange a test to get started.")
-    |> redirect(to: ~p"/contact")
+    redirect(conn, to: ~p"/users/business_sign_up")
   end
 
   def privacy(conn, _params) do

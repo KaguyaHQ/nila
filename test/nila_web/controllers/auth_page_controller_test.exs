@@ -41,8 +41,8 @@ defmodule NilaWeb.AuthPageControllerTest do
     assert conn.resp_cookies["_nila_web_user_remember_me"]
   end
 
-  test "signup stays invite-only and dev login is unavailable", %{conn: conn} do
-    assert conn |> get("/users/sign_up") |> redirected_to() == "/contact"
+  test "business signup is available and dev login is unavailable", %{conn: conn} do
+    assert conn |> get("/users/sign_up") |> redirected_to() == "/users/business_sign_up"
     %{user: user} = user_with_org_fixture()
     denied = post(conn, "/users/log_in", %{dev_login: "true", email: user.email})
     assert redirected_to(denied) == "/users/log_in"

@@ -50,6 +50,40 @@ test("login posts credentials and CSRF to Phoenix", async ({ page }, info) => {
     "user[remember_me]": "true",
   });
 });
+test("business signup posts the business and owner fields to Phoenix", async ({ page }, info) => {
+  await auth(page, { kind: "business_signup", action: "/users/business_sign_up" });
+  await expect(page.getByRole("heading", { name: "Create your business account" })).toBeVisible();
+  await page.getByLabel("Business name").fill("Example Services");
+  await page.getByLabel("GSTIN").fill("27ABCDE1234F1Z5");
+  await page.getByLabel("Your name").fill("Asha Rao");
+  await page.getByLabel("Email").fill("asha@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("eight123");
+  await page.getByLabel("Confirm password", { exact: true }).fill("eight123");
+  await page.screenshot({ path: info.outputPath("business-signup.png"), fullPage: true });
+  const sent = page.waitForRequest((request) => request.method() === "POST");
+  await page.getByRole("button", { name: "Create business account" }).click();
+  expect(Object.fromEntries(new URLSearchParams((await sent).postData()!))).toEqual({
+    _csrf_token: "test-csrf",
+    "business[name]": "Example Services",
+    "business[gstin]": "27ABCDE1234F1Z5",
+    "user[name]": "Asha Rao",
+    "user[email]": "asha@example.com",
+    "user[password]": "eight123",
+    "user[password_confirmation]": "eight123",
+  });
+});
+test("business signup shows controller field errors and login separates CA contact", async ({ page }) => {
+  await auth(page, {
+    kind: "business_signup",
+    action: "/users/business_sign_up",
+    errors: { gstin: ["is invalid"], password_confirmation: ["does not match password"] },
+  });
+  await expect(page.getByLabel("GSTIN")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("is invalid", { exact: true })).toBeVisible();
+  await auth(page);
+  await expect(page.getByRole("link", { name: "Create a business account" })).toHaveAttribute("href", "/users/business_sign_up");
+  await expect(page.getByRole("link", { name: "CA / firm? Arrange a test" })).toHaveAttribute("href", "/contact");
+});
 test("invalid credentials retain email but never password", async ({ page }) => {
   await auth(page, { email: "ca@example.com", error: "Invalid email or password." });
   await expect(page.getByRole("alert")).toHaveText("Invalid email or password.");
@@ -109,6 +143,10 @@ test("verification provides resend and Phoenix logout", async ({ page }) => {
   const body = new URLSearchParams((await sent).postData()!);
   expect(body.get("_method")).toBe("delete");
   expect(body.get("_csrf_token")).toBe("test-csrf");
+});
+test("confirmed business users continue to the business portal", async ({ page }) => {
+  await auth(page, { kind: "confirmation", confirmed: true, continueTo: "/app/business" });
+  await expect(page.getByRole("link", { name: "Continue to Nila" })).toHaveAttribute("href", "/app/business");
 });
 
 test("development shortcuts name the workspaces and submit the matching identity", async ({ page }, info) => {

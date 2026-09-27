@@ -14,6 +14,8 @@ defmodule NilaWeb.AuthPageController do
 
   def forgot(conn, _), do: page(conn, "forgot")
 
+  def business_signup(conn, _), do: page(conn, "business_signup")
+
   def reset(conn, %{"token" => token}) do
     page(conn, "reset", %{valid: not is_nil(Accounts.get_user_by_reset_password_token(token))})
   end
@@ -30,7 +32,13 @@ defmodule NilaWeb.AuthPageController do
 
   def confirmation(conn, _) do
     user = conn.assigns.current_scope.user
-    page(conn, "confirmation", %{email: user.email, confirmed: not is_nil(user.confirmed_at)})
+    continue_to = if conn.assigns.current_scope.business_client, do: "/app/business", else: "/app"
+
+    page(conn, "confirmation", %{
+      email: user.email,
+      confirmed: not is_nil(user.confirmed_at),
+      continueTo: continue_to
+    })
   end
 
   def forgot_submit(conn, %{"user" => %{"email" => email}}) when is_binary(email) do
