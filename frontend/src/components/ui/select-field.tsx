@@ -90,6 +90,10 @@ function SelectField({
       >
         <SelectValue placeholder={placeholder ?? items.find((item) => item.value === "")?.label} />
       </SelectTrigger>
+      {/* Base UI's selected-item alignment is separate from menu width. shadcn's Base UI
+          styling fixes the popup to the trigger width and keeps item text on one line;
+          that clipped long buyer, client, and file names here. Let this field's menu
+          grow to fit its options, then wrap at the width cap. See shadcn/ui PR #9022. */}
       <SelectContent
         align="start"
         alignItemWithTrigger={false}
