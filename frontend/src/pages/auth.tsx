@@ -164,8 +164,6 @@ export default function AuthPage({ data }: { data: AuthPageData }) {
             {data.kind === "login" ? (
               <p className="text-center text-sm text-muted-foreground">
                 <a href="/users/business_sign_up" className="underline underline-offset-4">Create a business account</a>
-                <span className="mx-2">·</span>
-                <a href="/contact" className="underline underline-offset-4">CA / firm? Arrange a test</a>
               </p>
             ) : data.kind === "confirmation" ? (
               <form method="post" action="/users/log_out">

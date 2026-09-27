@@ -4,7 +4,7 @@ import { scroll, transform } from "motion";
 // without JavaScript, on small screens, and when reduced motion is requested.
 const story = document.querySelector<HTMLElement>(".invoice-story");
 const media = matchMedia(
-  "(prefers-reduced-motion: no-preference) and (min-width: 1000px) and (min-height: 700px)",
+  "(prefers-reduced-motion: no-preference) and (min-width: 1000px) and (min-height: 600px)",
 );
 let cleanup = () => {};
 function setup() {

@@ -998,7 +998,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  min-height: 700px;
+  min-height: 600px;
   padding-top: 28px;
   overflow: hidden;
 }
@@ -1075,6 +1075,21 @@
   }
   .story-animated .story-heading h1 {
     font-size: 48px;
+  }
+}
+@media (min-width: 1000px) and (max-height: 699px) {
+  .story-animated .story-stage {
+    padding-top: 12px;
+  }
+  .story-animated .story-heading h1 {
+    font-size: 40px;
+  }
+  .story-animated .story-canvas {
+    margin-top: 8px;
+    transform: scale(0.63);
+  }
+  .story-animated .story-caption {
+    bottom: 18px;
   }
 }
 @media (max-width: 650px) {
