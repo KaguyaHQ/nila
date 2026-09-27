@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Table,
   TableBody,
@@ -177,16 +177,16 @@ export function PurchaseWorklist({
       <div className="flex items-center justify-between gap-4">
         <h2 className="font-semibold">Purchases to review</h2>
         <div className="flex gap-3">
-          <NativeSelect
+          <SelectField
             aria-label="Filter purchases"
             value={filter}
-            onChange={(e) => change("work", e.target.value)}
+            onValueChange={(nextValue) => change("work", nextValue)}
           >
-            <option value="all">All purchases</option>
-            <option value="undecided">Not decided yet</option>
-            <option value="missing">Invoice not confirmed</option>
-            <option value="differences">Differences</option>
-          </NativeSelect>
+            <SelectFieldOption value="all">All purchases</SelectFieldOption>
+            <SelectFieldOption value="undecided">Not decided yet</SelectFieldOption>
+            <SelectFieldOption value="missing">Invoice not confirmed</SelectFieldOption>
+            <SelectFieldOption value="differences">Differences</SelectFieldOption>
+          </SelectField>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -418,21 +418,21 @@ export function PurchaseWorklist({
             )}
             <label className="block space-y-2 text-sm">
               Treatment
-              <NativeSelect
+              <SelectField
                 aria-label="Treatment"
                 value={choice}
                 disabled={mutation.isPending}
-                onChange={(e) => {
-                  setChoice(e.target.value);
+                onValueChange={(nextValue) => {
+                  setChoice(nextValue);
                   setReason("");
                 }}
               >
-                <option value="claim" disabled={snapshot?.some((line) => !line.claimable)}>
+                <SelectFieldOption value="claim" disabled={snapshot?.some((line) => !line.claimable)}>
                   Claim this month
-                </option>
-                <option value="later">Claim later</option>
-                <option value="exclude">Do not claim</option>
-              </NativeSelect>
+                </SelectFieldOption>
+                <SelectFieldOption value="later">Claim later</SelectFieldOption>
+                <SelectFieldOption value="exclude">Do not claim</SelectFieldOption>
+              </SelectField>
             </label>
             {snapshot?.some((line) => !line.claimable) && (
               <p className="text-sm text-muted-foreground">
@@ -443,20 +443,20 @@ export function PurchaseWorklist({
               <>
                 <label className="block space-y-2 text-sm">
                   Reason
-                  <NativeSelect
+                  <SelectField
                     aria-label="Reason"
                     required
                     value={reason}
                     disabled={mutation.isPending}
-                    onChange={(e) => setReason(e.target.value)}
+                    onValueChange={(nextValue) => setReason(nextValue)}
                   >
-                    <option value="">Choose a reason</option>
+                    <SelectFieldOption value="">Choose a reason</SelectFieldOption>
                     {data?.reasons[choice as "later" | "exclude"].map((r) => (
-                      <option key={r.id} value={r.id}>
+                      <SelectFieldOption key={r.id} value={r.id}>
                         {r.label}
-                      </option>
+                      </SelectFieldOption>
                     ))}
-                  </NativeSelect>
+                  </SelectField>
                 </label>
                 <label className="block space-y-2 text-sm">
                   Note

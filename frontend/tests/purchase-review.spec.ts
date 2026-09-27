@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { PurchaseReviewData } from "../src/lib/purchase-review-api";
 
 import { review } from "./fixtures/purchase-review";
+import { chooseSelect } from "./select-field";
 async function setup(page: Page, data = (id: string) => review(id)) {
   await page.addInitScript(() =>
     document.addEventListener("DOMContentLoaded", () => {
@@ -110,9 +111,9 @@ test("carried and source filters survive route validation and reach Phoenix", as
         url.searchParams.get("filter") === filter
       );
     });
-    await page.getByRole("combobox", { name: "Review filter" }).selectOption(filter);
+    await chooseSelect(page.getByRole("combobox", { name: "Review filter" }), filter);
     await response;
-    await expect(page.getByRole("combobox", { name: "Review filter" })).toHaveValue(filter);
+    await expect(page.getByRole("combobox", { name: "Review filter" })).toHaveAttribute("data-value", filter);
     expect(new URL(page.url()).searchParams.get("filter")).toBe(filter);
   }
 });
@@ -156,7 +157,7 @@ test("save and next posts explicit case basis and real server result", async ({ 
   });
   await page.goto("/app/gst/1/2026-06/purchases/review/one");
   await page.getByRole("radio", { name: "Claim later", exact: true }).click();
-  await page.getByLabel("Why claim later?").selectOption("other");
+  await chooseSelect(page.getByLabel("Why claim later?"), "other");
   await page.getByLabel("Note", { exact: true }).fill("Awaiting goods receipt");
   await page.keyboard.press("Control+Enter");
   await expect(page.getByRole("heading", { name: "Purchase P-002" })).toBeVisible();
@@ -309,7 +310,7 @@ test("ITC radio choices support arrows and preserve multiline notes", async ({
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("radio", { name: "Claim later", exact: true })).toBeChecked();
   await expect(page).toHaveURL(/review\/one$/);
-  await page.getByLabel("Why claim later?").selectOption("other");
+  await chooseSelect(page.getByLabel("Why claim later?"), "other");
   const note = page.getByLabel("Note", { exact: true });
   await expect(note).toHaveJSProperty("tagName", "TEXTAREA");
   await note.fill("Awaiting goods receipt\nSupplier called on Monday.");

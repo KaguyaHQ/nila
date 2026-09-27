@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -262,12 +262,12 @@ export function CustomerAddressPicker({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="customer-address-usage">Use this address for</Label>
-                <NativeSelect
+                <SelectField
                   id="customer-address-usage"
                   className="w-full"
                   value={draft.usage}
-                  onChange={(event) => {
-                    const usage = event.target.value as AddressUsage;
+                  onValueChange={(nextValue) => {
+                    const usage = nextValue as AddressUsage;
                     setDraft({
                       ...draft,
                       usage,
@@ -278,10 +278,10 @@ export function CustomerAddressPicker({
                     });
                   }}
                 >
-                  <option value="billing">Billing</option>
-                  <option value="shipping">Shipping</option>
-                  <option value="either">Billing or shipping</option>
-                </NativeSelect>
+                  <SelectFieldOption value="billing">Billing</SelectFieldOption>
+                  <SelectFieldOption value="shipping">Shipping</SelectFieldOption>
+                  <SelectFieldOption value="either">Billing or shipping</SelectFieldOption>
+                </SelectField>
               </div>
               {draft.usage !== "shipping" && (
                 <label className="flex items-center gap-2 text-sm">

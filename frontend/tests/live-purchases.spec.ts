@@ -2,6 +2,7 @@ import { mockNavigation } from "./fixtures/navigation";
 import { review } from "./fixtures/purchase-review";
 import { expect, test, type Page } from "@playwright/test";
 import type { PurchasesWorkspace } from "../src/lib/purchases-api";
+import { chooseSelect } from "./select-field";
 
 test("directory keeps purchase context for sidebar, client choices and command palette", async ({
   page,
@@ -450,15 +451,15 @@ test("purchase worklist saves a selection only after server confirmation", async
   await expect(page.getByRole("checkbox", { name: "Select P-002", exact: true })).toBeDisabled();
   await page.getByRole("checkbox", { name: "Select P-001", exact: true }).check();
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByLabel("Treatment", { exact: true }).selectOption("exclude");
-  await page.getByLabel("Reason", { exact: true }).selectOption("blocked_credit");
+  await chooseSelect(page.getByLabel("Treatment", { exact: true }), "exclude");
+  await chooseSelect(page.getByLabel("Reason", { exact: true }), "blocked_credit");
   await page.getByRole("button", { name: "Save treatment", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Treatment saved for 1 invoice.");
   await expect(page.getByRole("row").filter({ hasText: "P-001" })).toContainText("Do not claim");
   expect(writes).toBe(1);
-  await page.getByLabel("Filter purchases").selectOption("undecided");
+  await chooseSelect(page.getByLabel("Filter purchases"), "undecided");
   await expect(page.getByRole("row").filter({ hasText: "P-001" })).toHaveCount(0);
-  await page.getByLabel("Filter purchases").selectOption("all");
+  await chooseSelect(page.getByLabel("Filter purchases"), "all");
   await page.screenshot({ path: info.outputPath("purchase-worklist.png"), fullPage: true });
 });
 
@@ -475,7 +476,7 @@ test("bulk stale response preserves decisions and requires refreshing selection"
   await page.goto("/app/gst/1/2026-06/purchases");
   await page.getByRole("checkbox", { name: "Select eligible invoices" }).check();
   await page.getByRole("button", { name: "Set ITC treatment" }).click();
-  await page.getByLabel("Treatment", { exact: true }).selectOption("claim");
+  await chooseSelect(page.getByLabel("Treatment", { exact: true }), "claim");
   await page.getByRole("button", { name: "Save treatment", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("This purchase changed");
   await expect(page.getByRole("button", { name: "Save treatment", exact: true })).toBeDisabled();
@@ -522,7 +523,7 @@ test("long purchase list keeps sources reachable and returns to the chosen filte
   await expect(page.getByRole("heading", { name: "Purchase INV-1" })).toBeVisible();
   await page.getByRole("link", { name: "Back to purchases" }).click();
   await expect(page).toHaveURL(/purchases\?work=undecided&q=INV$/);
-  await expect(page.getByLabel("Filter purchases")).toHaveValue("undecided");
+  await expect(page.getByLabel("Filter purchases")).toHaveAttribute("data-value", "undecided");
 });
 
 test("deferred invoices show their original month without a comparison column", async ({

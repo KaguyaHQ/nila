@@ -5,6 +5,7 @@ import type {
   BusinessCustomerAddress,
   BusinessInvoice,
 } from "../src/lib/business-api";
+import { chooseSelect } from "./select-field";
 
 const bootstrap: BusinessBootstrap = {
   services: [],
@@ -276,7 +277,7 @@ test("invoice reuses customer bill-to and saves an inline ship-to address", asyn
   await page.getByLabel("Label", { exact: true }).fill("Apollo Hospital, Mysore");
   await page.getByLabel("Address", { exact: true }).fill("Apollo Main Road, Mysore");
   await chooseState(page, "#customer-address-state", "State", "Karnataka");
-  await page.getByLabel("Use this address for").selectOption("shipping");
+  await chooseSelect(page.getByLabel("Use this address for"), "shipping");
   await page.getByText("Default shipping address").click();
   await page.getByRole("button", { name: "Save address" }).click();
   const invoiceParties = page.getByRole("region", { name: "Invoice parties" });
@@ -553,7 +554,7 @@ test("business details save contact info, numbering and a logo", async ({ page }
   await page.locator("#business-quote-next").fill("79/2026-27");
   await page.getByRole("button", { name: "Save quotation numbering" }).click();
   await expect(page.locator("#business-quote-next")).toHaveValue("79/2026-27");
-  await page.locator("#business-invoice-style").selectOption("serial_fy");
+  await chooseSelect(page.locator("#business-invoice-style"), "serial_fy");
   await page.locator("#business-invoice-next").fill("129");
   await page.getByRole("button", { name: "Save invoice numbering" }).click();
   await expect(page.locator("#business-invoice-next")).toHaveValue("129");
@@ -839,8 +840,12 @@ test("saved decimal GST rate shows its supported rate without a silent fallback"
     }),
   );
   await page.goto("/app/business/1/invoices/9");
-  await expect(page.locator("#line-0-gst")).toHaveValue("18");
-  await expect(page.locator("#line-0-gst option:checked")).toHaveText("18%");
+  const gstRate = page.getByRole("combobox", { name: "GST % for item 1" });
+  await expect(gstRate.locator('[data-slot="select-value"]')).toHaveText("18%");
+  await gstRate.click();
+  await expect(page.getByRole("option", { name: "18%" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("option", { name: "12%" }).click();
+  await expect(gstRate.locator('[data-slot="select-value"]')).toHaveText("12%");
 });
 test("new and saved credit notes keep the original billed identity after customer edits", async ({
   page,
@@ -949,11 +954,11 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   await page.locator("#invoice-delivery").fill("Parvathi Hospital, Chennai");
   await expect(billTo).toContainText("Parvathi Hospital, Chennai");
   await chooseState(page, "#invoice-pos", "Place of supply");
-  await page.getByRole("combobox", { name: "Item type 1" }).selectOption("goods");
-  await expect(page.locator("#line-0-unit")).toHaveValue("");
+  await chooseSelect(page.getByRole("combobox", { name: "Item type 1" }), "goods");
+  await expect(page.locator("#line-0-unit")).toHaveAttribute("data-value", "");
   await page.locator("#line-0-description").fill("Refrigerant gas");
   await page.locator("#line-0-sac").fill("290339");
-  await page.locator("#line-0-unit").selectOption("KGS");
+  await chooseSelect(page.locator("#line-0-unit"), "KGS");
   await page.locator("#line-0-price").fill("500");
   await expect(page.getByText("₹590.00", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("goods-quotation.png"), fullPage: true });
@@ -1201,7 +1206,7 @@ test("saved services catalogue creates, edits and removes reusable defaults", as
   await dialog.getByLabel("HSN/SAC", { exact: true }).fill("998313");
   await dialog.getByLabel("Unit", { exact: false }).fill("year");
   await dialog.getByLabel("Rate", { exact: false }).fill("12000");
-  await dialog.getByLabel("GST", { exact: false }).selectOption("18");
+  await chooseSelect(dialog.getByLabel("GST", { exact: false }), "18");
   await dialog.getByRole("button", { name: "Save item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText("Annual support", { exact: true })).toBeVisible();
@@ -1247,7 +1252,7 @@ for (const document of ["invoices", "quotations"])
     await expect(page.locator("#line-0-sac")).toHaveValue("998313");
     await expect(page.locator("#line-0-price")).toHaveValue("2500.50");
     await expect(page.locator("#line-0-unit")).toHaveValue("hour");
-    await expect(page.locator("#line-0-gst")).toHaveValue("18");
+    await expect(page.locator('#line-0-gst [data-slot="select-value"]')).toHaveText("18%");
     await expect(page.locator("#line-0-quantity")).toHaveValue("3.5");
     await page.locator("#line-0-description").fill("Client-specific consulting");
     await page.locator("#line-0-price").fill("2400");

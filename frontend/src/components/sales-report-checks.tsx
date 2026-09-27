@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Table,
   TableBody,
@@ -282,16 +282,16 @@ function ReportTask({
                   </dl>
                   <label className="block max-w-md space-y-1 text-sm">
                     <span>B2CS totals in the file</span>
-                    <NativeSelect
+                    <SelectField
                       required
                       disabled={disabled}
                       value={basis}
-                      onChange={(event) => setBasis(event.target.value)}
+                      onValueChange={(nextValue) => setBasis(nextValue)}
                     >
-                      <option value="">Choose treatment</option>
-                      <option value="true">Before notes — deduct them</option>
-                      <option value="false">Already includes notes — keep totals</option>
-                    </NativeSelect>
+                      <SelectFieldOption value="">Choose treatment</SelectFieldOption>
+                      <SelectFieldOption value="true">Before notes — deduct them</SelectFieldOption>
+                      <SelectFieldOption value="false">Already includes notes — keep totals</SelectFieldOption>
+                    </SelectField>
                   </label>
                 </>
               )}
@@ -302,44 +302,44 @@ function ReportTask({
                     <label key={field} className="block w-52 space-y-1 text-sm">
                       <span>{labels[field] || field}</span>
                       {field === "pos" || field === "place_of_supply" ? (
-                        <NativeSelect
+                        <SelectField
                           required
                           disabled={disabled}
                           value={values[field] ?? ""}
-                          onChange={(event) =>
-                            setValues({ ...values, [field]: event.target.value })
+                          onValueChange={(nextValue) =>
+                            setValues({ ...values, [field]: nextValue })
                           }
                         >
-                          <option value="">Choose state</option>
+                          <SelectFieldOption value="">Choose state</SelectFieldOption>
                           {states.map((state) => (
-                            <option key={state.value} value={state.value}>
+                            <SelectFieldOption key={state.value} value={state.value}>
                               {state.label}
-                            </option>
+                            </SelectFieldOption>
                           ))}
-                        </NativeSelect>
+                        </SelectField>
                       ) : field === "doc_num" || field === "original_sale_category" ? (
-                        <NativeSelect
+                        <SelectField
                           required
                           disabled={disabled}
                           value={values[field] ?? ""}
-                          onChange={(event) =>
-                            setValues({ ...values, [field]: event.target.value })
+                          onValueChange={(nextValue) =>
+                            setValues({ ...values, [field]: nextValue })
                           }
                         >
-                          <option value="">Choose</option>
+                          <SelectFieldOption value="">Choose</SelectFieldOption>
                           {field === "doc_num" ? (
                             docTypes.map((label, index) => (
-                              <option key={label} value={index + 1}>
+                              <SelectFieldOption key={label} value={index + 1}>
                                 {label}
-                              </option>
+                              </SelectFieldOption>
                             ))
                           ) : (
                             <>
-                              <option value="b2cs">B2C (others)</option>
-                              <option value="b2cl">B2CL</option>
+                              <SelectFieldOption value="b2cs">B2C (others)</SelectFieldOption>
+                              <SelectFieldOption value="b2cl">B2CL</SelectFieldOption>
                             </>
                           )}
-                        </NativeSelect>
+                        </SelectField>
                       ) : (
                         <Input
                           required

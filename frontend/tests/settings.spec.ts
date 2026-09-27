@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { SettingsData } from "../src/lib/settings-api";
 import { mockNavigation } from "./fixtures/navigation";
+import { chooseSelect } from "./select-field";
 
 function fixture(manage = true): SettingsData {
   return {
@@ -193,9 +194,9 @@ test("firm saves and member errors never pretend a role changed", async ({ page 
   await page.route("**/api/workspace/settings/members/2", (route) =>
     route.fulfill({ status: 422, json: { error: "Could not update the role." } }),
   );
-  await page.getByLabel("Role for Anita").selectOption("member");
+  await chooseSelect(page.getByLabel("Role for Anita"), "member");
   await expect(page.getByRole("alert")).toHaveText("Could not update the role.");
-  await expect(page.getByLabel("Role for Anita")).toHaveValue("viewer");
+  await expect(page.getByLabel("Role for Anita")).toHaveAttribute("data-value", "viewer");
   await page.getByRole("button", { name: "Invite user", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("settings-users.png"), fullPage: true });
   await page.route("**/api/workspace/settings/invitations", (route) => {

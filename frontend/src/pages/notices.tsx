@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Sheet,
   SheetContent,
@@ -299,25 +299,25 @@ export default function NoticesPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <NativeSelect
+            <SelectField
               aria-label="Filter by client"
               className="w-60"
               value={clientFilter}
-              onChange={(e) =>
+              onValueChange={(nextValue) =>
                 setParams({
                   to: "/notices",
-                  search: e.target.value ? { client_id: e.target.value } : {},
+                  search: nextValue ? { client_id: nextValue } : {},
                   resetScroll: false,
                 })
               }
             >
-              <option value="">All clients</option>
+              <SelectFieldOption value="">All clients</SelectFieldOption>
               {data.clients.map((c) => (
-                <option key={c.id} value={c.id}>
+                <SelectFieldOption key={c.id} value={c.id}>
                   {c.name}
-                </option>
+                </SelectFieldOption>
               ))}
-            </NativeSelect>
+            </SelectField>
           </div>
           <NoticeList
             notices={visible}
@@ -350,18 +350,18 @@ export default function NoticesPage() {
           </SheetHeader>
           <div className="flex-1 space-y-4 overflow-auto px-6 pb-6">
             <div className="flex items-center justify-between gap-3">
-              <NativeSelect
+              <SelectField
                 aria-label="Show client checks"
                 className="w-52"
                 value={unchecked ? "unchecked" : "all"}
-                onChange={(e) => {
-                  setUnchecked(e.target.value === "unchecked");
+                onValueChange={(nextValue) => {
+                  setUnchecked(nextValue === "unchecked");
                   setChecksClient(null);
                 }}
               >
-                <option value="all">All clients</option>
-                <option value="unchecked">Unchecked in latest run</option>
-              </NativeSelect>
+                <SelectFieldOption value="all">All clients</SelectFieldOption>
+                <SelectFieldOption value="unchecked">Unchecked in latest run</SelectFieldOption>
+              </SelectField>
               {!!data.run?.retry_count && (
                 <Button
                   variant="outline"
@@ -571,18 +571,18 @@ function NoticeReader({
     document && notice ? (
       <div className="flex items-center gap-3">
         <Label htmlFor="notice-document">Document</Label>
-        <NativeSelect
+        <SelectField
           id="notice-document"
           className="w-80"
           value={index}
-          onChange={(e) => setDocument(Number(e.target.value))}
+          onValueChange={(nextValue) => setDocument(Number(nextValue))}
         >
           {notice.documents.map((d, i) => (
-            <option key={d.url} value={i}>
+            <SelectFieldOption key={d.url} value={i}>
               {d.name}
-            </option>
+            </SelectFieldOption>
           ))}
-        </NativeSelect>
+        </SelectField>
       </div>
     ) : null;
   return (

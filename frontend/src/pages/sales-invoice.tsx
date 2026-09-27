@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Table,
@@ -519,53 +519,53 @@ function InvoiceReview({
                     : (fieldLabels[field] ?? field)}
                 </FieldLabel>
                 {field === "place_of_supply" ? (
-                  <NativeSelect
+                  <SelectField
                     id={id}
                     value={values[field] ?? ""}
                     disabled={busy || !data.can_edit}
-                    onChange={(event) =>
-                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    onValueChange={(nextValue) =>
+                      setValues((previous) => ({ ...previous, [field]: nextValue }))
                     }
                     aria-invalid={Boolean(errors)}
                     aria-describedby={errors ? `${id}-error` : undefined}
                   >
-                    <option value="">Not provided</option>
+                    <SelectFieldOption value="">Not provided</SelectFieldOption>
                     {values[field] &&
                       !data.states.some((state) => state.value === values[field]) && (
-                        <option value={values[field]}>{values[field]} (current value)</option>
+                        <SelectFieldOption value={values[field]}>{values[field]} (current value)</SelectFieldOption>
                       )}
                     {data.states.map((state) => (
-                      <option key={state.value} value={state.value}>
+                      <SelectFieldOption key={state.value} value={state.value}>
                         {state.label}
-                      </option>
+                      </SelectFieldOption>
                     ))}
-                  </NativeSelect>
+                  </SelectField>
                 ) : field === "original_sale_category" ? (
-                  <NativeSelect
+                  <SelectField
                     id={id}
                     value={values[field] ?? ""}
                     disabled={busy || !data.can_edit}
-                    onChange={(event) =>
-                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    onValueChange={(nextValue) =>
+                      setValues((previous) => ({ ...previous, [field]: nextValue }))
                     }
                   >
-                    <option value="">Not provided / not applicable</option>
-                    <option value="b2cs">B2C other / small</option>
-                    <option value="b2cl">B2C large (interstate)</option>
-                  </NativeSelect>
+                    <SelectFieldOption value="">Not provided / not applicable</SelectFieldOption>
+                    <SelectFieldOption value="b2cs">B2C other / small</SelectFieldOption>
+                    <SelectFieldOption value="b2cl">B2C large (interstate)</SelectFieldOption>
+                  </SelectField>
                 ) : field === "line_amount_tax_inclusion" ? (
-                  <NativeSelect
+                  <SelectField
                     id={id}
                     value={values[field] || "unknown"}
                     disabled={busy || !data.can_edit}
-                    onChange={(event) =>
-                      setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                    onValueChange={(nextValue) =>
+                      setValues((previous) => ({ ...previous, [field]: nextValue }))
                     }
                   >
-                    <option value="unknown">Not known</option>
-                    <option value="inclusive">Includes tax</option>
-                    <option value="exclusive">Excludes tax</option>
-                  </NativeSelect>
+                    <SelectFieldOption value="unknown">Not known</SelectFieldOption>
+                    <SelectFieldOption value="inclusive">Includes tax</SelectFieldOption>
+                    <SelectFieldOption value="exclusive">Excludes tax</SelectFieldOption>
+                  </SelectField>
                 ) : (
                   <Input
                     id={id}

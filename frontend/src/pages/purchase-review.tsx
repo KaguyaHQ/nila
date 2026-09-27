@@ -3,7 +3,7 @@ import { PurchaseSourceActions } from "@/components/purchase-source-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -447,15 +447,15 @@ function Review({
       <div className="mx-auto grid min-h-0 w-full max-w-screen-2xl flex-1 gap-6 p-6 pb-24 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside aria-label="Purchase queue" className="flex min-h-0 flex-col gap-4">
           <h2 className="font-semibold">Review queue</h2>
-          <NativeSelect
+          <SelectField
             aria-label="Review filter"
             value={data.filter}
             disabled={busy || dirty}
-            onChange={(event) => {
+            onValueChange={(nextValue) => {
               navigate({
                 to: "/gst/$clientId/$period/purchases/review",
                 params: { clientId: String(data.client.id), period: data.period },
-                search: { ...params, filter: reviewSearch({ filter: event.target.value }).filter },
+                search: { ...params, filter: reviewSearch({ filter: nextValue }).filter },
               });
             }}
           >
@@ -473,11 +473,11 @@ function Review({
               { id: "register", label: "Purchase books" },
               { id: "gstr2b", label: "GSTR-2B" },
             ].map((filter) => (
-              <option key={filter.id} value={filter.id}>
+              <SelectFieldOption key={filter.id} value={filter.id}>
                 {filter.label}
-              </option>
+              </SelectFieldOption>
             ))}
-          </NativeSelect>
+          </SelectField>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value.slice(0, 200))}
@@ -787,23 +787,23 @@ function Review({
                       .map((kind) => (
                         <label key={kind} className="block space-y-2 text-sm">
                           <span>{kind === "later" ? "Why claim later?" : "Why exclude?"}</span>
-                          <NativeSelect
+                          <SelectField
                             value={values[`${kind}_reason`]}
                             disabled={!canEdit}
-                            onChange={(event) =>
+                            onValueChange={(nextValue) =>
                               setValues((current) => ({
                                 ...current,
-                                [`${kind}_reason`]: event.target.value,
+                                [`${kind}_reason`]: nextValue,
                               }))
                             }
                           >
-                            <option value="">Choose a reason</option>
+                            <SelectFieldOption value="">Choose a reason</SelectFieldOption>
                             {data.reasons[kind].map((reason) => (
-                              <option key={reason.id} value={reason.id}>
+                              <SelectFieldOption key={reason.id} value={reason.id}>
                                 {reason.label}
-                              </option>
+                              </SelectFieldOption>
                             ))}
-                          </NativeSelect>
+                          </SelectField>
                         </label>
                       ))}
                     {values.choice === "split" && cases.length === 1 && (

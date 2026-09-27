@@ -7,7 +7,7 @@
  */
 import { type ComponentProps, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField } from "@/components/ui/select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -40,12 +40,12 @@ export function InlineInput({
   );
 }
 
-export function InlineSelect({ className, ...props }: ComponentProps<typeof NativeSelect>) {
+export function InlineSelect({ className, ...props }: ComponentProps<typeof SelectField>) {
   return (
-    <NativeSelect
+    <SelectField
       {...props}
       className={cn(
-        "h-8 w-full border-0 bg-transparent p-0 text-sm shadow-none disabled:opacity-100 [&_select]:rounded-sm [&_select]:border-border/70 [&_select]:bg-muted/30 [&_select]:pl-2 [&_select]:pr-6 [&_select]:hover:border-ring/60 [&_select]:hover:bg-accent/50 [&_select]:focus-visible:border-ring [&_select]:focus-visible:bg-background [&_select]:focus-visible:ring-2 [&_select]:focus-visible:ring-ring/30 [&_select:disabled]:border-transparent [&_select:disabled]:bg-transparent",
+        "h-8 w-full gap-0.5 rounded-sm border-border/70 bg-muted/30 px-1 text-sm shadow-none hover:border-ring/60 hover:bg-accent/50 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/30 disabled:border-transparent disabled:bg-transparent disabled:opacity-100 [&_svg]:size-3",
         className,
       )}
     />

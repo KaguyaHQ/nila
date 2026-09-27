@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { SalesInvoiceReviewData } from "../src/lib/sales-review-api";
+import { chooseSelect } from "./select-field";
 
 function invoice(id = "one"): SalesInvoiceReviewData {
   return {
@@ -393,9 +394,9 @@ test("Excel evidence switches files and sheets without changing the selected inv
   });
   await page.goto("/app/gst/1/2026-06/sales/invoices/one");
   await expect(page.getByRole("cell", { name: "B2B.xlsx / B2B", exact: true })).toBeVisible();
-  await page.getByLabel("Source sheet", { exact: true }).selectOption("Notes");
+  await chooseSelect(page.getByLabel("Source sheet", { exact: true }), "Notes");
   await expect(page.getByRole("cell", { name: "B2B.xlsx / Notes", exact: true })).toBeVisible();
-  await page.getByLabel("Source file", { exact: true }).selectOption("HSN.xlsx");
+  await chooseSelect(page.getByLabel("Source file", { exact: true }), "HSN.xlsx");
   await expect(page.getByRole("cell", { name: "HSN.xlsx / HSN", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toBeVisible();
   await expect(
@@ -500,7 +501,7 @@ test("facts keep field errors and save only server-authorized raw fields", async
   const opener = page.getByRole("button", { name: "Edit invoice details", exact: true });
   await opener.click();
   await page.getByLabel("Invoice number", { exact: true }).fill("DUPLICATE");
-  await page.getByLabel("Place of supply").selectOption("29");
+  await chooseSelect(page.getByLabel("Place of supply"), "29");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Check the invoice number." })).toHaveText(
     "Check the invoice number.",

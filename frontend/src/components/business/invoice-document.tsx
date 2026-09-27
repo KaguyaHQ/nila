@@ -11,6 +11,8 @@ import { Link, useParams } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SelectFieldOption } from "@/components/ui/select-field";
 import type {
   BusinessBootstrap,
   BusinessInvoice,
@@ -31,8 +33,9 @@ const amount = (value?: number) =>
   typeof value === "number"
     ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value / 100)
     : "—";
-const columns = "lg:grid-cols-[minmax(0,1fr)_72px_110px_84px_64px_90px_24px]";
+const columns = "lg:grid-cols-[minmax(0,1fr)_72px_110px_84px_80px_90px_24px]";
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
+const rateItems = rates.map((rate) => ({ label: `${rate}%`, value: rate }));
 
 export function InvoiceDocument({
   value,
@@ -536,13 +539,13 @@ export function InvoiceDocument({
                     disabled={disabled}
                     value={line.kind ?? "service"}
                     className="w-24 shrink-0 text-xs"
-                    onChange={(e) =>
+                    onValueChange={(nextValue) =>
                       onChange({
                         lines: value.lines.map((entry, i) =>
                           i === index
                             ? {
                                 ...entry,
-                                kind: e.target.value as "goods" | "service",
+                                kind: nextValue as "goods" | "service",
                                 sac: "",
                                 unit: "",
                               }
@@ -551,8 +554,8 @@ export function InvoiceDocument({
                       })
                     }
                   >
-                    <option value="service">Service</option>
-                    <option value="goods">Goods</option>
+                    <SelectFieldOption value="service">Service</SelectFieldOption>
+                    <SelectFieldOption value="goods">Goods</SelectFieldOption>
                   </InlineSelect>
                 )}
                 <div className="relative min-w-0 flex-1">
@@ -645,13 +648,13 @@ export function InvoiceDocument({
                         disabled={disabled}
                         value={line.unit ?? ""}
                         className="min-w-0 flex-1 text-xs"
-                        onChange={(e) => lineChange(index, "unit", e.target.value)}
+                        onValueChange={(nextValue) => lineChange(index, "unit", nextValue)}
                       >
-                        <option value="">Unit</option>
+                        <SelectFieldOption value="">Unit</SelectFieldOption>
                         {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
-                          <option key={unit} value={unit}>
+                          <SelectFieldOption key={unit} value={unit}>
                             {unit}
-                          </option>
+                          </SelectFieldOption>
                         ))}
                       </InlineSelect>
                     ) : (
@@ -696,22 +699,30 @@ export function InvoiceDocument({
               >
                 GST %
               </label>
-              <InlineSelect
-                id={`line-${index}-gst`}
+              <Select
+                items={rateItems}
                 required
                 disabled={disabled}
                 value={
                   rates.includes(String(Number(line.gst_rate))) ? String(Number(line.gst_rate)) : ""
                 }
-                className="sm:text-right"
-                onChange={(e) => lineChange(index, "gst_rate", e.target.value)}
+                onValueChange={(rate) => lineChange(index, "gst_rate", rate ?? "")}
               >
-                {rates.map((rate) => (
-                  <option key={rate} value={rate}>
-                    {rate}%
-                  </option>
-                ))}
-              </InlineSelect>
+                <SelectTrigger
+                  id={`line-${index}-gst`}
+                  aria-label={`GST % for item ${index + 1}`}
+                  className="h-8 w-full min-w-0 rounded-sm border-border/70 bg-muted/30 px-2 shadow-none hover:border-ring/60 hover:bg-accent/50 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/30 disabled:border-transparent disabled:bg-transparent disabled:opacity-100"
+                >
+                  <SelectValue className="justify-end text-right tabular-nums" />
+                </SelectTrigger>
+                <SelectContent align="end" alignItemWithTrigger={false}>
+                  {rateItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex min-h-8 items-center justify-between lg:justify-end">
               <span className="text-xs text-muted-foreground lg:hidden">Amount</span>

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { NoticesData } from "../src/lib/notices-api";
+import { chooseSelect } from "./select-field";
 
 function previewPdf(text = "Draft invoice") {
   const stream = `BT /F1 18 Tf 48 760 Td (${text.replace(/[()\\]/g, " ")}) Tj ET`;
@@ -154,14 +155,14 @@ test("notice list keeps history visible, scopes client filters and shows failed 
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Checks cover the last 60 days/)).not.toBeVisible();
   await page.screenshot({ path: info.outputPath("notices.png"), fullPage: true });
-  await page.getByRole("combobox", { name: "Filter by client" }).selectOption("2");
+  await chooseSelect(page.getByRole("combobox", { name: "Filter by client" }), "2");
   await expect(page).toHaveURL(/client_id=2/);
   await expect(page.getByText("ZD33092600123")).toHaveCount(0);
   await page.getByRole("textbox", { name: "Search notices" }).fill("not there");
   await expect(page.getByText("No notices match this filter.")).toBeVisible();
   await page.getByRole("button", { name: "View clients", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Client checks" });
-  await sheet.getByRole("combobox", { name: "Show client checks" }).selectOption("unchecked");
+  await chooseSelect(sheet.getByRole("combobox", { name: "Show client checks" }), "unchecked");
   await expect(sheet.getByText("Simple Systems", { exact: true })).toBeVisible();
   await expect(sheet.getByText("Breeze Tech", { exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -275,7 +276,7 @@ test("reader handles PDF failure, document switching and back without legacy nav
   await expect(page.locator("[data-pdf-status]")).toBeHidden();
   await expect(page.locator("canvas").first()).toBeVisible();
   await page.screenshot({ path: info.outputPath("notice-pdf.png"), fullPage: true });
-  await page.getByLabel("Document", { exact: true }).selectOption("1");
+  await chooseSelect(page.getByLabel("Document", { exact: true }), "1");
   await expect(page.getByText("Preview unavailable", { exact: false })).toBeVisible();
   await page.screenshot({ path: info.outputPath("notice-detail.png"), fullPage: true });
   await page.getByRole("link", { name: "Back to notices" }).click();
@@ -387,7 +388,7 @@ test("switching documents cancels a pending retry", async ({ page }) => {
   });
   await page.goto("/app/notices/10");
   await expect.poll(() => requests).toBe(1);
-  await page.getByLabel("Document", { exact: true }).selectOption("1");
+  await chooseSelect(page.getByLabel("Document", { exact: true }), "1");
   await expect(page.getByText("Preview unavailable", { exact: false })).toBeVisible();
   await page.waitForTimeout(1100);
   expect(requests).toBe(1);

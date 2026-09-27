@@ -4,7 +4,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Table,
   TableBody,
@@ -347,36 +347,36 @@ function SheetView({
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t bg-muted/30 p-2">
         <div className="flex min-w-0 items-center gap-2">
           {data.files.length > 1 && (
-            <NativeSelect
+            <SelectField
               aria-label="Source file"
               value={data.file}
               className="max-w-52"
-              onChange={(event) => {
-                const file = data.files.find((file) => file.name === event.target.value);
+              onValueChange={(nextValue) => {
+                const file = data.files.find((file) => file.name === nextValue);
                 if (file) onLocation({ file: file.name, sheet: file.sheets[0] ?? "" });
               }}
             >
               {data.files.map((file) => (
-                <option key={file.name} value={file.name}>
+                <SelectFieldOption key={file.name} value={file.name}>
                   {file.name}
-                </option>
+                </SelectFieldOption>
               ))}
-            </NativeSelect>
+            </SelectField>
           )}
-          <NativeSelect
+          <SelectField
             aria-label="Source sheet"
             value={data.sheet}
             className="max-w-44"
-            onChange={(event) => onLocation({ file: data.file, sheet: event.target.value })}
+            onValueChange={(nextValue) => onLocation({ file: data.file, sheet: nextValue })}
           >
             {data.files
               .find((file) => file.name === data.file)
               ?.sheets.map((sheet) => (
-                <option key={sheet} value={sheet}>
+                <SelectFieldOption key={sheet} value={sheet}>
                   {sheet}
-                </option>
+                </SelectFieldOption>
               ))}
-          </NativeSelect>
+          </SelectField>
         </div>
         <span role="status" className="text-xs text-muted-foreground">
           {message || "Source cells · scroll to browse the whole sheet"}

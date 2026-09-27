@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Table,
   TableBody,
@@ -206,21 +206,21 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                 <label htmlFor="service-kind" className="text-sm font-medium">
                   Type
                 </label>
-                <NativeSelect
+                <SelectField
                   id="service-kind"
                   value={form.kind}
-                  onChange={(e) =>
+                  onValueChange={(nextValue) =>
                     setForm({
                       ...form,
-                      kind: e.target.value as "goods" | "service",
+                      kind: nextValue as "goods" | "service",
                       sac: "",
-                      unit: e.target.value === "goods" ? "NOS" : "service",
+                      unit: nextValue === "goods" ? "NOS" : "service",
                     })
                   }
                 >
-                  <option value="service">Service</option>
-                  <option value="goods">Goods</option>
-                </NativeSelect>
+                  <SelectFieldOption value="service">Service</SelectFieldOption>
+                  <SelectFieldOption value="goods">Goods</SelectFieldOption>
+                </SelectField>
               </div>
               <div className="space-y-2">
                 <label htmlFor="service-description" className="text-sm font-medium">
@@ -254,17 +254,17 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                     Unit
                   </label>
                   {form.kind === "goods" ? (
-                    <NativeSelect
+                    <SelectField
                       id="service-unit"
                       value={form.unit}
-                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                      onValueChange={(nextValue) => setForm({ ...form, unit: nextValue })}
                     >
                       {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
-                        <option key={unit} value={unit}>
+                        <SelectFieldOption key={unit} value={unit}>
                           {unit}
-                        </option>
+                        </SelectFieldOption>
                       ))}
-                    </NativeSelect>
+                    </SelectField>
                   ) : (
                     <Input
                       id="service-unit"
@@ -296,17 +296,17 @@ export function ServicesPage({ services }: { services: BusinessService[] }) {
                   <label htmlFor="service-gst" className="text-sm font-medium">
                     GST %
                   </label>
-                  <NativeSelect
+                  <SelectField
                     id="service-gst"
                     value={form.gst_rate}
-                    onChange={(e) => setForm({ ...form, gst_rate: e.target.value })}
+                    onValueChange={(nextValue) => setForm({ ...form, gst_rate: nextValue })}
                   >
                     {rates.map((rate) => (
-                      <option key={rate} value={rate}>
+                      <SelectFieldOption key={rate} value={rate}>
                         {rate}%
-                      </option>
+                      </SelectFieldOption>
                     ))}
-                  </NativeSelect>
+                  </SelectField>
                 </div>
               </div>
             </fieldset>

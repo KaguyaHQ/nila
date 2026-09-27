@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { Shell } from "@/components/workspace-shell";
@@ -124,18 +124,18 @@ function SettingsForm({
           <div key={field.name} className="space-y-2">
             <Label htmlFor={`${id}-${field.name}`}>{field.label}</Label>
             {field.options ? (
-              <NativeSelect
+              <SelectField
                 id={`${id}-${field.name}`}
                 name={field.name}
                 defaultValue={field.value ?? "member"}
                 aria-invalid={!!errors[field.name]}
               >
                 {field.options.map((option) => (
-                  <option key={option.value} value={option.value}>
+                  <SelectFieldOption key={option.value} value={option.value}>
                     {option.label}
-                  </option>
+                  </SelectFieldOption>
                 ))}
-              </NativeSelect>
+              </SelectField>
             ) : (
               <Input
                 id={`${id}-${field.name}`}
@@ -558,25 +558,25 @@ function Member({
         <Badge variant="outline">
           {!member.active ? "Disabled" : member.invited ? "Invited" : "Active"}
         </Badge>
-        <NativeSelect
+        <SelectField
           aria-label={`Role for ${member.name}`}
           className="w-36 shrink-0"
           value={member.role}
           disabled={!member.can_change_role || mutation.isPending}
-          onChange={(event) =>
+          onValueChange={(nextValue) =>
             mutation.submit({
               action: "role",
-              role: event.target.value as "owner" | "admin" | "member" | "viewer",
+              role: nextValue as "owner" | "admin" | "member" | "viewer",
             })
           }
         >
-          {member.role === "admin" && <option value="admin">Admin</option>}
+          {member.role === "admin" && <SelectFieldOption value="admin">Admin</SelectFieldOption>}
           {roles.map((role) => (
-            <option key={role.value} value={role.value}>
+            <SelectFieldOption key={role.value} value={role.value}>
               {role.label}
-            </option>
+            </SelectFieldOption>
           ))}
-        </NativeSelect>
+        </SelectField>
       </div>
       <div className="flex justify-end gap-2">
         {member.invited && (

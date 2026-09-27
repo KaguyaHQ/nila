@@ -37,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -897,24 +897,24 @@ export function BusinessSettings() {
             {invoiceNumbering.editable ? (
               <>
             <Field label="Number format" id="business-invoice-style">
-              <NativeSelect
+              <SelectField
                 id="business-invoice-style"
                 disabled={!invoiceNumbering.editable || busy}
                 value={invoiceNumbering.style}
-                onChange={(e) =>
+                onValueChange={(nextValue) =>
                   setInvoiceNumbering({
                     ...invoiceNumbering,
-                    style: e.target.value as typeof invoiceNumbering.style,
+                    style: nextValue as typeof invoiceNumbering.style,
                   })
                 }
               >
-                <option value="nila">
+                <SelectFieldOption value="nila">
                   INV/{financialYearShort}/0001
-                </option>
-                <option value="serial_fy">
+                </SelectFieldOption>
+                <SelectFieldOption value="serial_fy">
                   1/{invoiceNumbering.financial_year}-{String(invoiceNumbering.financial_year + 1).slice(-2)}
-                </option>
-              </NativeSelect>
+                </SelectFieldOption>
+              </SelectField>
             </Field>
             <Field label="Starting number" id="business-invoice-next">
               <Input
