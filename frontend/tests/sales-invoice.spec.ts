@@ -184,6 +184,193 @@ async function setup(page: Page) {
   );
 }
 
+test("Excel review browses original rows, finds distant evidence and reuses the sheet between invoices", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  let sourceRequests = 0;
+  let releaseSecond: (() => void) | undefined;
+  const secondResponse = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/*", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    if (id === "two") await secondResponse;
+    const data = invoice(id);
+    data.upload_ref = "excel-38";
+    data.source = {
+      name: "B2B.xlsx",
+      url: null,
+      images: [],
+      pages: [],
+      spreadsheet: {
+        url: `/api/workspace/sales/1/2026-06/invoices/${id}/source`,
+        selected: [{ file: "B2B.xlsx", sheet: "B2B", rows: id === "one" ? [2, 3] : [2503] }],
+        granularity: "invoice_rate_components",
+      },
+    };
+    return route.fulfill({ json: data });
+  });
+  await page.route("**/invoices/*/source?*", (route) => {
+    sourceRequests++;
+    return route.fulfill({
+      json: {
+        file: "B2B.xlsx",
+        sheet: "B2B",
+        files: [{ name: "B2B.xlsx", sheets: ["B2B"] }],
+        columns: ["A", "B", "C", "D"],
+        relevant_columns: ["A", "B", "C"],
+        header_rows: [1],
+        download_url: "/original/B2B.xlsx",
+        rows: [
+          {
+            row: 1,
+            cells: { A: "Invoice Number", B: "Customer", C: "Taxable Value", D: "Extra charge" },
+            invoice_ids: [],
+          },
+          ...Array.from({ length: 3000 }, (_, i) => ({
+            row: i + 2,
+            cells: {
+              A: i < 2 ? "INV-001" : i === 2501 ? "INV-002" : `SOURCE-${i}`,
+              B: i === 2499 ? "Omitted source row" : "Customer A",
+              C: i === 0 ? "" : "1000.00",
+              D: i === 2501 ? "829.85" : "",
+            },
+            invoice_ids: i < 2 ? ["one"] : i === 2501 ? ["two"] : [],
+          })),
+        ],
+      },
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  const source = page.getByRole("region", { name: "Source spreadsheet", exact: true });
+  await expect(source).toBeVisible();
+  await expect(source.locator('[data-selected="true"]')).toHaveCount(2);
+  await expect(source.locator('[data-source-row="2"] td').nth(3)).toHaveText("");
+  expect(await source.locator("tbody tr").count()).toBeLessThan(110);
+  await source.getByLabel("Scrollable source rows").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(source.locator('[data-source-row="3001"]')).toBeVisible();
+  await page.getByRole("button", { name: "Jump to invoice rows", exact: true }).click();
+  await expect(source.locator('[data-source-row="2"]')).toBeVisible();
+  await expect(page.getByText("No source document is available for this invoice.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit reported totals" })).toBeVisible();
+  const initialSourceRequests = sourceRequests;
+  await page.getByLabel("Find in spreadsheet").fill("Omitted source row");
+  await page.getByRole("button", { name: "Find next", exact: true }).click();
+  await expect(source.locator('[data-source-row="2501"]')).toBeVisible();
+  await expect(source.getByRole("columnheader", { name: "Extra charge" })).toBeVisible();
+  await page.getByLabel("Find in spreadsheet").fill("INV-002");
+  await page.getByRole("button", { name: "Find next", exact: true }).click();
+  await page.getByRole("link", { name: "Open invoice from row 2503" }).click();
+  await expect(page.getByText("Loading invoice details…", { exact: true })).toBeVisible();
+  await expect(source).toBeVisible();
+  await expect(source.locator('[data-source-row="2503"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit reported totals" })).toHaveCount(0);
+  releaseSecond?.();
+  await expect(page.getByRole("heading", { name: "Invoice INV-002", exact: true })).toBeVisible();
+  await expect(source.locator('[data-source-row="2503"][data-selected="true"]')).toBeVisible();
+  expect(sourceRequests).toBe(initialSourceRequests);
+  await page.screenshot({ path: testInfo.outputPath("excel-source-desktop.png") });
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await expect(source.getByLabel("Scrollable source rows")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("excel-source-1280.png") });
+});
+
+test("Excel source failure keeps invoice corrections available and can retry", async ({ page }) => {
+  await setup(page);
+  const data = invoice();
+  data.source = {
+    name: "report.xlsx",
+    url: null,
+    images: [],
+    pages: [],
+    spreadsheet: {
+      url: "/api/workspace/sales/1/2026-06/invoices/one/source",
+      selected: [{ file: "report.xlsx", sheet: "Sales", rows: [7] }],
+      granularity: null,
+    },
+  };
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: data }),
+  );
+  let attempts = 0;
+  await page.route("**/invoices/one/source?*", (route) => {
+    attempts++;
+    return route.fulfill({
+      status: 503,
+      json: { error: "Source file is unavailable. Please try again." },
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await expect(page.getByRole("alert")).toHaveText("Source file is unavailable. Please try again.");
+  await expect(
+    page.getByRole("button", { name: "Edit invoice details", exact: true }),
+  ).toBeEnabled();
+  const beforeRetry = attempts;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => attempts).toBe(beforeRetry + 1);
+});
+
+test("Excel evidence switches files and sheets without changing the selected invoice", async ({
+  page,
+}) => {
+  await setup(page);
+  const data = invoice();
+  data.upload_ref = "packet-42";
+  data.source = {
+    name: "B2B.xlsx",
+    url: null,
+    images: [],
+    pages: [],
+    spreadsheet: {
+      url: "/api/workspace/sales/1/2026-06/invoices/one/source",
+      selected: [{ file: "B2B.xlsx", sheet: "B2B", rows: [2, 3] }],
+      granularity: "invoice_rate_components",
+    },
+  };
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) =>
+    route.fulfill({ json: data }),
+  );
+  await page.route("**/invoices/one/source?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const file = params.get("file"),
+      sheet = params.get("sheet");
+    return route.fulfill({
+      json: {
+        file,
+        sheet,
+        files: [
+          { name: "B2B.xlsx", sheets: ["B2B", "Notes"] },
+          { name: "HSN.xlsx", sheets: ["HSN"] },
+        ],
+        columns: ["A"],
+        relevant_columns: ["A"],
+        header_rows: [1],
+        invoice_column: null,
+        rows: [
+          { row: 1, cells: { A: "Original header" }, invoice_ids: [] },
+          { row: 2, cells: { A: `${file} / ${sheet}` }, invoice_ids: [] },
+        ],
+        download_url: `/original/${file}`,
+      },
+    });
+  });
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await expect(page.getByRole("cell", { name: "B2B.xlsx / B2B", exact: true })).toBeVisible();
+  await page.getByLabel("Source sheet", { exact: true }).selectOption("Notes");
+  await expect(page.getByRole("cell", { name: "B2B.xlsx / Notes", exact: true })).toBeVisible();
+  await page.getByLabel("Source file", { exact: true }).selectOption("HSN.xlsx");
+  await expect(page.getByRole("cell", { name: "HSN.xlsx / HSN", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Invoice INV-001", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open original file", exact: false }),
+  ).toHaveAttribute("href", "/original/HSN.xlsx");
+  await expect(page.getByRole("button", { name: "Jump to invoice rows" })).toBeDisabled();
+});
+
 test("review navigation preserves filters, stays in React and ignores editing keyboard input", async ({
   page,
 }, testInfo) => {
@@ -220,6 +407,29 @@ test("review navigation preserves filters, stays in React and ignores editing ke
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
   await page.screenshot({ path: testInfo.outputPath("invoice-narrow.png"), fullPage: true });
+});
+
+test("Escape closes the editor first, then returns to the register with its filters", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one?filter=needs_review&q=Customer");
+  const opener = page.getByRole("button", { name: "Edit invoice details", exact: true });
+  await opener.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/invoices\/one\?/);
+  await expect(opener).toBeFocused();
+  await page.getByRole("button", { name: "Keyboard shortcuts", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/invoices\/one\?/);
+  await expect(page.getByRole("button", { name: "Keyboard shortcuts", exact: true })).toBeFocused();
+  await page.getByRole("heading", { name: "Invoice INV-001", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/\/sales\/register\?filter=needs_review&q=Customer$/);
 });
 
 test("facts keep field errors and save only server-authorized raw fields", async ({ page }) => {
@@ -557,6 +767,7 @@ test("invoices from one PDF reuse the document and show the selected page", asyn
     const data = invoice(id);
     data.source = {
       name: "packet.pdf",
+      spreadsheet: null,
       url: "/review-fixture/packet.pdf",
       pages: [id === "one" ? 1 : 2],
       images: [],
@@ -594,7 +805,13 @@ test("four-line review keeps totals visible and preserves split and zoom between
     const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
     const data = invoice(id);
     data.lines = Array.from({ length: 4 }, (_, index) => ({ ...data.lines[0], index }));
-    data.source = { name: `${id}.pdf`, url: `/review-fixture/${id}.pdf`, pages: [1], images: [] };
+    data.source = {
+      name: `${id}.pdf`,
+      url: `/review-fixture/${id}.pdf`,
+      pages: [1],
+      images: [],
+      spreadsheet: null,
+    };
     return route.fulfill({ json: data });
   });
   await page.route("**/review-fixture/*.pdf", (route) =>

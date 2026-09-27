@@ -8,6 +8,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
   alias Nila.Gst.Sales.{Batch, Months}
   alias Nila.Gst.Sales.Invoice.Corrections
   alias Nila.Gst.Sales.Review.Resolutions
+  alias Nila.Gst.Sales.Excel.Workbook
 
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
@@ -77,6 +78,107 @@ defmodule NilaWeb.SalesReviewControllerTest do
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
   end
 
+  test "serves original workbook cells with invoice row links and retained report headings", %{
+    conn: conn,
+    path: path,
+    dump: dump,
+    month: month,
+    invoice: invoice
+  } do
+    bytes = File.read!("test/fixtures/sales_excel/standard.xlsx")
+    {:ok, workbook} = Workbook.read(bytes)
+    sheet = hd(workbook.sheets)
+    header = hd(sheet.rows)
+    source_row = Enum.at(sheet.rows, 1)
+    file = "standard.xlsx"
+    key = "test/review/#{Ecto.UUID.generate()}/standard.xlsx"
+    {:ok, _} = Storage.put(key, bytes)
+    on_exit(fn -> Storage.delete(key) end)
+
+    source_invoice =
+      invoice
+      |> Map.put("source_filename", file)
+      |> Map.put("source_sheet", sheet.name)
+      |> Map.put("source_rows", [source_row.row])
+
+    month
+    |> Ecto.Changeset.change(invoices: [source_invoice])
+    |> Repo.update!()
+
+    dump
+    |> Ecto.Changeset.change(
+      invoices: [source_invoice],
+      file_keys: [key],
+      meta: %{
+        "excel_import" => true,
+        "original_name" => file,
+        "return_report" => %{
+          "rows" => [
+            %{
+              "source_filename" => file,
+              "sheet" => sheet.name,
+              "headers" => header.cells,
+              "columns" => %{"number" => "A", "date" => "B", "txval" => "C"}
+            }
+          ]
+        }
+      }
+    )
+    |> Repo.update!()
+
+    review = conn |> get(path) |> contract_response(200)
+
+    assert review["source"]["spreadsheet"]["selected"] ==
+             [%{"file" => file, "sheet" => sheet.name, "rows" => [source_row.row]}]
+
+    data = conn |> get(path <> "/source") |> contract_response(200)
+    assert data["file"] == file
+    assert data["sheet"] == sheet.name
+    assert data["files"] == [%{"name" => file, "sheets" => [sheet.name]}]
+    assert data["header_rows"] == [header.row]
+    assert data["invoice_column"] == "A"
+    assert data["relevant_columns"] == ["A", "B", "C"]
+
+    assert Enum.find(data["rows"], &(&1["row"] == source_row.row))["invoice_ids"] == [
+             invoice["id"]
+           ]
+
+    assert Enum.find(data["rows"], &(&1["row"] == header.row))["cells"] == header.cells
+    assert Enum.find(data["rows"], &(&1["row"] == header.row))["invoice_ids"] == []
+    assert data["download_url"] =~ "/original/#{dump.id}/0"
+    assert conn |> get(path <> "/source?sheet=missing") |> contract_response(404)
+
+    unrelated_key = "test/review/#{Ecto.UUID.generate()}/other.xlsx"
+    {:ok, _} = Storage.put(unrelated_key, "not a workbook")
+    on_exit(fn -> Storage.delete(unrelated_key) end)
+
+    dump
+    |> Ecto.Changeset.change(
+      file_keys: [key, unrelated_key],
+      meta:
+        dump.meta
+        |> Map.put("excel_import", true)
+        |> Map.put("file_manifest", [
+          %{"filename" => file},
+          %{"filename" => "other.xlsx"}
+        ])
+        |> Map.put("return_report", %{
+          "rows" => [
+            %{
+              "source_filename" => file,
+              "sheet" => sheet.name,
+              "headers" => header.cells,
+              "columns" => %{"number" => "A"}
+            }
+          ]
+        })
+    )
+    |> Repo.update!()
+
+    assert conn |> get(path <> "/source") |> contract_response(200)
+    assert conn |> get(path <> "/source?file=other.xlsx") |> contract_response(404)
+  end
+
   test "buyer name warning separates the comparison from dated lookup evidence", %{
     conn: conn,
     path: path,
@@ -90,7 +192,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
           do:
             row
             |> Map.put("buyer_gstin", "33AEWPH4158J1Z3")
-            |> Map.put("buyer_name", "Different customer"),
+            |> Map.put("buyer_name", "Siemens Healthcare Pvt Ltd"),
           else: row
       end)
     end
@@ -110,7 +212,7 @@ defmodule NilaWeb.SalesReviewControllerTest do
     issue = Enum.find(body["issues"], &(&1["code"] == "buyer_gst_name_review"))
 
     assert issue["message"] ==
-             "The bill says “Different customer”. GST records say “Registered Customer Limited”."
+             "The bill says “Siemens Healthcare Pvt Ltd”. GST records say “Registered Customer Limited”."
 
     assert issue["lookup_details"] =~ "Active. Checked"
     assert issue["lookup_details"] =~ "not on the invoice date"

@@ -3,7 +3,17 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
 
   alias Nila.Accounts.Policy
   alias Nila.Gst.{Proposals, StateCodes}
-  alias Nila.Gst.Sales.{Invoice, Months, Processing, Review, Workings, TaxpayerChecks}
+
+  alias Nila.Gst.Sales.{
+    Invoice,
+    Months,
+    Processing,
+    Review,
+    SourceSpreadsheet,
+    Workings,
+    TaxpayerChecks
+  }
+
   alias Nila.Gst.Sales.Invoice.{Corrections, Validation}
   alias Nila.Gst.Sales.Review.{Resolutions, Values}
   alias NilaWeb.Gst.{InvoiceWorkbench, InvoicePresentation, SalesIssuePresentation}
@@ -37,7 +47,13 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
 
   def project(context) do
     invoice = context.item.invoice
-    facts = if invoice["document_type"] in ~w(credit_note debit_note) and invoice["recipient_registration"] == "unregistered", do: @facts, else: @facts -- ["original_sale_category"]
+
+    facts =
+      if invoice["document_type"] in ~w(credit_note debit_note) and
+           invoice["recipient_registration"] == "unregistered",
+         do: @facts,
+         else: @facts -- ["original_sale_category"]
+
     reason = lock_reason(context)
     can_edit = is_nil(reason)
 
@@ -323,11 +339,22 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         &"/sales-bills/#{context.client.id}/dumps/#{dump.id}/evidence/#{URI.encode(Path.basename(&1))}"
       )
 
+    spreadsheet =
+      if SourceSpreadsheet.available?(dump) do
+        %{
+          url:
+            "/api/workspace/sales/#{dump.client_id}/#{dump.period}/invoices/#{URI.encode_www_form(Invoice.source_id(invoice))}/source",
+          selected: SourceSpreadsheet.refs(invoice, dump),
+          granularity: invoice["source_granularity"]
+        }
+      end
+
     %{
       url: url,
       name: Nila.Gst.Sales.SourcePacket.original_name(dump),
       pages: pages,
-      images: images
+      images: images,
+      spreadsheet: spreadsheet
     }
   end
 

@@ -114,6 +114,7 @@ defmodule NilaWeb.Router do
     get "/sales/:client_id/:period/checks", SalesMonthChecksController, :show
     post "/sales/:client_id/:period/checks/decision", SalesMonthChecksController, :decision
     get "/sales/:client_id/:period/invoices/:invoice_id", SalesReviewController, :show
+    get "/sales/:client_id/:period/invoices/:invoice_id/source", SalesReviewController, :source
     patch "/sales/:client_id/:period/invoices/:invoice_id", SalesReviewController, :update
     post "/sales/:client_id/:period/invoices/:invoice_id/confirm", SalesReviewController, :confirm
     get "/sales/:client_id/:period/uploads/:batch_ref", SalesUploadController, :show

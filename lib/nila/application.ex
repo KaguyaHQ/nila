@@ -10,7 +10,8 @@ defmodule Nila.Application do
     children =
       [
         NilaWeb.Telemetry,
-        Nila.Repo
+        Nila.Repo,
+        Nila.Gst.Sales.SourceSpreadsheet.Cache
       ] ++
         text_chat_children() ++
         [

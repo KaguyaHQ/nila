@@ -2,6 +2,7 @@ import { SalesRemovalActions } from "@/components/sales-removal-actions";
 import { MoveSalesUpload } from "@/components/move-sales-upload";
 import { InvoiceQueue } from "@/components/invoice-queue";
 import type { PdfSession } from "@/components/source-pdf";
+import { SourceSpreadsheet, type SpreadsheetPreferences } from "@/components/source-spreadsheet";
 import { navigationShortcutBlocked, ShortcutHelpButton } from "@/components/keyboard-shortcuts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
 import { NativeSelect } from "@/components/ui/native-select";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
@@ -103,6 +105,8 @@ export default function SalesInvoiceReview() {
   } = useParams({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const params = useSearch({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const layout = useRef<Layout>({ source: 45, details: 55 });
+  const spreadsheetLayout = useRef<Layout>({ source: 62, details: 38 });
+  const spreadsheetPreferences = useRef<SpreadsheetPreferences>({ allColumns: false });
   const pdfZoom = useRef(1);
   const pdfSession = useRef<PdfSession | null>(null);
   useEffect(
@@ -116,6 +120,12 @@ export default function SalesInvoiceReview() {
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => fetchSalesInvoice(clientId, period, invoiceId, signal),
+    placeholderData: (previous, previousQuery) =>
+      previous?.source?.spreadsheet &&
+      previousQuery?.queryKey[1] === clientId &&
+      previousQuery?.queryKey[2] === period
+        ? previous
+        : undefined,
     staleTime: 0,
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
   });
@@ -166,12 +176,14 @@ export default function SalesInvoiceReview() {
     );
   return (
     <InvoiceReview
-      key={`${clientId}/${period}/${invoiceId}`}
+      key={`${clientId}/${period}/${query.data.invoice.id}`}
       data={query.data}
-      layout={layout}
+      layout={query.data.source?.spreadsheet ? spreadsheetLayout : layout}
+      spreadsheetPreferences={spreadsheetPreferences}
       pdfZoom={pdfZoom}
       pdfSession={pdfSession}
       refreshing={query.isFetching}
+      transitioning={query.isPlaceholderData}
       refresh={() => query.refetch()}
     />
   );
@@ -180,16 +192,20 @@ export default function SalesInvoiceReview() {
 function InvoiceReview({
   data,
   layout,
+  spreadsheetPreferences,
   pdfZoom,
   pdfSession,
   refreshing,
+  transitioning,
   refresh,
 }: {
   data: SalesInvoiceReviewData;
   layout: React.RefObject<Layout>;
+  spreadsheetPreferences: React.RefObject<SpreadsheetPreferences>;
   pdfZoom: React.RefObject<number>;
   pdfSession: React.RefObject<PdfSession | null>;
   refreshing: boolean;
+  transitioning: boolean;
   refresh: () => unknown;
 }) {
   const {
@@ -250,7 +266,7 @@ function InvoiceReview({
       if (operation.current === controller) operation.current = null;
     },
   });
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || transitioning;
   const error = mutation.error;
   const requestedFilter = params.filter;
   const filter =
@@ -277,6 +293,8 @@ function InvoiceReview({
   const activeFields = edit ? data.editable_fields[edit.section] : [];
   const needsAttention = data.checks.filter((check) => check.status === "failed").length;
   const openIssues = data.issues.filter((issue) => issue.status === "open");
+  const spreadsheet = data.source?.spreadsheet;
+  const rateRows = spreadsheet?.granularity === "invoice_rate_components";
 
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
@@ -312,6 +330,24 @@ function InvoiceReview({
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       const target = event.target;
+      if (
+        event.key === "Escape" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !busy &&
+        !dialogOpen &&
+        !navigationShortcutBlocked(event)
+      ) {
+        event.preventDefault();
+        navigate({
+          to: "/gst/$clientId/$period/sales/register",
+          params: { clientId, period },
+          search: registerSearch,
+        });
+        return;
+      }
       if (
         navigationShortcutBlocked(event) ||
         event.shiftKey ||
@@ -397,7 +433,7 @@ function InvoiceReview({
             }
             disabled={busy}
           >
-            <ArrowLeft /> Back to register
+            <ArrowLeft /> Back to register <Kbd aria-hidden="true">Esc</Kbd>
           </Button>
           <ShortcutHelpButton />
           <span className="text-sm text-muted-foreground">
@@ -451,398 +487,432 @@ function InvoiceReview({
         }}
       >
         <ResizablePanel id="source" minSize="25%">
-          <section
-            aria-label="Source document"
-            className="flex h-full min-w-0 flex-col bg-muted/40"
-          >
-            <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-4 py-3">
-              <FileText className="size-4 shrink-0 text-muted-foreground" />
-              <p className="truncate text-sm text-muted-foreground">
-                {data.source?.name ?? "Source document"}
-              </p>
-            </div>
-            <div className="min-h-0 flex-1">
-              {data.source?.url ? (
-                <Suspense
-                  fallback={
-                    <p role="status" className="p-6 text-sm text-muted-foreground">
-                      Loading source PDF…
-                    </p>
-                  }
-                >
-                  <SourcePdf
-                    url={data.source.url}
-                    pages={data.source.pages}
-                    images={data.source.images}
-                    zoom={pdfZoom}
-                    session={pdfSession}
-                  />
-                </Suspense>
-              ) : data.source?.images.length ? (
-                <div className="h-full space-y-4 overflow-auto p-4">
-                  {data.source.images.map((image, index) => (
-                    <img
-                      key={image}
-                      src={image}
-                      alt={`Source invoice page ${data.source?.pages[index] ?? index + 1}`}
-                      className="w-full"
+          {spreadsheet ? (
+            <SourceSpreadsheet
+              source={transitioning ? { ...spreadsheet, selected: [] } : spreadsheet}
+              clientId={clientId}
+              period={period}
+              invoiceId={invoiceId}
+              uploadRef={data.upload_ref ?? invoiceId}
+              preferences={spreadsheetPreferences}
+              disabled={busy || dialogOpen}
+            />
+          ) : (
+            <section
+              aria-label="Source document"
+              className="flex h-full min-w-0 flex-col bg-muted/40"
+            >
+              <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-background px-4 py-3">
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <p className="truncate text-sm text-muted-foreground">
+                  {data.source?.name ?? "Source document"}
+                </p>
+              </div>
+              <div className="min-h-0 flex-1">
+                {data.source?.url ? (
+                  <Suspense
+                    fallback={
+                      <p role="status" className="p-6 text-sm text-muted-foreground">
+                        Loading source PDF…
+                      </p>
+                    }
+                  >
+                    <SourcePdf
+                      url={data.source.url}
+                      pages={data.source.pages}
+                      images={data.source.images}
+                      zoom={pdfZoom}
+                      session={pdfSession}
                     />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-                  No source document is available for this invoice.
-                </div>
-              )}
-            </div>
-          </section>
+                  </Suspense>
+                ) : data.source?.images.length ? (
+                  <div className="h-full space-y-4 overflow-auto p-4">
+                    {data.source.images.map((image, index) => (
+                      <img
+                        key={image}
+                        src={image}
+                        alt={`Source invoice page ${data.source?.pages[index] ?? index + 1}`}
+                        className="w-full"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                    No source document is available for this invoice.
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </ResizablePanel>
         <ResizableHandle withHandle aria-label="Resize source document" />
         <ResizablePanel id="details" minSize="35%">
-          <section aria-label="Invoice details" className="flex h-full min-h-0 min-w-0 flex-col">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              {!data.can_edit && (
-                <p id="invoice-lock" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
-                  {data.lock_reason || "Your role allows viewing, not editing this invoice."}
-                </p>
-              )}
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="mb-2">
-                    <Badge
-                      variant="secondary"
-                      className={status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
-                    >
-                      {status === "ready" ? "Ready" : "Needs review"}
-                    </Badge>
-                  </div>
-                  <h1 className="text-2xl font-semibold tracking-tight">
-                    Invoice {data.invoice.number || "Number not provided"}
-                  </h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {data.invoice.date || "Date not provided"}
+          {transitioning ? (
+            <p role="status" className="p-5 text-sm text-muted-foreground">
+              Loading invoice details…
+            </p>
+          ) : (
+            <section aria-label="Invoice details" className="flex h-full min-h-0 min-w-0 flex-col">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                {!data.can_edit && (
+                  <p id="invoice-lock" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+                    {data.lock_reason || "Your role allows viewing, not editing this invoice."}
                   </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  {data.upload_ref && (
-                    <SalesRemovalActions
-                      key={data.invoice.id}
-                      clientId={data.client.id}
-                      clientName={data.client.name}
-                      period={data.period}
-                      batchRef={data.upload_ref}
-                      activeIds={[data.invoice.id]}
-                      invoiceNumber={data.invoice.number || data.invoice.id}
-                      disabled={!canEdit}
-                      afterRemoveUrl={
-                        next
-                          ? `/gst/${clientId}/${period}/sales/invoices/${encodeURIComponent(next.id)}?filter=${filter}`
-                          : `/gst/${clientId}/${period}/sales/register`
-                      }
-                    />
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Edit invoice details"
-                    disabled={!canEdit}
-                    aria-describedby={!data.can_edit ? "invoice-lock" : undefined}
-                    onClick={(event) => openEditor("facts", event.currentTarget)}
-                  >
-                    <Pencil />
-                  </Button>
-                </div>
-              </div>
-              <div className="border-b pb-4">
-                <p className="text-sm font-semibold">
-                  {data.invoice.buyer_name || "Customer not provided"}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  GSTIN {data.invoice.buyer_gstin || "not provided"}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Place of supply: {data.invoice.place_of_supply || "Not determined"}
-                </p>
-                {data.facts.narration && (
-                  <p className="mt-2 text-sm text-muted-foreground">{data.facts.narration}</p>
                 )}
-              </div>
-              <section aria-label="Invoice lines">
-                <div className="overflow-hidden rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="pl-4">Description</TableHead>
-                        <TableHead className="text-right">Taxable</TableHead>
-                        <TableHead className="text-right">GST</TableHead>
-                        <TableHead className="w-10">
-                          <span className="sr-only">Edit</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.lines.map((line) => (
-                        <TableRow key={line.index}>
-                          <TableCell className="py-2 pl-4">
-                            <p className="max-w-72 font-medium whitespace-normal">
-                              {line.values.description ||
-                                line.values.item_name ||
-                                `Line ${line.index + 1}`}
-                            </p>
-                            <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                              <span>HSN {line.display.hsn_sac || "—"}</span>
-                              <span>
-                                {line.display.quantity || "—"} {line.display.uom} ×{" "}
-                                {line.display.printed_unit_price || "—"}
-                              </span>
-                            </p>
-                          </TableCell>
-                          <TableCell className="text-right align-top pt-2 tabular-nums">
-                            {line.display.taxable_value || "—"}
-                          </TableCell>
-                          <TableCell className="text-right align-top pt-2 leading-5 tabular-nums">
-                            {["cgst", "sgst", "igst"]
-                              .filter(
-                                (head) =>
-                                  line.values[`${head}_rate`] || line.values[`${head}_amount`],
-                              )
-                              .map((head) => (
-                                <p key={head} className="whitespace-nowrap">
-                                  <span className="mr-2 text-xs text-muted-foreground">
-                                    {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}%
-                                  </span>
-                                  {line.display[`${head}_amount`] || "—"}
-                                </p>
-                              ))}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={`Edit line ${line.index + 1}`}
-                              disabled={!canEdit}
-                              onClick={(event) =>
-                                openEditor("line", event.currentTarget, line.index)
-                              }
-                            >
-                              <Pencil />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {data.lines.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                            No invoice lines were extracted.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </section>
-              <Collapsible
-                render={<section aria-labelledby="invoice-totals" />}
-                defaultOpen={data.totals.some((total) => total.status !== "matches")}
-              >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 id="invoice-totals" className="text-sm font-semibold">
-                    Calculated totals
-                  </h2>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!canEdit}
-                    onClick={(event) => openEditor("totals", event.currentTarget)}
-                  >
-                    <Pencil /> Edit printed totals
-                  </Button>
-                </div>
-                <dl className="mb-2 grid grid-cols-3 gap-3 py-2">
-                  {data.totals.map((total) => (
-                    <div key={total.field}>
-                      <dt className="text-xs text-muted-foreground">{total.label}</dt>
-                      <dd className="mt-1 text-sm font-semibold tabular-nums">
-                        {total.calculated}
-                      </dd>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="mb-2">
+                      <Badge
+                        variant="secondary"
+                        className={status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
+                      >
+                        {status === "ready" ? "Ready" : "Needs review"}
+                      </Badge>
                     </div>
-                  ))}
-                </dl>
-                <CollapsibleTrigger
-                  render={<Button variant="ghost" size="sm" className="group mb-2" />}
-                >
-                  Compare with printed totals{" "}
-                  <ChevronDown className="group-data-panel-open:rotate-180" />
-                </CollapsibleTrigger>
-                <CollapsibleContent>
+                    <h1 className="text-2xl font-semibold tracking-tight">
+                      Invoice {data.invoice.number || "Number not provided"}
+                    </h1>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {data.invoice.date || "Date not provided"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {data.upload_ref && (
+                      <SalesRemovalActions
+                        key={data.invoice.id}
+                        clientId={data.client.id}
+                        clientName={data.client.name}
+                        period={data.period}
+                        batchRef={data.upload_ref}
+                        activeIds={[data.invoice.id]}
+                        invoiceNumber={data.invoice.number || data.invoice.id}
+                        disabled={!canEdit}
+                        afterRemoveUrl={
+                          next
+                            ? `/gst/${clientId}/${period}/sales/invoices/${encodeURIComponent(next.id)}?filter=${filter}`
+                            : `/gst/${clientId}/${period}/sales/register`
+                        }
+                      />
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Edit invoice details"
+                      disabled={!canEdit}
+                      aria-describedby={!data.can_edit ? "invoice-lock" : undefined}
+                      onClick={(event) => openEditor("facts", event.currentTarget)}
+                    >
+                      <Pencil />
+                    </Button>
+                  </div>
+                </div>
+                <div className="border-b pb-4">
+                  <p className="text-sm font-semibold">
+                    {data.invoice.buyer_name || "Customer not provided"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    GSTIN {data.invoice.buyer_gstin || "not provided"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Place of supply: {data.invoice.place_of_supply || "Not determined"}
+                  </p>
+                  {data.facts.narration && (
+                    <p className="mt-2 text-sm text-muted-foreground">{data.facts.narration}</p>
+                  )}
+                </div>
+                <section aria-label="Invoice lines">
                   <div className="overflow-hidden rounded-lg border">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/30">
-                          <TableHead className="pl-4">Total</TableHead>
-                          <TableHead className="text-right">From lines</TableHead>
-                          <TableHead className="text-right">Printed on bill</TableHead>
-                          <TableHead>Comparison</TableHead>
+                          <TableHead className="pl-4">
+                            {rateRows ? "Tax breakdown" : "Description"}
+                          </TableHead>
+                          <TableHead className="text-right">Taxable</TableHead>
+                          <TableHead className="text-right">GST</TableHead>
+                          <TableHead className="w-10">
+                            <span className="sr-only">Edit</span>
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.totals.map((total) => (
-                          <TableRow key={total.field}>
-                            <TableCell className="pl-4">{total.label}</TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {total.calculated}
+                        {data.lines.map((line) => (
+                          <TableRow key={line.index}>
+                            <TableCell className="py-2 pl-4">
+                              <p className="max-w-72 font-medium whitespace-normal">
+                                {line.values.description ||
+                                  line.values.item_name ||
+                                  `Line ${line.index + 1}`}
+                              </p>
+                              {!rateRows && (
+                                <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                                  <span>HSN {line.display.hsn_sac || "—"}</span>
+                                  <span>
+                                    {line.display.quantity || "—"} {line.display.uom} ×{" "}
+                                    {line.display.printed_unit_price || "—"}
+                                  </span>
+                                </p>
+                              )}
                             </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {total.printed}
+                            <TableCell className="text-right align-top pt-2 tabular-nums">
+                              {line.display.taxable_value || "—"}
+                            </TableCell>
+                            <TableCell className="text-right align-top pt-2 leading-5 tabular-nums">
+                              {["cgst", "sgst", "igst"]
+                                .filter(
+                                  (head) =>
+                                    line.values[`${head}_rate`] || line.values[`${head}_amount`],
+                                )
+                                .map((head) => (
+                                  <p key={head} className="whitespace-nowrap">
+                                    <span className="mr-2 text-xs text-muted-foreground">
+                                      {head.toUpperCase()} {line.display[`${head}_rate`] || "—"}%
+                                    </span>
+                                    {line.display[`${head}_amount`] || "—"}
+                                  </p>
+                                ))}
                             </TableCell>
                             <TableCell>
-                              <span
-                                className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={`Edit line ${line.index + 1}`}
+                                disabled={!canEdit}
+                                onClick={(event) =>
+                                  openEditor("line", event.currentTarget, line.index)
+                                }
                               >
-                                {total.status === "matches"
-                                  ? "Matches"
-                                  : total.status === "mismatch"
-                                    ? `${total.difference ?? "—"} difference`
-                                    : "Not compared"}
-                              </span>
+                                <Pencil />
+                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
+                        {data.lines.length === 0 && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="py-8 text-center text-muted-foreground"
+                            >
+                              No invoice lines were extracted.
+                            </TableCell>
+                          </TableRow>
+                        )}
                       </TableBody>
                     </Table>
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
-              {openIssues.length > 0 && (
-                <section aria-label="Needs your review" className="space-y-3">
-                  {openIssues.map((issue) => (
-                    <div key={issue.target} className="rounded-lg border px-4 py-3">
-                      <p className="text-sm font-medium">{issue.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        {issue.message}
-                      </p>
-                      {issue.lookup_details && (
-                        <Collapsible className="mt-2">
-                          <CollapsibleTrigger
-                            render={<Button variant="ghost" size="sm" className="group px-0" />}
+                </section>
+                <Collapsible
+                  render={<section aria-labelledby="invoice-totals" />}
+                  defaultOpen={data.totals.some((total) => total.status !== "matches")}
+                >
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 id="invoice-totals" className="text-sm font-semibold">
+                      Calculated totals
+                    </h2>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={!canEdit}
+                      onClick={(event) => openEditor("totals", event.currentTarget)}
+                    >
+                      <Pencil /> {spreadsheet ? "Edit reported totals" : "Edit printed totals"}
+                    </Button>
+                  </div>
+                  <dl className="mb-2 grid grid-cols-3 gap-3 py-2">
+                    {data.totals.map((total) => (
+                      <div key={total.field}>
+                        <dt className="text-xs text-muted-foreground">{total.label}</dt>
+                        <dd className="mt-1 text-sm font-semibold tabular-nums">
+                          {total.calculated}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <CollapsibleTrigger
+                    render={<Button variant="ghost" size="sm" className="group mb-2" />}
+                  >
+                    {spreadsheet ? "Compare with report totals" : "Compare with printed totals"}{" "}
+                    <ChevronDown className="group-data-panel-open:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="overflow-hidden rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="pl-4">Total</TableHead>
+                            <TableHead className="text-right">From lines</TableHead>
+                            <TableHead className="text-right">
+                              {spreadsheet ? "In client’s report" : "Printed on bill"}
+                            </TableHead>
+                            <TableHead>Comparison</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.totals.map((total) => (
+                            <TableRow key={total.field}>
+                              <TableCell className="pl-4">{total.label}</TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {total.calculated}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {total.printed}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`text-xs ${total.status === "matches" ? "text-emerald-700" : total.status === "mismatch" ? "text-amber-700" : "text-muted-foreground"}`}
+                                >
+                                  {total.status === "matches"
+                                    ? "Matches"
+                                    : total.status === "mismatch"
+                                      ? `${total.difference ?? "—"} difference`
+                                      : "Not compared"}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+                {openIssues.length > 0 && (
+                  <section aria-label="Needs your review" className="space-y-3">
+                    {openIssues.map((issue) => (
+                      <div key={issue.target} className="rounded-lg border px-4 py-3">
+                        <p className="text-sm font-medium">{issue.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                          {issue.message}
+                        </p>
+                        {issue.lookup_details && (
+                          <Collapsible className="mt-2">
+                            <CollapsibleTrigger
+                              render={<Button variant="ghost" size="sm" className="group px-0" />}
+                            >
+                              GST lookup details{" "}
+                              <ChevronDown className="group-data-panel-open:rotate-180" />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 text-sm leading-6 text-muted-foreground">
+                              {issue.lookup_details}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
+                        {issue.code === "seller_identity_mismatch" &&
+                          data.upload_ref &&
+                          canEdit && (
+                            <div className="mt-3">
+                              <MoveSalesUpload
+                                clientId={data.client.id}
+                                clientName={data.client.name}
+                                period={data.period}
+                                batchRef={data.upload_ref}
+                              />
+                            </div>
+                          )}
+                        {issue.can_confirm && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            disabled={!canEdit}
+                            onClick={(event) => {
+                              opener.current = event.currentTarget;
+                              setConfirmation(issue);
+                              setEdit(null);
+                              mutation.reset();
+                              setDialogOpen(true);
+                            }}
                           >
-                            GST lookup details{" "}
-                            <ChevronDown className="group-data-panel-open:rotate-180" />
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="pt-1 text-sm leading-6 text-muted-foreground">
-                            {issue.lookup_details}
-                          </CollapsibleContent>
-                        </Collapsible>
-                      )}
-                      {issue.code === "seller_identity_mismatch" && data.upload_ref && canEdit && (
-                        <div className="mt-3">
-                          <MoveSalesUpload
-                            clientId={data.client.id}
-                            clientName={data.client.name}
-                            period={data.period}
-                            batchRef={data.upload_ref}
-                          />
-                        </div>
-                      )}
-                      {issue.can_confirm && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          disabled={!canEdit}
-                          onClick={(event) => {
-                            opener.current = event.currentTarget;
-                            setConfirmation(issue);
-                            setEdit(null);
-                            mutation.reset();
-                            setDialogOpen(true);
-                          }}
+                            {issue.action_label || "Confirm"}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </div>
+              <Collapsible
+                render={<footer />}
+                className="shrink-0 border-t bg-background px-5 py-3"
+              >
+                <CollapsibleContent
+                  id="invoice-checks"
+                  className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4"
+                >
+                  {data.checks.map((check, index) => (
+                    <div key={`${check.label}-${index}`} className="text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-medium">{check.title || check.label}</p>
+                        <span
+                          className={`shrink-0 text-xs ${check.status === "passed" ? "text-emerald-700" : check.status === "failed" ? "text-amber-700" : "text-muted-foreground"}`}
                         >
-                          {issue.action_label || "Confirm"}
-                        </Button>
+                          {check.status === "passed"
+                            ? "Passed"
+                            : check.status === "failed"
+                              ? "Needs review"
+                              : "Not checked"}
+                        </span>
+                      </div>
+                      {check.detail && <p className="mt-1 text-muted-foreground">{check.detail}</p>}
+                      {check.secondary && (
+                        <p className="mt-1 text-muted-foreground">{check.secondary}</p>
+                      )}
+                      {check.difference && (
+                        <p className="mt-1 text-muted-foreground">{check.difference}</p>
                       )}
                     </div>
                   ))}
-                </section>
-              )}
-            </div>
-            <Collapsible render={<footer />} className="shrink-0 border-t bg-background px-5 py-3">
-              <CollapsibleContent
-                id="invoice-checks"
-                className="mb-4 max-h-72 space-y-3 overflow-y-auto border-b pb-4"
-              >
-                {data.checks.map((check, index) => (
-                  <div key={`${check.label}-${index}`} className="text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium">{check.title || check.label}</p>
-                      <span
-                        className={`shrink-0 text-xs ${check.status === "passed" ? "text-emerald-700" : check.status === "failed" ? "text-amber-700" : "text-muted-foreground"}`}
-                      >
-                        {check.status === "passed"
-                          ? "Passed"
-                          : check.status === "failed"
-                            ? "Needs review"
-                            : "Not checked"}
-                      </span>
-                    </div>
-                    {check.detail && <p className="mt-1 text-muted-foreground">{check.detail}</p>}
-                    {check.secondary && (
-                      <p className="mt-1 text-muted-foreground">{check.secondary}</p>
-                    )}
-                    {check.difference && (
-                      <p className="mt-1 text-muted-foreground">{check.difference}</p>
-                    )}
-                  </div>
-                ))}
-                {data.checks.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No check results are available.</p>
+                  {data.checks.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No check results are available.</p>
+                  )}
+                </CollapsibleContent>
+                {notice && (
+                  <p role="status" className="mb-3 text-sm text-muted-foreground">
+                    {notice}
+                  </p>
                 )}
-              </CollapsibleContent>
-              {notice && (
-                <p role="status" className="mb-3 text-sm text-muted-foreground">
-                  {notice}
-                </p>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <CollapsibleTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      className="group h-auto min-h-9 justify-start px-0 text-left"
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <CollapsibleTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        className="group h-auto min-h-9 justify-start px-0 text-left"
+                      />
+                    }
+                  >
+                    <Check
+                      className={needsAttention ? "text-amber-700" : "text-muted-foreground"}
                     />
-                  }
-                >
-                  <Check className={needsAttention ? "text-amber-700" : "text-muted-foreground"} />
-                  <span>
-                    {needsAttention
-                      ? `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} review`
-                      : "Invoice checks"}
-                  </span>
-                  <ChevronDown className="group-data-panel-open:rotate-180" />
-                </CollapsibleTrigger>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    aria-label="Previous invoice"
-                    title="Previous invoice (Alt+Left)"
-                    disabled={!previous || busy || dialogOpen}
-                    onClick={() => go(previous?.id)}
-                  >
-                    <ArrowLeft /> Previous
-                  </Button>
-                  <Button
-                    aria-label="Next invoice"
-                    title="Next invoice (Alt+Right)"
-                    disabled={!next || busy || dialogOpen}
-                    onClick={() => go(next?.id)}
-                  >
-                    Next <ArrowRight />
-                  </Button>
+                    <span>
+                      {needsAttention
+                        ? `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} review`
+                        : "Invoice checks"}
+                    </span>
+                    <ChevronDown className="group-data-panel-open:rotate-180" />
+                  </CollapsibleTrigger>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      aria-label="Previous invoice"
+                      title="Previous invoice (Alt+Left)"
+                      disabled={!previous || busy || dialogOpen}
+                      onClick={() => go(previous?.id)}
+                    >
+                      <ArrowLeft /> Previous
+                    </Button>
+                    <Button
+                      aria-label="Next invoice"
+                      title="Next invoice (Alt+Right)"
+                      disabled={!next || busy || dialogOpen}
+                      onClick={() => go(next?.id)}
+                    >
+                      Next <ArrowRight />
+                    </Button>
+                  </div>
+                  <p className="w-full text-right text-xs text-muted-foreground">{positionLabel}</p>
                 </div>
-                <p className="w-full text-right text-xs text-muted-foreground">{positionLabel}</p>
-              </div>
-            </Collapsible>
-          </section>
+              </Collapsible>
+            </section>
+          )}
         </ResizablePanel>
       </ResizablePanelGroup>
       <Dialog
@@ -863,13 +933,15 @@ function InvoiceReview({
                 : edit?.section === "facts"
                   ? "Edit invoice details"
                   : edit?.section === "totals"
-                    ? "Edit printed totals"
+                    ? spreadsheet
+                      ? "Edit reported totals"
+                      : "Edit printed totals"
                     : `Edit invoice line ${(edit?.index ?? 0) + 1}`}
             </DialogTitle>
             <DialogDescription>
               {confirmation
                 ? "This records your decision for this month's working."
-                : "Correct the values against the source bill. Changes apply wherever this invoice is used."}
+                : `Correct the values against the source ${spreadsheet ? "report" : "bill"}. Changes apply wherever this invoice is used.`}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -918,7 +990,9 @@ function InvoiceReview({
                       className={`space-y-2 ${["description", "item_name", "buyer_name", "narration"].includes(field) ? "sm:col-span-2" : ""}`}
                     >
                       <label htmlFor={id} className="text-sm font-medium">
-                        {fieldLabels[field] ?? field}
+                        {spreadsheet
+                          ? (fieldLabels[field] ?? field).replace(/^Printed /, "Reported ")
+                          : (fieldLabels[field] ?? field)}
                       </label>
                       {field === "place_of_supply" ? (
                         <NativeSelect
@@ -943,8 +1017,14 @@ function InvoiceReview({
                           ))}
                         </NativeSelect>
                       ) : field === "original_sale_category" ? (
-                        <NativeSelect id={id} value={values[field] ?? ""} disabled={busy || !data.can_edit}
-                          onChange={event => setValues(previous => ({ ...previous, [field]: event.target.value }))}>
+                        <NativeSelect
+                          id={id}
+                          value={values[field] ?? ""}
+                          disabled={busy || !data.can_edit}
+                          onChange={(event) =>
+                            setValues((previous) => ({ ...previous, [field]: event.target.value }))
+                          }
+                        >
                           <option value="">Not provided / not applicable</option>
                           <option value="b2cs">B2C other / small</option>
                           <option value="b2cl">B2C large (interstate)</option>

@@ -61,26 +61,21 @@ defmodule Nila.Gst.PortalTest do
     assert cached.id == first.id
     assert cached.checked_at == first.checked_at
 
-    within_month =
-      first
-      |> Ecto.Changeset.change(checked_at: DateTime.add(first.checked_at, -29, :day))
-      |> Repo.update!()
+    %{org: org} = user_with_org_fixture()
 
-    assert {:ok, cached} = Portal.lookup_taxpayer(@gstin)
-    assert cached.checked_at == within_month.checked_at
+    for days <- [29, 30, 365] do
+      older =
+        first
+        |> Ecto.Changeset.change(checked_at: DateTime.add(first.checked_at, -days, :day))
+        |> Repo.update!()
 
-    stale =
-      first
-      |> Ecto.Changeset.change(checked_at: DateTime.add(first.checked_at, -30, :day))
-      |> Repo.update!()
+      assert {:ok, cached} = Portal.lookup_taxpayer(@gstin)
+      assert cached.id == first.id
+      assert cached.checked_at == older.checked_at
+      assert :ok = TaxpayerChecks.enqueue(org.id, [%{"buyer_gstin" => @gstin}])
+      assert all_enqueued(worker: TaxpayerWorker) == []
+    end
 
-    expect_lookup(%{"status_cd" => "0", "error" => %{"errorCode" => "WB_ERR_9101"}})
-    assert {:error, {:provider, "WB_ERR_9101"}} = Portal.lookup_taxpayer(@gstin)
-    assert Repo.get!(TaxpayerLookup, first.id).checked_at == stale.checked_at
-    expect_lookup(response(%{"sts" => "Suspended"}))
-    assert {:ok, refreshed} = Portal.lookup_taxpayer(@gstin)
-    assert refreshed.id == first.id
-    assert refreshed.registration_status == "Suspended"
     assert Repo.aggregate(TaxpayerLookup, :count) == 1
   end
 
@@ -184,7 +179,7 @@ defmodule Nila.Gst.PortalTest do
       "id" => "source-1",
       "invoice_number" => "INV-1",
       "buyer_gstin" => @gstin,
-      "buyer_name" => "Another Business",
+      "buyer_name" => "Siemens Healthcare Pvt Ltd",
       "line_items" => []
     }
 

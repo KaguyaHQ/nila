@@ -2,11 +2,44 @@ defmodule NilaWeb.SalesReviewController do
   use NilaWeb, :controller
   alias Nila.Accounts.Policy
   alias Nila.Clients
+  alias Nila.Gst.Intake.Dumps
+  alias Nila.Gst.Sales.{Invoice, Months, SourceSpreadsheet}
   alias NilaWeb.Gst.SalesReviewWorkspace, as: Workspace
 
   def show(conn, params), do: dispatch(conn, params, :show)
   def update(conn, params), do: dispatch(conn, params, :update)
   def confirm(conn, params), do: dispatch(conn, params, :confirm)
+
+  def source(conn, %{"client_id" => id, "period" => period, "invoice_id" => source_id} = params) do
+    scope = conn.assigns[:current_scope]
+
+    with :ok <- access(scope),
+         {:ok, client_id} <- parse_id(id),
+         :ok <- validate_period(period),
+         {:ok, _client} <- Clients.get_client(scope.current_org.id, client_id),
+         {:ok, month} <- Months.get_by_period(scope.current_org.id, client_id, period),
+         active_ids = MapSet.new(month.invoices, &Invoice.source_id/1),
+         true <- MapSet.member?(active_ids, source_id),
+         %{invoices: source_invoices} = dump <-
+           Dumps.list(scope.current_org.id, client_id, period)
+           |> Enum.find(fn dump ->
+             dump.sales_batch_id &&
+               Enum.any?(dump.invoices, &(Invoice.source_id(&1) == source_id))
+           end),
+         invoice <- Enum.find(source_invoices, &(Invoice.source_id(&1) == source_id)),
+         selected = SourceSpreadsheet.refs(invoice, dump),
+         invoices =
+           Enum.filter(source_invoices, &MapSet.member?(active_ids, Invoice.source_id(&1))),
+         {:ok, data} <-
+           SourceSpreadsheet.load(dump, invoices, selected, params["file"], params["sheet"]) do
+      conn
+      |> put_resp_header("cache-control", "private, no-store")
+      |> json(data)
+    else
+      {:error, :unauthenticated} -> error(conn, 401, "Sign in to continue.")
+      _ -> error(conn, 404, "This source sheet is not available.")
+    end
+  end
 
   defp dispatch(
          conn,

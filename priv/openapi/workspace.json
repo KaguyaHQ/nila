@@ -309,6 +309,77 @@
         }
       }
     },
+    "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/source": {
+        "get": {
+          "operationId": "getSalesInvoiceSourceSpreadsheet",
+          "parameters": [
+            {
+              "name": "client_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            {
+              "name": "period",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+              }
+            },
+            {
+              "name": "invoice_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "file",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "sheet",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Original worksheet rows and invoice links",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SalesSpreadsheetData"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Source sheet unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReviewError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
     "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/confirm": {
       "post": {
         "operationId": "confirmSalesInvoiceIssue",
@@ -9815,6 +9886,153 @@
           "type": "string"
         }
       },
+      "SalesSpreadsheetSource": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "selected": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "sheet": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": [
+                  "file",
+                  "sheet",
+                  "rows"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "granularity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "url",
+            "selected",
+            "granularity"
+          ],
+          "additionalProperties": false
+        },
+      "SalesSpreadsheetData": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "sheets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "sheets"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "file": {
+              "type": "string"
+            },
+            "sheet": {
+              "type": "string"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "row": {
+                    "type": "integer"
+                  },
+                  "cells": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "invoice_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "row",
+                  "cells",
+                  "invoice_ids"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "relevant_columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "header_rows": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "invoice_column": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "download_url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "file",
+            "sheet",
+            "columns",
+            "rows",
+            "relevant_columns",
+            "header_rows",
+            "invoice_column",
+            "download_url"
+          ],
+          "additionalProperties": false
+        },
       "SalesInvoiceReviewData": {
         "type": "object",
         "properties": {
@@ -10063,13 +10281,20 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "spreadsheet": {
+                    "anyOf": [
+                      {"$ref": "#/components/schemas/SalesSpreadsheetSource"},
+                      {"type": "null"}
+                    ]
                   }
                 },
                 "required": [
                   "url",
                   "name",
                   "pages",
-                  "images"
+                  "images",
+                  "spreadsheet"
                 ],
                 "additionalProperties": false
               },

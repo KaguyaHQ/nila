@@ -36,6 +36,22 @@ export interface paths {
         patch: operations["updateSalesInvoice"];
         trace?: never;
     };
+    "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSalesInvoiceSourceSpreadsheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/confirm": {
         parameters: {
             query?: never;
@@ -1500,6 +1516,35 @@ export interface components {
         ReviewValues: {
             [key: string]: string;
         };
+        SalesSpreadsheetSource: {
+            url: string;
+            selected: {
+                file: string;
+                sheet: string;
+                rows: number[];
+            }[];
+            granularity: string | null;
+        };
+        SalesSpreadsheetData: {
+            files: {
+                name: string;
+                sheets: string[];
+            }[];
+            file: string;
+            sheet: string;
+            columns: string[];
+            rows: {
+                row: number;
+                cells: {
+                    [key: string]: string;
+                };
+                invoice_ids: string[];
+            }[];
+            relevant_columns: string[];
+            header_rows: number[];
+            invoice_column: string | null;
+            download_url: string;
+        };
         SalesInvoiceReviewData: {
             client: {
                 id: number;
@@ -1554,6 +1599,7 @@ export interface components {
                 name: string;
                 pages: number[];
                 images: string[];
+                spreadsheet: components["schemas"]["SalesSpreadsheetSource"] | null;
             } | null;
             states: {
                 label: string;
@@ -2953,6 +2999,42 @@ export interface operations {
             };
             /** @description Request could not be completed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewError"];
+                };
+            };
+        };
+    };
+    getSalesInvoiceSourceSpreadsheet: {
+        parameters: {
+            query?: {
+                file?: string;
+                sheet?: string;
+            };
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original worksheet rows and invoice links */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesSpreadsheetData"];
+                };
+            };
+            /** @description Source sheet unavailable */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

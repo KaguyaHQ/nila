@@ -26,7 +26,7 @@ defmodule Nila.Gst.Sales.TaxpayerChecksTest do
     end
   end
 
-  test "a different name and suspended registration ask for review with dated evidence" do
+  test "an uncertain name does not create a task but suspended registration still does" do
     checked =
       invoice()
       |> Map.put("buyer_name", "Another Business")
@@ -35,24 +35,63 @@ defmodule Nila.Gst.Sales.TaxpayerChecksTest do
     issues = TaxpayerChecks.issues([checked])
 
     assert Enum.sort(Enum.map(issues, & &1["code"])) ==
-             ["buyer_gst_name_review", "buyer_gst_registration_review"]
+             ["buyer_gst_registration_review"]
 
     assert Enum.all?(issues, &(&1["level"] == "required" and &1["source_id"] == "source-1"))
     assert Enum.all?(issues, &String.contains?(&1["message"], "not on the invoice date"))
   end
 
-  test "stale, absent or wrong-GSTIN evidence is not a pass or invalid registration" do
-    stale =
+  test "a report alias matches the trade name while registration checks remain independent" do
+    checked =
+      invoice()
+      |> Map.put("buyer_name", "VIJAYALASHMI STORES MINJUR")
+      |> put_in(["taxpayer_checks", "buyer", "legal_name"], "JAYAKUMAR KALPANA")
+      |> put_in(["taxpayer_checks", "buyer", "trade_name"], "VIJAYALAKSHMI STORE")
+
+    assert TaxpayerChecks.issues([checked]) == []
+    assert checked["buyer_name"] == "VIJAYALASHMI STORES MINJUR"
+
+    suspended = put_in(checked, ["taxpayer_checks", "buyer", "registration_status"], "Suspended")
+    assert [%{"code" => "buyer_gst_registration_review"}] = TaxpayerChecks.issues([suspended])
+  end
+
+  test "uncertain names are not passed or required tasks; conflicting companies remain actionable" do
+    checked =
+      invoice()
+      |> put_in(["taxpayer_checks", "buyer", "legal_name"], "PHILIPS INDIA LIMITED")
+      |> put_in(["taxpayer_checks", "buyer", "trade_name"], "PHILIPS INDIA LIMITED")
+
+    for {name, status, codes} <- [
+          {"Philips India Ltd C/o. UPS SCS (India) Pvt Ltd", :passed, []},
+          {"Healthcare Division - Chennai", :not_checked, []},
+          {"Siemens Healthcare Pvt Ltd", :failed, ["buyer_gst_name_review"]}
+        ] do
+      row = Map.put(checked, "buyer_name", name)
+      outcome = Enum.find(TaxpayerChecks.outcomes(row), &(&1.id == "buyer_gst_name_review"))
+      assert outcome.status == status
+      assert Enum.map(TaxpayerChecks.issues([row]), & &1["code"]) == codes
+      if status == :not_checked, do: assert(outcome.reason =~ "do not establish")
+      assert row["buyer_name"] == name
+    end
+  end
+
+  test "saved checks do not expire; absent or wrong-GSTIN evidence is not a pass" do
+    older =
       invoice()
       |> put_in(
         ["taxpayer_checks", "buyer", "checked_at"],
-        DateTime.to_iso8601(DateTime.add(DateTime.utc_now(), -30, :day))
+        DateTime.to_iso8601(DateTime.add(DateTime.utc_now(), -365, :day))
       )
 
     changed = Map.put(invoice(), "buyer_gstin", "33CPWPV2650A1ZQ")
     missing = Map.delete(invoice(), "taxpayer_checks")
 
-    for checked <- [stale, changed, missing] do
+    assert Enum.find(TaxpayerChecks.outcomes(older), &(&1.id == "buyer_gst_registration_review")).status ==
+             :passed
+
+    assert TaxpayerChecks.issues([older]) == []
+
+    for checked <- [changed, missing] do
       assert TaxpayerChecks.issues([checked]) == []
       assert Enum.all?(TaxpayerChecks.outcomes(checked), &(&1.status == :not_checked))
     end

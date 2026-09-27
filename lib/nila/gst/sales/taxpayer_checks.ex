@@ -53,7 +53,7 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
        ) do
       cached = saved(invoices)
 
-      for gstin <- gstins(invoices), not Taxpayers.fresh?(cached[gstin]) do
+      for gstin <- gstins(invoices), not Map.has_key?(cached, gstin) do
         %{org_id: org_id, gstin: gstin}
         |> Nila.Gst.Portal.TaxpayerWorker.new()
         |> Oban.insert!()
@@ -103,7 +103,7 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
                invoice["recipient_registration"] == "unregistered")
 
       checked? =
-        Gstin.valid?(gstin) and is_map(facts) and facts["gstin"] == gstin and recent?(facts)
+        Gstin.valid?(gstin) and is_map(facts) and facts["gstin"] == gstin and dated?(facts)
 
       name = invoice[party <> "_name"]
       named? = is_binary(name) and String.trim(name) != ""
@@ -127,12 +127,16 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
       for kind <- ~w(registration name) do
         can_check? = checked? and (kind == "registration" or named?)
 
+        name_result =
+          if can_check? and kind == "name" do
+            Nila.Gst.Sales.PartyNameMatch.compare(name, [facts["legal_name"], facts["trade_name"]])
+          end
+
         passed? =
           can_check? and
             if(kind == "registration",
               do: String.downcase(facts["registration_status"]) == "active",
-              else:
-                Enum.any?([facts["legal_name"], facts["trade_name"]], &name_matches?(name, &1))
+              else: name_result == :match
             )
 
         code = party <> "_gst_" <> kind <> "_review"
@@ -149,10 +153,11 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
             do:
               "#{String.capitalize(party)} GST registration is #{facts && facts["registration_status"]}. #{detail}",
             else:
-              "#{String.capitalize(party)} name on the bill (#{name}) differs from the GST registration. #{detail}"
+              "#{String.capitalize(party)} may be a different company: #{name}. Both company names are spelled out, but their identifying words differ. #{detail}"
 
         issues =
-          if can_check? and not passed? do
+          if can_check? and not passed? and
+               (kind == "registration" or name_result == :possible_conflict) do
             [
               %{
                 "code" => code,
@@ -173,15 +178,22 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
           label: label,
           detail: detail,
           reason:
-            if(checked? and not named? and kind == "name",
-              do: "The invoice name is missing.",
-              else: detail
-            ),
+            cond do
+              checked? and not named? and kind == "name" ->
+                "The invoice name is missing."
+
+              name_result == :uncertain ->
+                "The names do not establish a match or a conflict. #{detail}"
+
+              true ->
+                detail
+            end,
           issues: issues,
           status:
             cond do
               not applicable? -> :not_applicable
               not can_check? -> :not_checked
+              name_result == :uncertain -> :not_checked
               passed? -> :passed
               true -> :failed
             end
@@ -210,19 +222,14 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
 
   defp checked_at(_), do: "unknown"
 
-  defp recent?(%{"checked_at" => value}) when is_binary(value) do
+  defp dated?(%{"checked_at" => value}) when is_binary(value) do
     case DateTime.from_iso8601(value) do
-      {:ok, time, _} -> Taxpayers.fresh_at?(time)
+      {:ok, time, _} -> DateTime.compare(time, DateTime.utc_now()) != :gt
       _ -> false
     end
   end
 
-  defp recent?(_), do: false
-
-  defp name_matches?(left, right) when is_binary(left) and is_binary(right),
-    do: name_key(left) != "" and name_key(left) == name_key(right)
-
-  defp name_matches?(_, _), do: false
+  defp dated?(_), do: false
 
   defp name_key(name) do
     name
