@@ -120,7 +120,22 @@ defmodule Nila.Business.Pdf do
     |> Map.put("tax_rows", tax_rows)
     |> Map.put("subtotal_display", money(Map.fetch!(totals, "taxable_paise")))
     |> Map.put("total_display", money(Map.fetch!(totals, "total_paise")))
+    |> Map.put("invoice_date_display", display_date(Map.fetch!(snapshot, "invoice_date")))
+    |> Map.put("valid_until_display", display_date(snapshot["valid_until"]))
+    |> Map.put("due_date_display", display_date(snapshot["due_date"]))
+    |> Map.put("purchase_order_date_display", display_date(snapshot["purchase_order_date"]))
+    |> Map.put("original_invoice_date_display", display_date(snapshot["original_invoice_date"]))
     |> Map.put("place_of_supply_display", state(Map.fetch!(snapshot, "place_of_supply")))
+  end
+
+  defp display_date(nil), do: nil
+  defp display_date(""), do: nil
+
+  defp display_date(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> Calendar.strftime(date, "%-d %b %Y")
+      _ -> value
+    end
   end
 
   defp decimal_money(value) do

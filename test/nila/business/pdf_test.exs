@@ -46,7 +46,7 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "QUOTATION"
       assert text =~ "QT/2627/0001"
       assert text =~ "Valid until"
-      assert text =~ "2026-10-15"
+      assert text =~ "15 Oct 2026"
       assert text =~ "Customer reference"
       assert text =~ "RFQ-23"
       refute text =~ "PO date"
@@ -84,7 +84,7 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "HSN/SAC"
       assert text =~ "290339"
       assert text =~ "KGS"
-      assert text =~ "State 33"
+      refute text =~ "State 33"
       assert text =~ "SHIP TO"
       assert text =~ "Parvathi Hospital"
       assert text =~ "Parvathi Hospital, Chennai"
@@ -144,7 +144,7 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "Compressor and Pipe Supply and Insulation"
       assert text =~ "9962550448"
       assert text =~ "quotes@example.com"
-      assert text =~ "State 34"
+      refute text =~ "State 34"
       assert text =~ "R32 refrigerant gas"
       assert length(String.split(text, "\f")) == 2
     end
@@ -163,7 +163,7 @@ defmodule Nila.Business.PdfTest do
       assert text =~ "WO-4821"
       assert text =~ "Customer PO number"
       assert text =~ "PO date"
-      assert text =~ "2026-09-01"
+      assert text =~ "1 Sep 2026"
       assert text =~ "Military Hospital Secunderabad"
       assert text =~ "Twenty Three Thousand Three Hundred Sixty Four"
     end
@@ -222,7 +222,7 @@ defmodule Nila.Business.PdfTest do
       text = pdf_text(bytes)
       assert text =~ "CREDIT NOTE"
       assert text =~ "INV/26-27/001"
-      assert text =~ "2026-09-20"
+      assert text =~ "20 Sep 2026"
     end
 
     test "rejects malformed snapshots" do
