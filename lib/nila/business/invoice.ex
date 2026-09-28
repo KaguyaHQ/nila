@@ -31,6 +31,10 @@ defmodule Nila.Business.Invoice do
     field :pdf_key, :string
     field :pdf_sha256, :string
     field :issued_at, :utc_datetime_usec
+    field :sent_on, :date
+    field :cancelled_at, :utc_datetime_usec
+    field :cancellation_reason, :string
+    belongs_to :cancelled_by, Nila.Accounts.User
     timestamps()
   end
 

@@ -75,6 +75,13 @@ defmodule Nila.Gst.Sales.Gstr1.Documents do
           |> Enum.reject(&(&1 in [nil, ""] or not is_nil(parse_invoice_number(&1))))
           |> Enum.uniq()
 
+        cancelled_unnumbered =
+          Enum.count(unnumbered, fn number ->
+            documents
+            |> Enum.filter(&(Invoice.document_number(&1) == number))
+            |> Enum.all?(&(Invoice.document_status(&1) == "cancelled"))
+          end)
+
         rows =
           case unnumbered do
             [] ->
@@ -88,8 +95,8 @@ defmodule Nila.Gst.Sales.Gstr1.Documents do
                     "from" => hd(numbers),
                     "to" => List.last(numbers),
                     "totnum" => length(numbers),
-                    "net_issue" => length(numbers),
-                    "cancel" => 0
+                    "net_issue" => length(numbers) - cancelled_unnumbered,
+                    "cancel" => cancelled_unnumbered
                   }
                 ]
           end
@@ -108,11 +115,18 @@ defmodule Nila.Gst.Sales.Gstr1.Documents do
     |> Enum.with_index(1)
     |> Enum.map(fn {parsed, index} ->
       numbers = Enum.map(parsed, & &1.number)
+
+      active_numbers =
+        parsed
+        |> Enum.reject(& &1.cancelled)
+        |> Enum.map(& &1.number)
+        |> Enum.uniq()
+
       min = Enum.min(numbers)
       max = Enum.max(numbers)
       first = hd(parsed)
       totnum = max - min + 1
-      net_issue = length(Enum.uniq(numbers))
+      net_issue = length(active_numbers)
 
       %{
         "num" => index,
@@ -138,7 +152,12 @@ defmodule Nila.Gst.Sales.Gstr1.Documents do
   # differently.
   defp parsed_numbers(invoices) do
     invoices
-    |> Enum.map(&parse_invoice_number(&1["invoice_number"]))
+    |> Enum.map(fn invoice ->
+      case parse_invoice_number(invoice["invoice_number"]) do
+        nil -> nil
+        parsed -> Map.put(parsed, :cancelled, Invoice.document_status(invoice) == "cancelled")
+      end
+    end)
     |> Enum.reject(&is_nil/1)
   end
 

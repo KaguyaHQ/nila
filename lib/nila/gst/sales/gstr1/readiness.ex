@@ -59,8 +59,6 @@ defmodule Nila.Gst.Sales.Gstr1.Readiness do
       "This document is marked nil-rated, exempt or non-GST but also carries GST. Resolve the supply treatment and tax evidence before filing.",
     "missing_original_sale_category" =>
       "Confirm whether the original interstate sale was B2C Other / Small or B2C Large. The note's own value does not determine this.",
-    "cancelled_document_unsupported" =>
-      "this document is cancelled; Nila accounts for its number but does not yet derive cancellation filing treatment",
     "amendment_document_unsupported" =>
       "this document amends a prior filing, and Nila does not yet derive amendment tables"
   }
@@ -77,15 +75,19 @@ defmodule Nila.Gst.Sales.Gstr1.Readiness do
     Enum.flat_map(invoices, fn invoice ->
       invoice = InvoiceFacts.sales!(invoice)
 
-      invoice
-      |> OutputCapabilities.common()
-      |> Enum.reject(
-        &(&1.code in ~w(nil_rated_supply_unsupported exempt_supply_unsupported non_gst_supply_unsupported export_supply_unsupported sez_supply_unsupported outward_reverse_charge_unsupported))
-      )
-      |> maybe_add_special(invoice)
-      |> maybe_add_non_taxable_conflict(invoice)
-      |> maybe_add_cdnur(invoice)
-      |> Enum.map(&issue(invoice, &1.code, &1.fields))
+      if Invoice.document_status(invoice) == "cancelled" do
+        []
+      else
+        invoice
+        |> OutputCapabilities.common()
+        |> Enum.reject(
+          &(&1.code in ~w(nil_rated_supply_unsupported exempt_supply_unsupported non_gst_supply_unsupported export_supply_unsupported sez_supply_unsupported outward_reverse_charge_unsupported))
+        )
+        |> maybe_add_special(invoice)
+        |> maybe_add_non_taxable_conflict(invoice)
+        |> maybe_add_cdnur(invoice)
+        |> Enum.map(&issue(invoice, &1.code, &1.fields))
+      end
     end)
   end
 

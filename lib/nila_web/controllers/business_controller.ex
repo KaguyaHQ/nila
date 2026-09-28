@@ -23,8 +23,11 @@ defmodule NilaWeb.BusinessController do
   def finalize_quotation(conn, params), do: dispatch(conn, params, :finalize_quotation)
   def finalize_invoice(conn, params), do: dispatch(conn, params, :finalize_invoice)
   def update_invoice(conn, params), do: dispatch(conn, params, :update_invoice)
+  def delete_invoice(conn, params), do: dispatch(conn, params, :delete_invoice)
   def show_invoice(conn, params), do: dispatch(conn, params, :show_invoice)
   def issue_invoice(conn, params), do: dispatch(conn, params, :issue_invoice)
+  def cancel_invoice(conn, params), do: dispatch(conn, params, :cancel_invoice)
+  def copy_invoice(conn, params), do: dispatch(conn, params, :copy_invoice)
   def quotation_status(conn, params), do: dispatch(conn, params, :quotation_status)
   def convert_quotation(conn, params), do: dispatch(conn, params, :convert_quotation)
   def revise_quotation(conn, params), do: dispatch(conn, params, :revise_quotation)
@@ -203,6 +206,10 @@ defmodule NilaWeb.BusinessController do
          do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
+  defp perform(:delete_invoice, client, _user, %{"id" => id}) do
+    with {:ok, _invoice} <- Invoicing.delete_draft(client, id), do: {:ok, %{deleted: true}}
+  end
+
   defp perform(:show_invoice, client, _user, %{"id" => id}) do
     with {:ok, invoice} <- Invoicing.get_invoice(client, id),
          do: {:ok, %{invoice: invoice_json(invoice)}}
@@ -213,8 +220,28 @@ defmodule NilaWeb.BusinessController do
          do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
-  defp perform(:quotation_status, client, user, %{"id" => id, "status" => status}) do
-    with {:ok, invoice} <- Invoicing.quotation_status(client, id, user.id, status),
+  defp perform(:cancel_invoice, client, user, %{"id" => id, "cancellation" => attrs})
+       when is_map(attrs) do
+    with {:ok, invoice} <-
+           Invoicing.cancel_invoice(client, id, user.id, attrs["reason"]),
+         do: {:ok, %{invoice: invoice_json(invoice)}}
+  end
+
+  defp perform(:copy_invoice, client, user, %{"id" => id}) do
+    with {:ok, invoice} <- Invoicing.copy_to_draft(client, id, user.id),
+         do: {:ok, %{invoice: invoice_json(invoice)}}
+  end
+
+  defp perform(:quotation_status, client, user, %{"id" => id, "status" => _} = params) do
+    attrs =
+      Map.take(params, [
+        "status",
+        "sent_on",
+        "purchase_order_number",
+        "purchase_order_date"
+      ])
+
+    with {:ok, invoice} <- Invoicing.quotation_status(client, id, user.id, attrs),
          do: {:ok, %{invoice: invoice_json(invoice)}}
   end
 
@@ -338,6 +365,10 @@ defmodule NilaWeb.BusinessController do
       :totals,
       :snapshot,
       :issued_at,
+      :sent_on,
+      :cancelled_at,
+      :cancelled_by_id,
+      :cancellation_reason,
       :inserted_at
     ])
   end
@@ -371,9 +402,15 @@ defmodule NilaWeb.BusinessController do
         :already_issued ->
           {409, "This invoice is already issued. Reload to view it."}
 
+        :draft_in_use ->
+          {409, "This draft is linked to another document and cannot be deleted."}
+
+        :issued_credit_notes_exist ->
+          {409, "This invoice has an issued credit note and cannot be cancelled."}
+
         reason when reason in [:filed, :month_filed] ->
           {409,
-           "Your CA has already filed this month. Contact them before issuing this document."}
+           "Your CA has already filed this month, so documents in it cannot be issued or cancelled."}
 
         :profile_incomplete ->
           {422, "Complete your business details first."}

@@ -22,6 +22,7 @@ import type {
 import { CustomerPicker } from "./customer-picker";
 import { CustomerAddressPicker } from "./customer-address-picker";
 import { BusinessDateField } from "./date-field";
+import { FinalizedQuotationDocument } from "./finalized-quotation-document";
 import { InlineInput, InlineSelect, InlineTextarea } from "./inline-input";
 import { ServicePicker } from "./service-picker";
 import { StateCombobox } from "./state-combobox";
@@ -101,6 +102,17 @@ export function InvoiceDocument({
     saved?.snapshot?.delivery_address ?? original?.snapshot?.delivery_address;
   const frozenShippingGstin = saved?.snapshot?.shipping_gstin ?? original?.snapshot?.shipping_gstin;
   const totals = calculation?.totals;
+  if (quotation && issued && saved) {
+    return (
+      <FinalizedQuotationDocument
+        value={value}
+        saved={saved}
+        business={business}
+        calculation={calculation}
+        businessId={businessId}
+      />
+    );
+  }
   function lineChange(index: number, field: keyof BusinessLine, next: string) {
     onChange({
       lines: value.lines.map((line, i) => (i === index ? { ...line, [field]: next } : line)),

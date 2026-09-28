@@ -271,6 +271,19 @@ defmodule NilaWeb.BusinessControllerTest do
            |> log_in_user(other)
            |> post("#{business_root(client)}/invoices/#{invoice["id"]}/issue")
            |> contract_response(403)
+
+    assert build_conn()
+           |> log_in_user(other)
+           |> delete("#{business_root(client)}/invoices/#{invoice["id"]}")
+           |> contract_response(403)
+
+    assert conn
+           |> delete("#{business_root(client)}/invoices/#{invoice["id"]}")
+           |> contract_response(200) == %{"deleted" => true}
+
+    assert conn
+           |> get("#{business_root(client)}/invoices/#{invoice["id"]}")
+           |> contract_response(404)
   end
 
   test "customer address API lists, saves and scopes addresses", %{owner: owner, client: client} do
@@ -381,6 +394,126 @@ defmodule NilaWeb.BusinessControllerTest do
            |> get_in(["invoice", "status"]) == "draft"
   end
 
+  test "invoice cancellation and copy APIs keep the original and return a new draft", %{
+    owner: owner,
+    client: client
+  } do
+    alias Nila.Business.Invoicing
+
+    {:ok, _profile} =
+      Invoicing.save_profile(client, %{
+        legal_name: "Service business",
+        address: "Chennai",
+        state_code: Nila.Gst.StateCodes.from_gstin(client.gstin)
+      })
+
+    {:ok, customer} =
+      Invoicing.create_customer(client, %{
+        name: "Buyer",
+        address: "Chennai",
+        state_code: Nila.Gst.StateCodes.from_gstin(client.gstin)
+      })
+
+    {:ok, draft} =
+      Invoicing.save_draft(client, owner.id, %{
+        "customer_id" => customer.id,
+        "invoice_date" => "2026-09-22",
+        "place_of_supply" => Nila.Gst.StateCodes.from_gstin(client.gstin),
+        "subject" => "Annual service",
+        "lines" => [
+          %{
+            "description" => "Consulting",
+            "sac" => "998312",
+            "quantity" => "1",
+            "unit_price" => "1000",
+            "gst_rate" => "18"
+          }
+        ]
+      })
+
+    {:ok, issued} =
+      Invoicing.issue(client, draft.id, owner.id,
+        render_pdf: fn _snapshot -> {:ok, "%PDF-test"} end
+      )
+
+    conn = build_conn() |> log_in_user(owner)
+
+    cancelled =
+      conn
+      |> post("#{business_root(client)}/invoices/#{issued.id}/cancel", %{
+        cancellation: %{reason: "Purchase order cancelled"}
+      })
+      |> contract_response(200)
+      |> Map.fetch!("invoice")
+
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["number"] == issued.number
+    assert cancelled["cancellation_reason"] == "Purchase order cancelled"
+    assert cancelled["cancelled_by_id"] == owner.id
+    assert is_binary(cancelled["cancelled_at"])
+
+    copied =
+      conn
+      |> post("#{business_root(client)}/invoices/#{issued.id}/copy")
+      |> contract_response(200)
+      |> Map.fetch!("invoice")
+
+    assert copied["id"] != issued.id
+    assert copied["status"] == "draft"
+    assert is_nil(copied["number"])
+    assert copied["subject"] == "Annual service"
+    assert is_nil(copied["cancelled_at"])
+
+    assert conn
+           |> post("#{business_root(client)}/invoices/#{issued.id}/cancel", %{
+             cancellation: %{reason: "Retry"}
+           })
+           |> contract_response(200)
+           |> get_in(["invoice", "cancellation_reason"]) == "Purchase order cancelled"
+
+    assert conn
+           |> post("#{business_root(client)}/invoices/#{copied["id"]}/cancel", %{
+             cancellation: %{reason: "Not issued"}
+           })
+           |> contract_response(422)
+
+    {:ok, copied_issued} =
+      Invoicing.issue(client, copied["id"], owner.id,
+        render_pdf: fn _snapshot -> {:ok, "%PDF-copy"} end
+      )
+
+    {:ok, credit_draft} =
+      Invoicing.save_draft(client, owner.id, %{
+        "customer_id" => customer.id,
+        "document_type" => "credit_note",
+        "original_invoice_id" => copied_issued.id,
+        "invoice_date" => Date.to_iso8601(Date.utc_today()),
+        "place_of_supply" => Nila.Gst.StateCodes.from_gstin(client.gstin),
+        "lines" => [
+          %{
+            "description" => "Credit",
+            "sac" => "998312",
+            "quantity" => "1",
+            "unit_price" => "100",
+            "gst_rate" => "18"
+          }
+        ]
+      })
+
+    {:ok, _credit} =
+      Invoicing.issue(client, credit_draft.id, owner.id,
+        render_pdf: fn _snapshot -> {:ok, "%PDF-credit"} end
+      )
+
+    assert conn
+           |> post("#{business_root(client)}/invoices/#{copied_issued.id}/cancel", %{
+             cancellation: %{reason: "Would double reverse"}
+           })
+           |> contract_response(409) == %{
+             "error" => "This invoice has an issued credit note and cannot be cancelled."
+           }
+  end
+
   test "quotation actions authenticate, return linked invoice and preserve PDF", %{
     owner: owner,
     ca: ca,
@@ -449,18 +582,36 @@ defmodule NilaWeb.BusinessControllerTest do
                render_pdf: fn _ -> {:ok, "%PDF-quotation"} end
              )
 
+    sent =
+      conn
+      |> post("#{business_root(client)}/invoices/#{id}/quotation-status", %{
+        status: "awaiting_po",
+        sent_on: "2026-09-23"
+      })
+      |> contract_response(200)
+
+    assert sent["invoice"]["status"] == "awaiting_po"
+    assert sent["invoice"]["sent_on"] == "2026-09-23"
+
     accepted =
       conn
-      |> post("#{business_root(client)}/invoices/#{id}/quotation-status", %{status: "accepted"})
+      |> post("#{business_root(client)}/invoices/#{id}/quotation-status", %{
+        status: "accepted",
+        purchase_order_number: "PO-77",
+        purchase_order_date: "2026-09-25"
+      })
       |> contract_response(200)
 
     assert accepted["invoice"]["status"] == "accepted"
+    assert accepted["invoice"]["purchase_order_number"] == "PO-77"
 
     response =
       conn |> post("#{business_root(client)}/invoices/#{id}/convert") |> contract_response(200)
 
     assert response["invoice"]["status"] == "draft"
     assert response["invoice"]["document_type"] == "invoice"
+    assert response["invoice"]["purchase_order_number"] == "PO-77"
+    assert response["invoice"]["purchase_order_date"] == "2026-09-25"
     assert response["quotation"]["converted_invoice_id"] == response["invoice"]["id"]
 
     retry =

@@ -1135,6 +1135,30 @@ defmodule Nila.Gst.Sales.Gstr1Test do
       assert Documents.account([seq_invoice(nil)]) == nil
     end
 
+    test "non-numeric cancelled numbers remain in the series without counting as net issued" do
+      invoices = [
+        seq_invoice("ABC") |> Map.put("document_status", "cancelled"),
+        seq_invoice("MANUAL")
+      ]
+
+      assert %{
+               "doc_det" => [
+                 %{
+                   "doc_num" => 1,
+                   "docs" => [
+                     %{
+                       "from" => "ABC",
+                       "to" => "MANUAL",
+                       "totnum" => 2,
+                       "cancel" => 1,
+                       "net_issue" => 1
+                     }
+                   ]
+                 }
+               ]
+             } = Documents.derive(invoices)
+    end
+
     test "names exactly the gaps the sequence_gaps issue is raised from" do
       invoices = for n <- [20, 23], do: seq_invoice("#{n}/2026-27")
 

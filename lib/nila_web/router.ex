@@ -196,7 +196,10 @@ defmodule NilaWeb.Router do
     post "/invoices/calculate", BusinessController, :calculate
     get "/invoices/:id", BusinessController, :show_invoice
     patch "/invoices/:id", BusinessController, :update_invoice
+    delete "/invoices/:id", BusinessController, :delete_invoice
     post "/invoices/:id/issue", BusinessController, :issue_invoice
+    post "/invoices/:id/cancel", BusinessController, :cancel_invoice
+    post "/invoices/:id/copy", BusinessController, :copy_invoice
     post "/invoices/:id/quotation-status", BusinessController, :quotation_status
     post "/invoices/:id/convert", BusinessController, :convert_quotation
     post "/invoices/:id/revise", BusinessController, :revise_quotation

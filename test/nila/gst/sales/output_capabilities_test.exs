@@ -35,21 +35,26 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
     end
   end
 
-  test "cancelled and amendment documents remain restricted in both outputs" do
-    for status <- ~w(cancelled amendment) do
-      invoice =
-        Normalizer.normalize(%{
-          "data" => %{
-            "invoice_number" => "STATUS-1",
-            "document_status" => status,
-            "line_items" => []
-          }
-        })
+  test "GSTR-1 accounts for cancellations while Tally and amendments remain restricted" do
+    cancelled =
+      Normalizer.normalize(%{
+        "data" => %{
+          "invoice_number" => "STATUS-1",
+          "document_status" => "cancelled",
+          "line_items" => []
+        }
+      })
 
-      expected = ["#{status}_document_unsupported"]
-      assert codes(Gstr1Readiness.capability_issues([invoice])) == expected
-      assert codes(TallyReadiness.issues([invoice])) == expected
-    end
+    amendment = put_in(cancelled, ["document_status"], "amendment")
+
+    assert Gstr1Readiness.capability_issues([cancelled]) == []
+    assert codes(TallyReadiness.issues([cancelled])) == ["cancelled_document_unsupported"]
+
+    assert codes(Gstr1Readiness.capability_issues([amendment])) == [
+             "amendment_document_unsupported"
+           ]
+
+    assert codes(TallyReadiness.issues([amendment])) == ["amendment_document_unsupported"]
   end
 
   test "GSTR-1 validates special treatments while Tally retains its capability blockers" do
@@ -74,11 +79,7 @@ defmodule Nila.Gst.Sales.OutputCapabilitiesTest do
              "cancelled_document_unsupported"
            ]
 
-    assert gstr1_codes == [
-             "cancelled_document_unsupported",
-             "missing_tax_payment",
-             "special_supply_conflict"
-           ]
+    assert gstr1_codes == []
 
     assert tally_codes == shared_codes
   end

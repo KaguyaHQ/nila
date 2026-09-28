@@ -494,6 +494,171 @@ defmodule Nila.Business.Invoicing do
     Repo.transact(fn -> update_draft_in_transaction(client, id, attrs) end)
   end
 
+  def delete_draft(%Client{} = client, id) do
+    Repo.transact(fn ->
+      with {:ok, invoice} <- locked_invoice(client, id),
+           :ok <- draft?(invoice),
+           false <- draft_referenced?(client, invoice.id) do
+        Repo.delete(invoice)
+      else
+        true -> {:error, :draft_in_use}
+        error -> error
+      end
+    end)
+  end
+
+  @doc "Copies an ordinary invoice or quotation into a new, unnumbered draft."
+  def copy_to_draft(%Client{} = client, id, actor_id) do
+    with {:ok, source} <- get_invoice(client, id),
+         true <- source.document_type in ["invoice", "quotation"] do
+      today = Date.utc_today()
+
+      attrs =
+        source
+        |> Map.take([
+          :customer_id,
+          :billing_address_id,
+          :shipping_address_id,
+          :place_of_supply,
+          :lines,
+          :notes,
+          :delivery_address,
+          :delivery_state_code,
+          :subject
+        ])
+        |> Map.put(:document_type, source.document_type)
+        |> Map.put(:invoice_date, today)
+        |> Map.put(:due_date, nil)
+        |> Map.put(
+          :valid_until,
+          if(
+            (source.document_type == "quotation" and source.valid_until) &&
+              Date.compare(source.valid_until, today) != :lt,
+            do: source.valid_until,
+            else: nil
+          )
+        )
+        |> string_keys()
+
+      save_draft(client, actor_id, attrs)
+    else
+      false -> {:error, :invalid_copy_source}
+      error -> error
+    end
+  end
+
+  @doc "Cancels an issued ordinary invoice while retaining its number and evidence."
+  def cancel_invoice(%Client{} = client, id, actor_id, reason) when is_binary(reason) do
+    reason = String.trim(reason)
+
+    Repo.transact(
+      fn ->
+        current_client =
+          Repo.one!(
+            from c in Client,
+              where: c.id == ^client.id and c.org_id == ^client.org_id,
+              lock: "FOR UPDATE"
+          )
+
+        with {:ok, invoice} <- locked_invoice(current_client, id) do
+          cancel_issued_invoice(current_client, invoice, actor_id, reason)
+        end
+      end,
+      timeout: 60_000
+    )
+  end
+
+  def cancel_invoice(%Client{}, _id, _actor_id, _reason),
+    do: {:error, :cancellation_reason_required}
+
+  defp cancel_issued_invoice(
+         _client,
+         %Invoice{status: "cancelled"} = invoice,
+         _actor_id,
+         _reason
+       ),
+       do: {:ok, Repo.preload(invoice, :customer)}
+
+  defp cancel_issued_invoice(client, %Invoice{} = invoice, actor_id, reason) do
+    with :ok <- cancellable_invoice?(invoice),
+         :ok <- cancellation_reason_valid?(reason),
+         :ok <- no_issued_credit_notes(client, invoice.id),
+         :ok <- open_month(client, invoice.invoice_date),
+         {:ok, dump} <-
+           Repo.fetch_one(
+             from d in Dump,
+               where: d.id == ^invoice.dump_id and d.client_id == ^client.id,
+               lock: "FOR UPDATE"
+           ),
+         [facts] <- dump.invoices do
+      cancelled_facts = Map.put(facts, "document_status", "cancelled")
+
+      dump =
+        dump
+        |> Dump.changeset(%{invoices: [cancelled_facts]})
+        |> Repo.update!()
+
+      :ok = Derivation.refresh_in_transaction(dump)
+
+      invoice
+      |> change(
+        status: "cancelled",
+        cancelled_at: DateTime.utc_now(),
+        cancelled_by_id: actor_id,
+        cancellation_reason: reason
+      )
+      |> Repo.update()
+      |> case do
+        {:ok, cancelled} -> {:ok, Repo.preload(cancelled, :customer)}
+        error -> error
+      end
+    else
+      [] -> {:error, :sales_evidence_missing}
+      [_ | _] -> {:error, :sales_evidence_invalid}
+      error -> error
+    end
+  end
+
+  defp cancellable_invoice?(%Invoice{document_type: "invoice", status: "issued", dump_id: id})
+       when not is_nil(id),
+       do: :ok
+
+  defp cancellable_invoice?(%Invoice{document_type: "quotation"}),
+    do: {:error, :quotation_cannot_be_cancelled}
+
+  defp cancellable_invoice?(%Invoice{document_type: "credit_note"}),
+    do: {:error, :credit_note_cannot_be_cancelled}
+
+  defp cancellable_invoice?(%Invoice{status: "draft"}), do: {:error, :invoice_not_issued}
+  defp cancellable_invoice?(_), do: {:error, :invoice_cannot_be_cancelled}
+
+  defp cancellation_reason_valid?(reason) do
+    if String.length(reason) in 1..500,
+      do: :ok,
+      else: {:error, :cancellation_reason_required}
+  end
+
+  defp no_issued_credit_notes(client, invoice_id) do
+    if Repo.exists?(
+         from i in Invoice,
+           where:
+             i.client_id == ^client.id and i.document_type == "credit_note" and
+               i.original_invoice_id == ^invoice_id and i.status == "issued"
+       ),
+       do: {:error, :issued_credit_notes_exist},
+       else: :ok
+  end
+
+  defp draft_referenced?(client, invoice_id) do
+    Repo.exists?(
+      from i in Invoice,
+        where:
+          i.client_id == ^client.id and
+            (i.original_invoice_id == ^invoice_id or i.converted_invoice_id == ^invoice_id or
+               i.revised_from_id == ^invoice_id)
+    )
+  end
+
   defp update_draft_in_transaction(client, id, attrs) do
     with {:ok, invoice} <- locked_invoice(client, id),
          :ok <- draft?(invoice),
@@ -668,12 +833,17 @@ defmodule Nila.Business.Invoicing do
 
   # Like Bigcapital estimates, approval/rejection is only available after finalizing,
   # and conversion retains a link to the created invoice. Locking makes retries safe.
-  def quotation_status(%Client{} = client, id, _actor_id, status)
-      when status in ["accepted", "declined"] do
+  def quotation_status(%Client{} = client, id, actor_id, status) when is_binary(status),
+    do: quotation_status(client, id, actor_id, %{"status" => status})
+
+  def quotation_status(%Client{} = client, id, _actor_id, %{"status" => status} = attrs)
+      when status in ["awaiting_po", "accepted", "declined"] do
     Repo.transact(fn ->
       with {:ok, quote} <- locked_invoice(client, id),
-           :ok <- quotation_transition(quote) do
-        quote |> change(status: status) |> Repo.update()
+           :ok <- quotation_transition(quote, status) do
+        quote
+        |> quotation_status_changeset(status, attrs)
+        |> Repo.update()
       end
     end)
   end
@@ -703,6 +873,8 @@ defmodule Nila.Business.Invoicing do
                 :place_of_supply,
                 :lines,
                 :notes,
+                :purchase_order_number,
+                :purchase_order_date,
                 :delivery_address,
                 :delivery_state_code,
                 :subject
@@ -726,10 +898,32 @@ defmodule Nila.Business.Invoicing do
     end)
   end
 
-  defp quotation_transition(%Invoice{document_type: "quotation", status: status})
-       when status in ["issued", "accepted", "declined"], do: :ok
+  defp quotation_status_changeset(quote, "awaiting_po", attrs) do
+    quote
+    |> cast(attrs, [:sent_on])
+    |> validate_required([:sent_on])
+    |> put_change(:status, "awaiting_po")
+  end
 
-  defp quotation_transition(_), do: {:error, :invalid_quotation_status}
+  defp quotation_status_changeset(quote, "accepted", attrs) do
+    quote
+    |> cast(attrs, [:purchase_order_number, :purchase_order_date])
+    |> validate_length(:purchase_order_number, max: 100)
+    |> put_change(:status, "accepted")
+  end
+
+  defp quotation_status_changeset(quote, "declined", _attrs),
+    do: change(quote, status: "declined")
+
+  defp quotation_transition(
+         %Invoice{document_type: "quotation", status: source},
+         target
+       )
+       when source in ["issued", "awaiting_po", "accepted", "declined"] and
+              target in ["awaiting_po", "accepted", "declined"],
+       do: :ok
+
+  defp quotation_transition(_, _), do: {:error, :invalid_quotation_status}
 
   def revise_quotation(%Client{} = client, id, actor_id) do
     Repo.transact(fn ->
@@ -776,7 +970,15 @@ defmodule Nila.Business.Invoicing do
 
   def download(%Client{} = client, id) do
     with {:ok, %Invoice{status: status, pdf_key: key}}
-         when status in ["issued", "accepted", "declined", "converted"] <- get_invoice(client, id),
+         when status in [
+                "issued",
+                "awaiting_po",
+                "accepted",
+                "declined",
+                "converted",
+                "cancelled"
+              ] <-
+           get_invoice(client, id),
          do: Storage.get(key),
          else: (_ -> {:error, :not_issued})
   end
@@ -963,6 +1165,7 @@ defmodule Nila.Business.Invoicing do
              lock: "FOR UPDATE"
          ) do
       %Month{filed_at: filed} when not is_nil(filed) -> {:error, :month_filed}
+      %Month{state: "filed"} -> {:error, :month_filed}
       _ -> :ok
     end
   end
@@ -1431,6 +1634,26 @@ defmodule Nila.Business.Invoicing do
   def error_message(:not_issued), do: "Issue the invoice before downloading its PDF."
   def error_message(:month_filed), do: "The CA has filed this month. Choose an open period."
 
+  def error_message(:cancellation_reason_required),
+    do: "Enter a cancellation reason of up to 500 characters."
+
+  def error_message(:invoice_not_issued), do: "Only an issued invoice can be cancelled."
+
+  def error_message(:quotation_cannot_be_cancelled),
+    do: "Quotations cannot be cancelled here. Mark them declined instead."
+
+  def error_message(:credit_note_cannot_be_cancelled),
+    do: "Credit notes cannot be cancelled here."
+
+  def error_message(:invoice_cannot_be_cancelled), do: "This invoice cannot be cancelled."
+
+  def error_message(:issued_credit_notes_exist),
+    do: "This invoice has an issued credit note and cannot be cancelled."
+
+  def error_message(:invalid_copy_source), do: "Only invoices and quotations can be copied."
+  def error_message(:sales_evidence_missing), do: "This invoice's sales evidence is missing."
+  def error_message(:sales_evidence_invalid), do: "This invoice's sales evidence is invalid."
+
   def error_message(:primary_billing_required),
     do: "Choose another primary billing address first."
 
@@ -1466,7 +1689,7 @@ defmodule Nila.Business.Invoicing do
 
   def error_message(:invalid_quotation_status),
     do:
-      "Finalize the quotation before marking it accepted or declined. Converted quotations cannot change status."
+      "Finalize the quotation before changing its status. Converted quotations cannot change status."
 
   def error_message(:quotation_not_accepted),
     do: "Mark the quotation accepted before converting it to an invoice."

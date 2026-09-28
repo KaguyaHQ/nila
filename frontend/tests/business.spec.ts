@@ -47,6 +47,9 @@ const bootstrap: BusinessBootstrap = {
   ],
 };
 const invoice: BusinessInvoice = {
+  cancelled_at: null,
+  cancelled_by_id: null,
+  cancellation_reason: null,
   original_invoice_id: null,
   converted_invoice_id: null,
   valid_until: null,
@@ -60,6 +63,7 @@ const invoice: BusinessInvoice = {
   revised_from_id: null,
   snapshot: {},
   issued_at: null,
+  sent_on: null,
   inserted_at: "2026-09-22T10:00:00Z",
   id: 9,
   number: null,
@@ -420,6 +424,106 @@ test("draft save and direct issue both work; PDF failures stay visible", async (
   await expect(page.getByRole("alert").first()).toContainText("PDF temporarily unavailable.");
 });
 
+for (const document of [
+  { kind: "invoice", path: "invoices", listName: "Invoices" },
+  { kind: "quotation", path: "quotations", listName: "Quotations" },
+] as const) {
+  test(`unfinished new ${document.kind} survives reload and warns before navigation`, async ({ page }) => {
+    await setup(page);
+    await page.goto(`/app/business/1/${document.path}/new`);
+    await page.locator("#line-0-description").fill("Recovered compressor service");
+    await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
+
+    const recoveryKey = `nila:business-document-draft:1:${document.kind}`;
+    await expect
+      .poll(() =>
+        page.evaluate((key) => window.localStorage.getItem(key), recoveryKey),
+      )
+      .toContain("Recovered compressor service");
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.reload();
+    await expect(page.getByText("Recovered your unsaved work.")).toBeVisible();
+    await expect(page.locator("#line-0-description")).toHaveValue(
+      "Recovered compressor service",
+    );
+
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page
+      .getByRole("main")
+      .getByRole("link", { name: document.listName, exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/${document.path}/new$`));
+    await expect(page.locator("#line-0-description")).toHaveValue(
+      "Recovered compressor service",
+    );
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("main")
+      .getByRole("link", { name: document.listName, exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/${document.path}$`));
+    await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), recoveryKey)).toBeNull();
+
+    await page.goto(`/app/business/1/${document.path}/new`);
+    await expect(page.locator("#line-0-description")).toHaveValue("");
+  });
+}
+
+test("recovery keeps an explicitly cleared default ship-to address cleared", async ({ page }) => {
+  await setup(page);
+  const addresses: BusinessCustomerAddress[] = [
+    {
+      id: 40,
+      customer_id: 4,
+      label: "Registered office",
+      address: "1 Mount Road, Chennai",
+      state_code: "33",
+      gstin: null,
+      usage: "billing",
+      is_primary_billing: true,
+      is_primary_shipping: false,
+    },
+    {
+      id: 43,
+      customer_id: 4,
+      label: "Default hospital",
+      address: "Apollo Hospital, Bengaluru",
+      state_code: "29",
+      gstin: null,
+      usage: "shipping",
+      is_primary_billing: false,
+      is_primary_shipping: true,
+    },
+  ];
+  await page.unroute(/\/api\/business\/1\/bootstrap$/);
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, customer_addresses: addresses } }),
+  );
+
+  await page.goto("/app/business/1/invoices/new");
+  await chooseCustomer(page, "Harbour Labs");
+  const shipping = page.getByRole("button", { name: "Select shipping address" });
+  await expect(shipping).toContainText("Default hospital");
+  await shipping.click();
+  await page.getByRole("option", { name: "Enter address manually" }).click();
+  await expect(page.locator("#invoice-delivery")).toHaveValue("");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        localStorage.getItem("nila:business-document-draft:1:invoice"),
+      ),
+    )
+    .toContain('"shippingTouched":true');
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.reload();
+  await expect(page.getByText("Recovered your unsaved work.")).toBeVisible();
+  await expect(shipping).toContainText("Choose saved address");
+  await expect(page.getByText("Apollo Hospital, Bengaluru")).toHaveCount(0);
+});
+
 test("new invoice issues in one action without creating a separate draft", async ({ page }) => {
   await setup(page);
   let draftWrites = 0;
@@ -445,7 +549,104 @@ test("new invoice issues in one action without creating a separate draft", async
   await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
   await expect(page).toHaveURL(/\/business\/1\/invoices\/9$/);
   await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("nila:business-document-draft:1:invoice")),
+    )
+    .toBeNull();
   expect(draftWrites).toBe(0);
+});
+
+test("saved draft warns only until its latest changes are saved", async ({ page }) => {
+  await setup(page);
+  let current = { ...invoice };
+  await page.route(/\/api\/business\/1\/invoices\/9$/, async (route) => {
+    if (route.request().method() === "PATCH") {
+      current = { ...current, ...route.request().postDataJSON().invoice };
+      return route.fulfill({ json: { invoice: current } });
+    }
+    return route.fulfill({ json: { invoice: current } });
+  });
+  await page.goto("/app/business/1/invoices/9");
+  await page.locator("#line-0-description").fill("Latest saved wording");
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("main").getByRole("link", { name: "Invoices", exact: true }).click();
+  await expect(page).toHaveURL(/\/invoices\/9$/);
+
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Draft saved.");
+  await page.getByRole("main").getByRole("link", { name: "Invoices", exact: true }).click();
+  await expect(page).toHaveURL(/\/invoices$/);
+});
+
+test("issued invoice can be cancelled with a reason while keeping its PDF", async ({ page }) => {
+  await setup(page);
+  let current: BusinessInvoice = {
+    ...invoice,
+    status: "issued" as const,
+    number: "INV/26-27/0001",
+  };
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
+    route.fulfill({ json: { invoice: current } }),
+  );
+  await page.route(/\/api\/business\/1\/invoices\/9\/cancel$/, (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
+    expect(route.request().postDataJSON()).toEqual({
+      cancellation: { reason: "Duplicate invoice raised by mistake" },
+    });
+    current = {
+      ...current,
+      status: "cancelled" as const,
+      cancelled_at: "2026-09-28T10:30:00Z",
+      cancelled_by_id: 7,
+      cancellation_reason: "Duplicate invoice raised by mistake",
+    };
+    return route.fulfill({ json: { invoice: current } });
+  });
+
+  await page.goto("/app/business/1/invoices/9");
+  await expect(page.getByRole("button", { name: "Copy to new draft" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel invoice", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByRole("button", { name: "Keep invoice" })).toBeFocused();
+  const reason = dialog.getByLabel("Reason for cancellation");
+  await expect(reason).toHaveAttribute("maxlength", "500");
+  await expect(dialog.getByRole("button", { name: "Cancel invoice" })).toBeDisabled();
+  await reason.fill("Duplicate invoice raised by mistake");
+  await dialog.getByRole("button", { name: "Cancel invoice" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/invoices\/9$/);
+  const cancellation = page.getByRole("region", { name: "Cancellation details" });
+  await expect(cancellation.getByText("Cancelled", { exact: true })).toBeVisible();
+  await expect(cancellation).toContainText("Duplicate invoice raised by mistake");
+  await expect(cancellation).toContainText("IST");
+  await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create credit note" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel invoice" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy to new draft" })).toBeVisible();
+});
+
+test("failed invoice cancellation keeps the reason and explains the failure", async ({ page }) => {
+  await setup(page);
+  const issued = { ...invoice, status: "issued" as const, number: "INV/26-27/0001" };
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
+    route.fulfill({ json: { invoice: issued } }),
+  );
+  await page.route(/\/api\/business\/1\/invoices\/9\/cancel$/, (route) =>
+    route.fulfill({ status: 409, json: { error: "This GST period is closed." } }),
+  );
+  await page.goto("/app/business/1/invoices/9");
+  await page.getByRole("button", { name: "Cancel invoice", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByLabel("Reason for cancellation").fill("Wrong purchase order");
+  await dialog.getByRole("button", { name: "Cancel invoice" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("This GST period is closed.");
+  await expect(dialog.getByLabel("Reason for cancellation")).toHaveValue(
+    "Wrong purchase order",
+  );
+  await expect(page).toHaveURL(/\/invoices\/9$/);
 });
 
 test("server validation retains draft without false issued state", async ({ page }) => {
@@ -894,6 +1095,98 @@ const quotation: BusinessInvoice = {
   notes: "Payment within 15 days.",
 };
 
+for (const source of [
+  {
+    kind: "invoice",
+    path: "invoices",
+    value: { ...invoice, status: "issued" as const, number: "INV/26-27/0001" },
+  },
+  {
+    kind: "quotation",
+    path: "quotations",
+    value: { ...quotation, status: "issued" as const, number: "QUO/26-27/0001" },
+  },
+] as const) {
+  test(`copies a finalized ${source.kind} into a new draft with its fields retained`, async ({
+    page,
+  }) => {
+    await setup(page);
+    const copied = {
+      ...source.value,
+      id: source.value.id + 100,
+      status: "draft" as const,
+      number: null,
+      invoice_date: "2026-09-28",
+      due_date: "",
+      cancelled_at: null,
+      cancelled_by_id: null,
+      cancellation_reason: null,
+    };
+    await page.route(
+      new RegExp(`/api/business/1/invoices/${source.value.id}$`),
+      (route) => route.fulfill({ json: { invoice: source.value } }),
+    );
+    await page.route(
+      new RegExp(`/api/business/1/invoices/${source.value.id}/copy$`),
+      (route) => {
+        expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
+        return route.fulfill({ json: { invoice: copied } });
+      },
+    );
+    await page.route(new RegExp(`/api/business/1/invoices/${copied.id}$`), (route) =>
+      route.fulfill({ json: { invoice: copied } }),
+    );
+    let dialogs = 0;
+    page.on("dialog", async (dialog) => {
+      dialogs++;
+      await dialog.accept();
+    });
+
+    await page.goto(`/app/business/1/${source.path}/${source.value.id}`);
+    await expect(page.getByRole("button", { name: "Copy to new draft" })).toBeVisible();
+    if (source.kind === "quotation") {
+      await expect(page.getByRole("button", { name: "Cancel invoice" })).toHaveCount(0);
+    }
+    await page.getByRole("button", { name: "Copy to new draft" }).click();
+    await expect(page).toHaveURL(new RegExp(`/${source.path}/${copied.id}$`));
+    await expect(page.locator("#line-0-description")).toHaveValue(
+      source.value.lines[0].description,
+    );
+    await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
+    expect(dialogs).toBe(0);
+  });
+}
+
+test("copy failure stays on the source and credit notes cannot be copied or cancelled", async ({
+  page,
+}) => {
+  await setup(page);
+  const issued = { ...invoice, status: "issued" as const, number: "INV/26-27/0001" };
+  await page.route(/\/api\/business\/1\/invoices\/9$/, (route) =>
+    route.fulfill({ json: { invoice: issued } }),
+  );
+  await page.route(/\/api\/business\/1\/invoices\/9\/copy$/, (route) =>
+    route.fulfill({ status: 503, json: { error: "Could not copy this invoice." } }),
+  );
+  await page.goto("/app/business/1/invoices/9");
+  await page.getByRole("button", { name: "Copy to new draft" }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not copy this invoice.");
+  await expect(page).toHaveURL(/\/invoices\/9$/);
+
+  const creditNote = {
+    ...issued,
+    id: 10,
+    document_type: "credit_note" as const,
+    original_invoice_id: null,
+  };
+  await page.route(/\/api\/business\/1\/invoices\/10$/, (route) =>
+    route.fulfill({ json: { invoice: creditNote } }),
+  );
+  await page.goto("/app/business/1/invoices/10");
+  await expect(page.getByRole("button", { name: "Copy to new draft" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel invoice" })).toHaveCount(0);
+});
+
 test("quotation list separates quotations from issued invoices", async ({ page }) => {
   await setup(page);
   const readyQuote = { ...quotation, status: "issued" as const, number: "QUO/2627/0001" };
@@ -912,6 +1205,143 @@ test("quotation list separates quotations from issued invoices", async ({ page }
   await page.getByRole("link", { name: "Invoices", exact: true }).first().click();
   await expect(page.getByRole("link", { name: "INV/2627/0001", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "QUO/2627/0001", exact: true })).toHaveCount(0);
+});
+
+test("invoice finder searches business fields and combines financial year and status", async ({
+  page,
+}) => {
+  await setup(page);
+  const documents: BusinessInvoice[] = [
+    {
+      ...invoice,
+      id: 31,
+      invoice_date: "2026-09-28",
+      number: null,
+      subject: "Annual chiller maintenance",
+      delivery_address: "Guindy service depot",
+    },
+    {
+      ...invoice,
+      id: 32,
+      invoice_date: "2026-03-14",
+      number: "INV/25-26/0042",
+      status: "issued",
+      purchase_order_number: "PO-NORTH-77",
+      snapshot: {
+        customer: {
+          name: "Caltech Refrigeration",
+          address: "Chennai",
+          gstin: null,
+          state_code: "33",
+        },
+        shipping_name: "MS Ramaiah Hospital",
+      },
+    },
+    {
+      ...invoice,
+      id: 33,
+      invoice_date: "2026-05-05",
+      number: "CN/26-27/0003",
+      status: "cancelled",
+      document_type: "credit_note",
+      subject: "Refrigerant correction",
+    },
+  ];
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, invoices: documents } }),
+  );
+
+  await page.goto("/app/business/1/invoices");
+  await expect(page.getByText("28 Sep 2026", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "CN/26-27/0003 · Credit note" })).toBeVisible();
+
+  const search = page.getByRole("searchbox", { name: "Search invoices" });
+  for (const [term, visible, hidden] of [
+    ["inv/25", "INV/25-26/0042", "CN/26-27/0003"],
+    ["calTECH", "INV/25-26/0042", "CN/26-27/0003"],
+    ["chiller", "Draft", "INV/25-26/0042"],
+    ["po-north", "INV/25-26/0042", "Draft"],
+    ["ramaiah", "INV/25-26/0042", "Draft"],
+    ["service depot", "Draft", "INV/25-26/0042"],
+  ]) {
+    await search.fill(term);
+    await expect(page.getByRole("link", { name: visible, exact: visible === "Draft" })).toBeVisible();
+    await expect(page.getByRole("link", { name: hidden, exact: hidden === "Draft" })).toHaveCount(0);
+  }
+
+  await search.fill("");
+  await chooseSelect(page.getByLabel("Financial year"), "2026");
+  await chooseSelect(page.getByLabel("Status"), "cancelled");
+  await expect(page.getByRole("link", { name: "CN/26-27/0003 · Credit note" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "INV/25-26/0042" })).toHaveCount(0);
+
+  await chooseSelect(page.getByLabel("Status"), "issued");
+  await expect(page.getByText("No matching invoices")).toBeVisible();
+  await search.fill("still missing");
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByRole("link", { name: "INV/25-26/0042" })).toBeVisible();
+  await expect(search).toHaveValue("");
+  await expect(page.getByLabel("Financial year")).toHaveAttribute("data-value", "all");
+  await expect(page.getByLabel("Status")).toHaveAttribute("data-value", "all");
+});
+
+test("quotation finder uses quotation statuses and keeps its true empty state distinct", async ({
+  page,
+}) => {
+  await setup(page);
+  const documents: BusinessInvoice[] = [
+    { ...quotation, id: 41, number: null, invoice_date: "2026-04-01", status: "draft" },
+    {
+      ...quotation,
+      id: 42,
+      number: "QUO/25-26/0049",
+      invoice_date: "2026-03-31",
+      status: "issued",
+      snapshot: {
+        customer: { name: "Metro Hospital", address: "Mumbai", gstin: null, state_code: "27" },
+      },
+    },
+    {
+      ...quotation,
+      id: 43,
+      number: "QUO/26-27/0050",
+      invoice_date: "2026-04-02",
+      status: "accepted",
+    },
+    {
+      ...quotation,
+      id: 44,
+      number: "QUO/26-27/0051",
+      invoice_date: "2026-04-03",
+      status: "issued",
+      converted_invoice_id: 99,
+    },
+  ];
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
+    route.fulfill({ json: { ...bootstrap, invoices: documents } }),
+  );
+
+  await page.goto("/app/business/1/quotations");
+  await chooseSelect(page.getByLabel("Status"), "ready");
+  await chooseSelect(page.getByLabel("Financial year"), "2025");
+  await expect(page.getByRole("link", { name: "QUO/25-26/0049" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Ready" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByRole("searchbox", { name: "Search quotations" }).fill("metro hospital");
+  await expect(page.getByRole("link", { name: "QUO/25-26/0049" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "QUO/26-27/0050" })).toHaveCount(0);
+
+  await page.getByRole("searchbox", { name: "Search quotations" }).fill("missing quote");
+  await expect(page.getByText("No matching quotations")).toBeVisible();
+  await expect(page.getByText("Your first quotation starts here")).toHaveCount(0);
+});
+
+test("empty document lists keep the create-first message and hide finder controls", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/business/1/invoices");
+  await expect(page.getByText("Your first invoice starts here")).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search invoices" })).toHaveCount(0);
 });
 
 test("goods quotation shows Bill to and Ship to together and saves HSN with unit", async ({
@@ -971,6 +1401,37 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
     unit: "KGS",
   });
   expect(submitted.delivery_address).toBe("Parvathi Hospital, Chennai");
+});
+
+test("saved drafts can be deleted after confirmation", async ({ page }) => {
+  await setup(page);
+  let deleted = false;
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) =>
+    route.fulfill({
+      json: { ...bootstrap, invoices: deleted ? [] : [quotation] },
+    }),
+  );
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) => {
+    if (route.request().method() === "DELETE") {
+      expect(route.request().headers()["x-csrf-token"]).toBe("business-csrf");
+      deleted = true;
+      return route.fulfill({ json: { deleted: true } });
+    }
+    return route.fulfill({ json: { invoice: quotation } });
+  });
+
+  await page.goto("/app/business/1/quotations/21");
+  const trigger = page.locator("#root").getByRole("button", { name: "Delete draft", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByRole("heading", { name: "Delete draft quotation?" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await dialog.getByRole("button", { name: "Delete draft", exact: true }).click();
+  await expect(page).toHaveURL(/\/quotations$/);
+  expect(deleted).toBe(true);
 });
 
 test("quotation editor sets the next number without losing the draft", async ({ page }, testInfo) => {
@@ -1037,6 +1498,119 @@ test("finalized quotation creates a linked editable revision", async ({ page }) 
   await expect(page.getByRole("button", { name: "Finalize quotation" })).toBeEnabled();
 });
 
+test("finalized quotation reads as a document without clipped item facts", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  const finalized = {
+    ...quotation,
+    status: "issued" as const,
+    number: "50/2026-27",
+    valid_until: null,
+    subject: "Supply of ACS coil",
+    notes: "",
+    place_of_supply: "29",
+    lines: [
+      {
+        description: "MRI ACS COIL",
+        kind: "goods" as const,
+        sac: "84159000",
+        quantity: "1",
+        unit: "NOS",
+        unit_price: "20500",
+        gst_rate: "18",
+      },
+      {
+        description: "Air Cargo and Transportation Charges",
+        kind: "service" as const,
+        sac: "996531",
+        quantity: "1",
+        unit: "service",
+        unit_price: "6000",
+        gst_rate: "18",
+      },
+    ],
+    totals: {
+      taxable_paise: 2_650_000,
+      cgst_paise: 0,
+      sgst_paise: 0,
+      igst_paise: 477_000,
+      total_paise: 3_127_000,
+    },
+    snapshot: {
+      supplier: {
+        name: "Caltech Refrigeration",
+        address: "Padi, Chennai - 600050",
+        gstin: "33BPBPK1081A1ZO",
+        state_code: "33",
+      },
+      customer: {
+        name: "Siemens Healthcare Pvt Ltd",
+        address: "Bengaluru - 560001",
+        gstin: "29AAVCS8021P1ZB",
+        state_code: "29",
+      },
+      delivery_address: "MS Ramaiah Hospital\nBangalore",
+      shipping_name: "MS Ramaiah Hospital",
+      delivery_state_code: "29",
+      total_in_words: "Rupees Thirty One Thousand Two Hundred Seventy and Zero paise only",
+      lines: [
+        {
+          description: "MRI ACS COIL",
+          kind: "goods" as const,
+          sac: "84159000",
+          quantity: "1",
+          unit: "NOS",
+          unit_price: "20500",
+          gst_rate: "18",
+          taxable_paise: 2_050_000,
+          cgst_paise: 0,
+          sgst_paise: 0,
+          igst_paise: 369_000,
+        },
+        {
+          description: "Air Cargo and Transportation Charges",
+          kind: "service" as const,
+          sac: "996531",
+          quantity: "1",
+          unit: "service",
+          unit_price: "6000",
+          gst_rate: "18",
+          taxable_paise: 600_000,
+          cgst_paise: 0,
+          sgst_paise: 0,
+          igst_paise: 108_000,
+        },
+      ],
+    },
+  };
+  await page.route(/\/api\/business\/1\/invoices\/21$/, (route) =>
+    route.fulfill({ json: { invoice: finalized } }),
+  );
+
+  await page.goto("/app/business/1/quotations/21");
+  const document = page.getByRole("article", { name: "Finalized quotation" });
+  await expect(page.getByRole("button", { name: "Delete draft", exact: true })).toHaveCount(0);
+  await expect(document).toBeVisible();
+  await expect(document.locator("input, textarea, [role=combobox]")).toHaveCount(0);
+  await expect(document.getByText("22 Sep 2026", { exact: true })).toBeVisible();
+  await expect(document.getByText("Valid until", { exact: true })).toHaveCount(0);
+  await expect(document.getByText("Notes", { exact: true })).toHaveCount(0);
+  await expect(
+    document.getByText("Rupees Thirty One Thousand Two Hundred Seventy only"),
+  ).toBeVisible();
+
+  for (const fact of ["84159000", "1 NOS", "996531", "1 service"]) {
+    const cell = document.getByText(fact, { exact: true });
+    await expect(cell).toBeVisible();
+    expect(await cell.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
+  await page.screenshot({
+    path: testInfo.outputPath("finalized-quotation-document.png"),
+    fullPage: true,
+  });
+});
+
 test("quotation builder finalizes explicitly, accepts, and converts to one invoice draft with fields retained", async ({
   page,
 }, testInfo) => {
@@ -1073,13 +1647,35 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.route(/\/api\/business\/1\/invoices\/22$/, (route) =>
     route.fulfill({
       json: {
-        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null, purchase_order_number: null, purchase_order_date: null },
+        invoice: {
+          ...converted,
+          ...savedInput,
+          document_type: "invoice",
+          valid_until: null,
+          purchase_order_number: "PO-77",
+          purchase_order_date: "2026-09-25",
+        },
       },
     }),
   );
   await page.route(/\/api\/business\/1\/invoices\/21\/quotation-status$/, (route) => {
-    expect(route.request().postDataJSON().status).toBe("accepted");
-    current = { ...current, status: "accepted" };
+    const body = route.request().postDataJSON();
+    if (body.status === "awaiting_po") {
+      expect(body.sent_on).toBe("2026-09-23");
+      current = { ...current, status: "awaiting_po", sent_on: body.sent_on };
+    } else {
+      expect(body).toEqual({
+        status: "accepted",
+        purchase_order_number: "PO-77",
+        purchase_order_date: "2026-09-25",
+      });
+      current = {
+        ...current,
+        status: "accepted",
+        purchase_order_number: body.purchase_order_number,
+        purchase_order_date: body.purchase_order_date,
+      };
+    }
     return route.fulfill({ json: { invoice: current } });
   });
   await page.route(/\/api\/business\/1\/invoices\/21\/convert$/, async (route) => {
@@ -1088,7 +1684,14 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
     current = { ...current, status: "converted", converted_invoice_id: 22 };
     await route.fulfill({
       json: {
-        invoice: { ...converted, ...savedInput, document_type: "invoice", valid_until: null, purchase_order_number: null, purchase_order_date: null },
+        invoice: {
+          ...converted,
+          ...savedInput,
+          document_type: "invoice",
+          valid_until: null,
+          purchase_order_number: current.purchase_order_number,
+          purchase_order_date: current.purchase_order_date,
+        },
         quotation: current,
       },
     });
@@ -1119,12 +1722,24 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   expect(savedInput.subject).toBe("Compressor and Pipe Supply and Insulation");
   expect(savedInput.delivery_state_code).toBe("34");
   await expect(page.getByRole("button", { name: "Download PDF", exact: true })).toBeVisible();
-  await expect(page.locator("#line-0-description")).toBeDisabled();
+  await expect(page.getByRole("article", { name: "Finalized quotation" })).toBeVisible();
+  await expect(page.locator("#line-0-description")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Create credit note" })).toHaveCount(0);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF", exact: true }).click();
   expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
+  await page.getByRole("button", { name: "Mark sent", exact: true }).click();
+  await page.locator("#quotation-sent-on").fill("2026-09-23");
+  await page.getByRole("dialog").getByRole("button", { name: "Mark sent", exact: true }).click();
+  await expect(
+    page
+      .getByText("Quotations are not included in sales or GST workings.", { exact: true })
+      .locator(".."),
+  ).toContainText("Awaiting PO");
   await page.getByRole("button", { name: "Mark accepted", exact: true }).click();
+  await page.locator("#quotation-po-number").fill("PO-77");
+  await page.locator("#quotation-po-date").fill("2026-09-25");
+  await page.getByRole("dialog").getByRole("button", { name: "Mark accepted", exact: true }).click();
   await expect(page.getByRole("button", { name: "Convert to invoice", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("quotation-accepted.png"), fullPage: true });
   await page.getByRole("button", { name: "Convert to invoice", exact: true }).click();
@@ -1132,9 +1747,7 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   expect(conversions).toBe(1);
   await expect(page.getByRole("heading", { name: "Tax invoice", exact: true })).toBeVisible();
   await expect(page.locator("#line-0-description")).toHaveValue("Quoted consulting");
-  await expect(page.locator("#invoice-reference")).toHaveCount(0);
-  await page.getByRole("button", { name: "Add customer PO" }).click();
-  await expect(page.locator("#invoice-reference")).toHaveValue("");
+  await expect(page.locator("#invoice-reference")).toHaveValue("PO-77");
   await expect(page.locator("#invoice-reference-date")).toBeVisible();
   await expect(page.locator("#invoice-notes")).toHaveValue("Payment within 15 days.");
   await expect(page.locator("#invoice-subject")).toHaveValue(

@@ -536,6 +536,246 @@ defmodule Nila.Business.InvoicingTest do
              Invoicing.save_draft(other, ctx.actor, %{"customer_id" => ctx.customer.id})
   end
 
+  test "only an unreferenced draft in the selected business can be deleted", ctx do
+    {:ok, draft} = draft(ctx)
+    assert {:ok, deleted} = Invoicing.delete_draft(ctx.client, draft.id)
+    assert deleted.id == draft.id
+    assert Repo.get(Invoice, draft.id) == nil
+
+    {:ok, issued} = draft(ctx)
+    assert {:ok, issued} = issue(ctx, issued)
+    assert {:error, :already_issued} = Invoicing.delete_draft(ctx.client, issued.id)
+
+    {:ok, other} =
+      Nila.Clients.create_client(%{
+        org_id: ctx.client.org_id,
+        name: "Other business",
+        type: "company"
+      })
+
+    assert {:error, :not_found} = Invoicing.delete_draft(other, issued.id)
+  end
+
+  test "issued invoice cancellation keeps its evidence and removes its CA tax effect", ctx do
+    {:ok, draft} = draft(ctx)
+    {:ok, issued} = issue(ctx, draft)
+    {:ok, pdf_before} = Invoicing.download(ctx.client, issued.id)
+    snapshot_before = issued.snapshot
+    reason = String.duplicate("த", 300)
+
+    assert {:ok, cancelled} =
+             Invoicing.cancel_invoice(
+               ctx.client,
+               issued.id,
+               ctx.actor,
+               reason
+             )
+
+    assert cancelled.status == "cancelled"
+    assert cancelled.number == issued.number
+    assert cancelled.snapshot == snapshot_before
+    assert cancelled.pdf_key == issued.pdf_key
+    assert cancelled.pdf_sha256 == issued.pdf_sha256
+    assert cancelled.dump_id == issued.dump_id
+    assert cancelled.cancelled_by_id == ctx.actor
+    assert cancelled.cancellation_reason == reason
+    assert %DateTime{} = cancelled.cancelled_at
+    assert {:ok, ^pdf_before} = Invoicing.download(ctx.client, issued.id)
+
+    dump = Repo.get!(Nila.Gst.Intake.Dump, issued.dump_id)
+    assert [%{"document_status" => "cancelled"}] = dump.invoices
+
+    assert {:ok, month} = Months.get_by_period(ctx.client.org_id, ctx.client.id, "2026-09")
+    assert [%{"document_status" => "cancelled"}] = month.invoices
+    assert month.derived_gstr1["b2cs"] == []
+
+    assert get_in(month.derived_gstr1, [
+             "doc_issue",
+             "doc_det",
+             Access.at(0),
+             "docs",
+             Access.at(0),
+             "cancel"
+           ]) == 1
+
+    assert get_in(month.derived_gstr1, [
+             "doc_issue",
+             "doc_det",
+             Access.at(0),
+             "docs",
+             Access.at(0),
+             "net_issue"
+           ]) == 0
+
+    assert {:ok, retried} =
+             Invoicing.cancel_invoice(
+               ctx.client,
+               issued.id,
+               ctx.actor,
+               "A different retry reason"
+             )
+
+    assert retried.cancelled_at == cancelled.cancelled_at
+    assert retried.cancellation_reason == reason
+
+    {:ok, next_draft} = draft(ctx)
+    assert {:ok, %{number: "INV/2627/0002"}} = issue(ctx, next_draft)
+  end
+
+  test "cancellation rejects drafts, quotations, credit notes and filed months", ctx do
+    {:ok, draft} = draft(ctx)
+
+    assert {:error, :invoice_not_issued} =
+             Invoicing.cancel_invoice(ctx.client, draft.id, ctx.actor, "Wrong invoice")
+
+    {:ok, quote_draft} = draft(ctx, %{"document_type" => "quotation"})
+    {:ok, quote} = issue(ctx, quote_draft)
+
+    assert {:error, :quotation_cannot_be_cancelled} =
+             Invoicing.cancel_invoice(ctx.client, quote.id, ctx.actor, "Not accepted")
+
+    {:ok, original_draft} = draft(ctx)
+    {:ok, original} = issue(ctx, original_draft)
+
+    {:ok, credit_draft} =
+      draft(ctx, %{
+        "document_type" => "credit_note",
+        "original_invoice_id" => original.id,
+        "lines" => [
+          %{
+            "description" => "Credit",
+            "sac" => "998312",
+            "quantity" => "1",
+            "unit_price" => "100",
+            "gst_rate" => "18"
+          }
+        ]
+      })
+
+    {:ok, credit} = issue(ctx, credit_draft)
+
+    assert {:error, :credit_note_cannot_be_cancelled} =
+             Invoicing.cancel_invoice(ctx.client, credit.id, ctx.actor, "Wrong credit")
+
+    {:ok, filed_draft} = draft(ctx)
+    {:ok, filed_invoice} = issue(ctx, filed_draft)
+
+    {:ok, month} = Months.get_by_period(ctx.client.org_id, ctx.client.id, "2026-09")
+    month |> change(filed_at: DateTime.utc_now()) |> Repo.update!()
+
+    assert {:error, :month_filed} =
+             Invoicing.cancel_invoice(ctx.client, filed_invoice.id, ctx.actor, "Wrong invoice")
+
+    assert Repo.get!(Invoice, filed_invoice.id).status == "issued"
+
+    assert hd(Repo.get!(Nila.Gst.Intake.Dump, filed_invoice.dump_id).invoices)[
+             "document_status"
+           ] ==
+             "active"
+  end
+
+  test "issued credit notes block original cancellation but credit-note drafts do not", ctx do
+    {:ok, first_draft} = draft(ctx)
+    {:ok, first} = issue(ctx, first_draft)
+
+    {:ok, _credit_draft} =
+      draft(ctx, %{
+        "document_type" => "credit_note",
+        "original_invoice_id" => first.id,
+        "lines" => [
+          %{
+            "description" => "Pending credit",
+            "sac" => "998312",
+            "quantity" => "1",
+            "unit_price" => "100",
+            "gst_rate" => "18"
+          }
+        ]
+      })
+
+    assert {:ok, %{status: "cancelled"}} =
+             Invoicing.cancel_invoice(ctx.client, first.id, ctx.actor, "Invoice cancelled")
+
+    {:ok, second_draft} = draft(ctx)
+    {:ok, second} = issue(ctx, second_draft)
+
+    {:ok, credit_draft} =
+      draft(ctx, %{
+        "document_type" => "credit_note",
+        "original_invoice_id" => second.id,
+        "lines" => [
+          %{
+            "description" => "Issued credit",
+            "sac" => "998312",
+            "quantity" => "1",
+            "unit_price" => "100",
+            "gst_rate" => "18"
+          }
+        ]
+      })
+
+    {:ok, _credit} = issue(ctx, credit_draft)
+
+    assert {:error, :issued_credit_notes_exist} =
+             Invoicing.cancel_invoice(ctx.client, second.id, ctx.actor, "Invoice cancelled")
+
+    assert Repo.get!(Invoice, second.id).status == "issued"
+
+    assert hd(Repo.get!(Nila.Gst.Intake.Dump, second.dump_id).invoices)["document_status"] ==
+             "active"
+  end
+
+  test "copy creates a clean new draft from an invoice or quotation", ctx do
+    {:ok, source} =
+      draft(ctx, %{
+        "due_date" => "2026-10-22",
+        "subject" => "Annual service",
+        "notes" => "Original terms",
+        "purchase_order_number" => "PO-1",
+        "delivery_address" => "Hospital stores",
+        "delivery_state_code" => "33"
+      })
+
+    assert {:ok, copy} = Invoicing.copy_to_draft(ctx.client, source.id, ctx.actor)
+    assert copy.id != source.id
+    assert copy.status == "draft"
+    assert is_nil(copy.number)
+    assert copy.invoice_date == Date.utc_today()
+    assert is_nil(copy.due_date)
+    assert is_nil(copy.purchase_order_number)
+    assert copy.customer_id == source.customer_id
+    assert copy.billing_address_id == source.billing_address_id
+    assert copy.shipping_address_id == source.shipping_address_id
+    assert copy.lines == source.lines
+    assert copy.subject == source.subject
+    assert copy.notes == source.notes
+    assert copy.delivery_address == source.delivery_address
+    assert copy.delivery_state_code == source.delivery_state_code
+    assert copy.snapshot == %{}
+    assert is_nil(copy.original_invoice_id)
+    assert is_nil(copy.converted_invoice_id)
+    assert is_nil(copy.revised_from_id)
+
+    {:ok, quote} =
+      draft(ctx, %{
+        "document_type" => "quotation",
+        "valid_until" => "2026-09-22"
+      })
+
+    assert {:ok, quote_copy} = Invoicing.copy_to_draft(ctx.client, quote.id, ctx.actor)
+    assert quote_copy.document_type == "quotation"
+    assert is_nil(quote_copy.valid_until)
+
+    {:ok, original_draft} = draft(ctx)
+    {:ok, original} = issue(ctx, original_draft)
+
+    {:ok, credit} =
+      draft(ctx, %{"document_type" => "credit_note", "original_invoice_id" => original.id})
+
+    assert {:error, :invalid_copy_source} =
+             Invoicing.copy_to_draft(ctx.client, credit.id, ctx.actor)
+  end
+
   test "invalid and zero-valued service lines are refused", ctx do
     for {field, value} <- [
           {"quantity", "0"},
@@ -853,9 +1093,31 @@ defmodule Nila.Business.InvoicingTest do
     assert {:error, :quotation_not_accepted} =
              Invoicing.convert_quotation(ctx.client, quote.id, ctx.actor)
 
-    assert {:ok, _} = Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, "declined")
-    assert {:ok, _} = Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, "accepted")
-    assert {:ok, _} = Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, "accepted")
+    assert {:error, changeset} =
+             Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, %{
+               "status" => "awaiting_po"
+             })
+
+    assert errors_on(changeset).sent_on == ["can't be blank"]
+
+    assert {:ok, sent} =
+             Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, %{
+               "status" => "awaiting_po",
+               "sent_on" => "2026-09-22"
+             })
+
+    assert sent.status == "awaiting_po"
+    assert sent.sent_on == ~D[2026-09-22]
+
+    assert {:ok, accepted} =
+             Invoicing.quotation_status(ctx.client, quote.id, ctx.actor, %{
+               "status" => "accepted",
+               "purchase_order_number" => "PO-77",
+               "purchase_order_date" => "2026-09-25"
+             })
+
+    assert accepted.purchase_order_number == "PO-77"
+    assert accepted.purchase_order_date == ~D[2026-09-25]
 
     assert {:ok, %{invoice: invoice, quotation: converted}} =
              Invoicing.convert_quotation(ctx.client, quote.id, ctx.actor)
@@ -869,8 +1131,8 @@ defmodule Nila.Business.InvoicingTest do
     assert invoice.due_date == nil
     assert invoice.number == nil
     assert quote.purchase_order_number == "RFQ-23"
-    assert invoice.purchase_order_number == nil
-    assert invoice.purchase_order_date == nil
+    assert invoice.purchase_order_number == "PO-77"
+    assert invoice.purchase_order_date == ~D[2026-09-25]
 
     for field <- [
           :customer_id,

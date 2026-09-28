@@ -4336,6 +4336,119 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "deleteBusinessInvoice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Draft deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessDeleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The selected business is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The draft was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only an unreferenced draft can be deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "description": "Deletes a draft document. Requires the Phoenix session and X-CSRF-Token header."
+      }
+    },
+    "/api/business/{business_id}/invoices/{id}/cancel": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "post": {
+        "operationId": "cancelBusinessInvoice",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}},
+          {"name": "X-CSRF-Token", "in": "header", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Invoice cancelled or already cancelled", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessInvoiceResult"}}}},
+          "401": {"description": "Authentication required.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "403": {"description": "The selected business is unavailable.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "404": {"description": "The invoice was not found.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "409": {"description": "The invoice has issued credit notes or its filing period cannot be cancelled.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "422": {"description": "The cancellation reason or document type is invalid.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}}
+        },
+        "description": "Cancels an issued ordinary invoice without deleting its number, PDF, or audit evidence. Requires the Phoenix session and X-CSRF-Token header.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessCancellationWrite"}}}}
+      }
+    },
+    "/api/business/{business_id}/invoices/{id}/copy": {
+      "parameters": [{"name": "business_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+      "post": {
+        "operationId": "copyBusinessInvoice",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}},
+          {"name": "X-CSRF-Token", "in": "header", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "New draft created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessInvoiceResult"}}}},
+          "401": {"description": "Authentication required.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "403": {"description": "The selected business is unavailable.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "404": {"description": "The source document was not found.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}},
+          "422": {"description": "Only an ordinary invoice or quotation can be copied.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiProblem"}}}}
+        },
+        "description": "Copies an invoice or quotation into a new unnumbered draft. Requires the Phoenix session and X-CSRF-Token header."
       }
     },
     "/api/business/{business_id}/invoices/{id}/issue": {
@@ -12917,9 +13030,11 @@
             "enum": [
               "draft",
               "issued",
+              "awaiting_po",
               "accepted",
               "declined",
-              "converted"
+              "converted",
+              "cancelled"
             ]
           },
           "customer_id": {
@@ -13015,6 +13130,34 @@
               }
             ]
           },
+          "sent_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ]
+          },
+          "cancelled_by_id": {
+            "anyOf": [
+              {"type": "integer"},
+              {"type": "null"}
+            ]
+          },
+          "cancellation_reason": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ]
+          },
           "inserted_at": {
             "type": "string"
           },
@@ -13071,6 +13214,10 @@
           "totals",
           "snapshot",
           "issued_at",
+          "sent_on",
+          "cancelled_at",
+          "cancelled_by_id",
+          "cancellation_reason",
           "inserted_at",
           "subject",
           "delivery_state_code",
@@ -14190,6 +14337,25 @@
         ],
         "additionalProperties": false
       },
+      "BusinessCancellationWrite": {
+        "type": "object",
+        "properties": {
+          "cancellation": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["cancellation"],
+        "additionalProperties": false
+      },
       "BusinessInvoiceWrite": {
         "type": "object",
         "properties": {
@@ -14300,9 +14466,20 @@
           "status": {
             "type": "string",
             "enum": [
+              "awaiting_po",
               "accepted",
               "declined"
             ]
+          },
+          "sent_on": {
+            "type": "string"
+          },
+          "purchase_order_number": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "purchase_order_date": {
+            "type": "string"
           }
         },
         "required": [

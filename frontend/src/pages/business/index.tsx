@@ -3,12 +3,13 @@ import {
   Link,
   Navigate,
   Outlet,
+  useBlocker,
   useLocation,
   useNavigate,
   useParams,
   useSearch,
 } from "@tanstack/react-router";
-import { ArrowLeft, ChevronsUpDown, Download, FileText, Plus } from "lucide-react";
+import { ArrowLeft, ChevronsUpDown, Download, FileText, Plus, Trash2 } from "lucide-react";
 import {
   Fragment,
   createContext,
@@ -19,6 +20,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { type InvoiceCalculation, InvoiceDocument } from "@/components/business/invoice-document";
@@ -27,6 +29,16 @@ import { CustomerAddressPicker } from "@/components/business/customer-address-pi
 import { StateCombobox } from "@/components/business/state-combobox";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -47,6 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   BusinessApiError,
   type BusinessBootstrap,
@@ -325,10 +338,28 @@ export function BusinessLayout() {
 function quotationLabel(invoice: BusinessInvoice) {
   if (invoice.converted_invoice_id) return "Converted";
   if (invoice.status === "draft") return "Draft";
+  if (invoice.status === "awaiting_po") return "Awaiting PO";
   if (invoice.status === "accepted") return "Accepted";
   if (invoice.status === "declined") return "Declined";
   return "Ready";
 }
+
+function businessDocumentDate(value: string) {
+  if (!value) return "—";
+  const [year, month, day] = value.split("-").map(Number);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${String(day).padStart(2, "0")} ${months[month - 1]} ${year}`;
+}
+
+function financialYearFor(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return month >= 4 ? year : year - 1;
+}
+
+function financialYearLabel(year: number) {
+  return `${year}–${String(year + 1).slice(-2)}`;
+}
+
 export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quotation" }) {
   const businessId = useBusinessId();
   const data = useBusiness();
@@ -336,6 +367,44 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
   const documents = data.invoices.filter(
     (invoice) => (invoice.document_type === "quotation") === quotation,
   );
+  const [search, setSearch] = useState("");
+  const [financialYear, setFinancialYear] = useState("all");
+  const [status, setStatus] = useState("all");
+  const financialYears = Array.from(
+    new Set(documents.map((document) => financialYearFor(document.invoice_date))),
+  ).sort((left, right) => right - left);
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filteredDocuments = documents.filter((document) => {
+    const customer =
+      document.snapshot?.customer?.name ??
+      data.customers.find((candidate) => candidate.id === Number(document.customer_id))?.name ??
+      "";
+    const matchesSearch =
+      !normalizedSearch ||
+      [
+        document.number,
+        customer,
+        document.subject,
+        document.purchase_order_number,
+        document.delivery_address,
+        document.snapshot?.shipping_name,
+        document.snapshot?.delivery_address,
+      ].some((value) => value?.toLocaleLowerCase().includes(normalizedSearch));
+    const matchesFinancialYear =
+      financialYear === "all" || financialYearFor(document.invoice_date) === Number(financialYear);
+    const documentStatus = quotation
+      ? quotationLabel(document).toLocaleLowerCase()
+      : document.status;
+    return matchesSearch && matchesFinancialYear && (status === "all" || documentStatus === status);
+  });
+  const filtersActive = search !== "" || financialYear !== "all" || status !== "all";
+
+  function clearFilters() {
+    setSearch("");
+    setFinancialYear("all");
+    setStatus("all");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -356,6 +425,60 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
           {quotation ? "New quotation" : "New invoice"}
         </Button>
       </div>
+      {documents.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Input
+            aria-label={`Search ${quotation ? "quotations" : "invoices"}`}
+            className="sm:max-w-sm"
+            placeholder={`Search ${quotation ? "quotations" : "invoices"}`}
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <SelectField
+            aria-label="Financial year"
+            className="w-full sm:w-40"
+            value={financialYear}
+            onValueChange={setFinancialYear}
+          >
+            <SelectFieldOption value="all">All financial years</SelectFieldOption>
+            {financialYears.map((year) => (
+              <SelectFieldOption key={year} value={year}>
+                {financialYearLabel(year)}
+              </SelectFieldOption>
+            ))}
+          </SelectField>
+          <SelectField
+            aria-label="Status"
+            className="w-full sm:w-36"
+            value={status}
+            onValueChange={setStatus}
+          >
+            <SelectFieldOption value="all">All statuses</SelectFieldOption>
+            {quotation ? (
+              <>
+                <SelectFieldOption value="draft">Draft</SelectFieldOption>
+                <SelectFieldOption value="ready">Ready</SelectFieldOption>
+                <SelectFieldOption value="awaiting po">Awaiting PO</SelectFieldOption>
+                <SelectFieldOption value="accepted">Accepted</SelectFieldOption>
+                <SelectFieldOption value="declined">Declined</SelectFieldOption>
+                <SelectFieldOption value="converted">Converted</SelectFieldOption>
+              </>
+            ) : (
+              <>
+                <SelectFieldOption value="draft">Draft</SelectFieldOption>
+                <SelectFieldOption value="issued">Issued</SelectFieldOption>
+                <SelectFieldOption value="cancelled">Cancelled</SelectFieldOption>
+              </>
+            )}
+          </SelectField>
+          {filtersActive && (
+            <Button className="self-start sm:self-auto" variant="ghost" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
+        </div>
+      )}
       <div className="overflow-hidden rounded-lg border">
         <Table>
           <TableHeader>
@@ -369,7 +492,7 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
             </TableRow>
           </TableHeader>
           <TableBody>
-            {documents.map((invoice) => (
+            {filteredDocuments.map((invoice) => (
               <RecordTableRow key={invoice.id}>
                 <TableCell>
                   <RecordTableLink
@@ -391,16 +514,36 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
                       ?.name ??
                     "Customer not selected"}
                 </TableCell>
-                <TableCell>{invoice.invoice_date}</TableCell>
-                {quotation && <TableCell>{invoice.valid_until || "—"}</TableCell>}
+                <TableCell>{businessDocumentDate(invoice.invoice_date)}</TableCell>
+                {quotation && <TableCell>{businessDocumentDate(invoice.valid_until || "")}</TableCell>}
                 <TableCell>
-                  <Badge variant={invoice.status !== "draft" ? "secondary" : "outline"}>
+                  <Badge
+                    variant={
+                      invoice.status === "cancelled"
+                        ? "destructive"
+                        : invoice.status !== "draft"
+                          ? "secondary"
+                          : "outline"
+                    }
+                  >
                     {quotation
                       ? quotationLabel(invoice)
-                      : invoice.status === "issued"
-                        ? "Issued"
-                        : "Draft"}
+                      : invoice.status === "cancelled"
+                        ? "Cancelled"
+                        : invoice.status === "issued"
+                          ? "Issued"
+                      : "Draft"}
                   </Badge>
+                  {quotation && invoice.sent_on && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Sent {businessDocumentDate(invoice.sent_on)}
+                    </p>
+                  )}
+                  {quotation && invoice.purchase_order_number && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      PO {invoice.purchase_order_number}
+                    </p>
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {invoice.totals && Number.isFinite(invoice.totals.total_paise)
@@ -421,6 +564,16 @@ export function BusinessInvoices({ mode = "invoice" }: { mode?: "invoice" | "quo
                     {quotation
                       ? "Create a draft, check the details, then finalize and download the PDF."
                       : "Create a draft, check the details, then issue it and download the PDF."}
+                  </p>
+                </TableCell>
+              </TableRow>
+            )}
+            {documents.length > 0 && filteredDocuments.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={quotation ? 6 : 5} className="py-16 text-center">
+                  <p className="font-medium">No matching {quotation ? "quotations" : "invoices"}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Try another search or clear the filters.
                   </p>
                 </TableCell>
               </TableRow>
@@ -1128,21 +1281,13 @@ function invoiceNumber(numbering: BusinessBootstrap["invoice_numbering"]) {
     ? `${numbering.next_number}/${year}-${String(year + 1).slice(-2)}`
     : `INV/${String(year).slice(-2)}${String(year + 1).slice(-2)}/${String(numbering.next_number).padStart(4, "0")}`;
 }
-function InvoiceForm({
-  invoice,
-  original,
-  mode,
-}: {
-  invoice?: BusinessInvoice;
-  original?: BusinessInvoice;
-  mode: "invoice" | "quotation";
-}) {
-  const businessId = useBusinessId();
-  const queryKey = businessQueryKey(businessId);
-  const data = useBusiness();
-  const navigate = useNavigate();
-  const cache = useQueryClient();
-  const [form, setForm] = useState<InvoiceInput>(() => ({
+
+function invoiceFormValue(
+  invoice: BusinessInvoice | undefined,
+  original: BusinessInvoice | undefined,
+  mode: "invoice" | "quotation",
+): InvoiceInput {
+  return {
     customer_id: invoice?.customer_id ?? original?.customer_id ?? "",
     billing_address_id: invoice?.billing_address_id ?? original?.billing_address_id ?? null,
     shipping_address_id: invoice?.shipping_address_id ?? original?.shipping_address_id ?? null,
@@ -1161,21 +1306,105 @@ function InvoiceForm({
       gst_rate: line.gst_rate,
     })) ?? [newLine()],
     notes: invoice?.notes ?? "",
-    purchase_order_number: invoice?.purchase_order_number ?? original?.purchase_order_number ?? "",
+    purchase_order_number:
+      invoice?.purchase_order_number ?? original?.purchase_order_number ?? "",
     purchase_order_date: invoice?.purchase_order_date ?? original?.purchase_order_date ?? "",
     delivery_address: invoice?.delivery_address ?? original?.delivery_address ?? "",
-    delivery_state_code: invoice?.delivery_state_code ?? original?.delivery_state_code ?? "",
+    delivery_state_code:
+      invoice?.delivery_state_code ?? original?.delivery_state_code ?? "",
     document_type: invoice?.document_type ?? (original ? "credit_note" : mode),
     original_invoice_id: invoice?.original_invoice_id ?? original?.id ?? null,
-    }));
+  };
+}
+
+function recoverNewDocument(key: string, initial: InvoiceInput) {
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return null;
+    const storedValue = JSON.parse(stored) as Record<string, unknown>;
+    const wrapped = storedValue.form && typeof storedValue.form === "object";
+    const recovered = (wrapped ? storedValue.form : storedValue) as Partial<InvoiceInput>;
+    if (!recovered || !Array.isArray(recovered.lines)) return null;
+    return {
+      form: {
+        ...initial,
+        ...recovered,
+        document_type: initial.document_type,
+        original_invoice_id: initial.original_invoice_id,
+        lines: recovered.lines,
+      } as InvoiceInput,
+      shippingTouched:
+        wrapped && typeof storedValue.shippingTouched === "boolean"
+          ? storedValue.shippingTouched
+          : false,
+    };
+  } catch {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Recovery is best-effort when browser storage is unavailable.
+    }
+    return null;
+  }
+}
+
+function InvoiceForm({
+  invoice,
+  original,
+  mode,
+}: {
+  invoice?: BusinessInvoice;
+  original?: BusinessInvoice;
+  mode: "invoice" | "quotation";
+}) {
+  const businessId = useBusinessId();
+  const queryKey = businessQueryKey(businessId);
+  const data = useBusiness();
+  const navigate = useNavigate();
+  const cache = useQueryClient();
+  const initialForm = invoiceFormValue(invoice, original, mode);
+  const recoveryKey = `nila:business-document-draft:${businessId}:${
+    original ? `credit-note-${original.id}` : mode
+  }`;
+  const recoveredOnLoad = useRef(false);
+  const recoveredShippingTouched = useRef<boolean | null>(null);
+  const [form, setForm] = useState<InvoiceInput>(() => {
+    if (invoice) return initialForm;
+    const recovered = recoverNewDocument(recoveryKey, initialForm);
+    recoveredOnLoad.current = Boolean(recovered);
+    recoveredShippingTouched.current = recovered?.shippingTouched ?? null;
+    return recovered?.form ?? initialForm;
+  });
+  const cleanForm = useRef(JSON.stringify(initialForm));
+  const allowNavigation = useRef(false);
+  const initialShippingTouched = Boolean(invoice?.shipping_address_id || invoice?.delivery_address);
   const [shippingTouched, setShippingTouched] = useState(
-    Boolean(invoice?.shipping_address_id || invoice?.delivery_address),
+    recoveredShippingTouched.current ?? initialShippingTouched,
   );
+  const cleanShippingTouched = useRef(initialShippingTouched);
   const [saved, setSaved] = useState(invoice);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() =>
+    recoveredOnLoad.current ? "Recovered your unsaved work." : "",
+  );
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const cancelDelete = useRef<HTMLButtonElement>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const cancelTrigger = useRef<HTMLButtonElement>(null);
+  const keepInvoice = useRef<HTMLButtonElement>(null);
+  const [sentOpen, setSentOpen] = useState(false);
+  const [sentOn, setSentOn] = useState(localDate());
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
+  const [purchaseOrderDate, setPurchaseOrderDate] = useState("");
   const issued = Boolean(saved && saved.status !== "draft");
+  const dirty =
+    !issued &&
+    (JSON.stringify(form) !== cleanForm.current || shippingTouched !== cleanShippingTouched.current);
+  const transitionBusy = busy === "save" || busy === "issue" || busy === "delete";
   const credit = form.document_type === "credit_note";
   const quotation = form.document_type === "quotation";
   const documentPath = quotation ? "/business/$businessId/quotations" : "/business/$businessId/invoices";
@@ -1205,6 +1434,41 @@ function InvoiceForm({
   const configured = Boolean(
     data.profile?.legal_name && data.profile?.address && data.profile?.state_code,
   );
+  function clearRecovery() {
+    if (invoice) return;
+    try {
+      window.localStorage.removeItem(recoveryKey);
+    } catch {
+      // Saving and navigation must still work when browser storage is unavailable.
+    }
+  }
+  useEffect(() => {
+    if (invoice || issued) return;
+    try {
+      if (dirty)
+        window.localStorage.setItem(
+          recoveryKey,
+          JSON.stringify({ form, shippingTouched }),
+        );
+      else window.localStorage.removeItem(recoveryKey);
+    } catch {
+      // The navigation warning still protects the current tab.
+    }
+  }, [dirty, form, invoice, issued, recoveryKey, shippingTouched]);
+  useBlocker({
+    shouldBlockFn: () => {
+      if (allowNavigation.current) {
+        allowNavigation.current = false;
+        return false;
+      }
+      if (transitionBusy) return true;
+      if (!dirty) return false;
+      const discard = window.confirm("Discard your unsaved changes?");
+      if (discard) clearRecovery();
+      return !discard;
+    },
+    enableBeforeUnload: dirty || transitionBusy,
+  });
   function change(next: Partial<InvoiceInput>) {
     setForm({ ...form, ...next });
     setMessage("");
@@ -1251,15 +1515,19 @@ function InvoiceForm({
         { businessId, id: saved?.id, body: { invoice: form } },
       );
       cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
+      cleanForm.current = JSON.stringify(form);
+      cleanShippingTouched.current = shippingTouched;
+      clearRecovery();
       setSaved(result.invoice);
       await cache.invalidateQueries({ queryKey });
-      if (!saved)
+      if (!saved) {
+        allowNavigation.current = true;
         navigate({
           to: quotation ? "/business/$businessId/quotations/$invoiceId" : "/business/$businessId/invoices/$invoiceId",
           params: { businessId, invoiceId: String(result.invoice.id) },
           replace: true,
         });
-      else setMessage("Draft saved.");
+      } else setMessage("Draft saved.");
     } catch (error) {
       setError(error as Error);
     } finally {
@@ -1279,15 +1547,20 @@ function InvoiceForm({
           body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
         });
         cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
+        cleanForm.current = JSON.stringify(form);
+        cleanShippingTouched.current = shippingTouched;
+        clearRecovery();
         setSaved(result.invoice);
         await cache.invalidateQueries({ queryKey });
         setMessage("Quotation ready to download.");
-        if (!saved)
+        if (!saved) {
+          allowNavigation.current = true;
           navigate({
             to: "/business/$businessId/quotations/$invoiceId",
             params: { businessId, invoiceId: String(result.invoice.id) },
             replace: true,
           });
+        }
       } catch (error) {
         setError(error as Error);
       } finally {
@@ -1305,15 +1578,20 @@ function InvoiceForm({
         body: { invoice: form, ...(saved ? { id: saved.id } : {}) },
       });
       cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
+      cleanForm.current = JSON.stringify(form);
+      cleanShippingTouched.current = shippingTouched;
+      clearRecovery();
       setSaved(result.invoice);
       await cache.invalidateQueries({ queryKey });
       setMessage("Issued and shared with your CA.");
-      if (!saved)
+      if (!saved) {
+        allowNavigation.current = true;
         navigate({
           to: "/business/$businessId/invoices/$invoiceId",
           params: { businessId, invoiceId: String(result.invoice.id) },
           replace: true,
         });
+      }
     } catch (error) {
       setError(error as Error);
     } finally {
@@ -1338,7 +1616,86 @@ function InvoiceForm({
       setBusy(null);
     }
   }
-  async function quotationAction(action: "accepted" | "declined" | "convert") {
+  async function deleteDraft() {
+    if (!saved || issued || busy) return;
+    setBusy("delete");
+    setError(null);
+    setMessage("");
+    try {
+      await businessRequest("deleteBusinessInvoice", { businessId, id: saved.id });
+      clearRecovery();
+      await cache.invalidateQueries({ queryKey });
+      allowNavigation.current = true;
+      navigate({ to: documentPath, params: { businessId }, replace: true });
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function copyDocument() {
+    if (!saved || credit || busy || dirty) return;
+    setBusy("copy");
+    setError(null);
+    setMessage("");
+    try {
+      const result = await businessRequest("copyBusinessInvoice", {
+        businessId,
+        id: saved.id,
+      });
+      cache.setQueryData(
+        ["business-invoice", businessId, String(result.invoice.id)],
+        result,
+      );
+      await cache.invalidateQueries({ queryKey });
+      allowNavigation.current = true;
+      navigate({
+        to:
+          result.invoice.document_type === "quotation"
+            ? "/business/$businessId/quotations/$invoiceId"
+            : "/business/$businessId/invoices/$invoiceId",
+        params: { businessId, invoiceId: String(result.invoice.id) },
+      });
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function cancelInvoice(event: FormEvent) {
+    event.preventDefault();
+    if (!saved || saved.status !== "issued" || quotation || credit || busy) return;
+    const reason = cancellationReason.trim();
+    if (!reason) return;
+    setBusy("cancel");
+    setError(null);
+    setMessage("");
+    try {
+      const result = await businessRequest("cancelBusinessInvoice", {
+        businessId,
+        id: saved.id,
+        body: { cancellation: { reason } },
+      });
+      cache.setQueryData(["business-invoice", businessId, String(saved.id)], result);
+      setSaved(result.invoice);
+      await cache.invalidateQueries({ queryKey });
+      setCancellationReason("");
+      setCancelOpen(false);
+      setMessage("Invoice cancelled.");
+    } catch (error) {
+      setError(error as Error);
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function quotationAction(
+    action: "awaiting_po" | "accepted" | "declined" | "convert",
+    details: {
+      sent_on?: string;
+      purchase_order_number?: string;
+      purchase_order_date?: string;
+    } = {},
+  ) {
     if (!saved || busy || !quotation || !issued) return;
     setBusy(action);
     setError(null);
@@ -1360,14 +1717,20 @@ function InvoiceForm({
       } else {
         const result = await businessRequest("setQuotationStatus", { businessId,
           id: saved.id,
-          body: { status: action },
+          body: { status: action, ...details },
         });
         cache.setQueryData(["business-invoice", businessId, String(result.invoice.id)], result);
         setSaved(result.invoice);
         await cache.invalidateQueries({ queryKey });
-        setMessage(
-          action === "accepted" ? "Quotation marked accepted." : "Quotation marked declined.",
-        );
+        if (action === "awaiting_po") {
+          setSentOpen(false);
+          setMessage("Quotation marked sent and awaiting PO.");
+        } else if (action === "accepted") {
+          setAcceptOpen(false);
+          setMessage("Quotation marked accepted.");
+        } else {
+          setMessage("Quotation marked declined.");
+        }
       }
     } catch (error) {
       setError(error as Error);
@@ -1410,14 +1773,26 @@ function InvoiceForm({
           <span className="text-sm text-muted-foreground">
             {saved?.number || (credit ? "New credit note" : "Draft")}
           </span>
+          {dirty && <span className="text-sm text-muted-foreground">Unsaved changes</span>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setPreviewOpen(true)}>
             <FileText /> Preview PDF
           </Button>
+          {saved && !credit && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(busy) || dirty}
+              title={dirty ? "Save your changes before copying this document." : undefined}
+              onClick={copyDocument}
+            >
+              {busy === "copy" ? "Copying…" : "Copy to new draft"}
+            </Button>
+          )}
           {issued ? (
             <>
-              {!credit && !quotation && (
+              {!credit && !quotation && saved?.status === "issued" && (
                 <Button
                   variant="outline"
                   nativeButton={false}
@@ -1429,6 +1804,21 @@ function InvoiceForm({
                   Create credit note
                 </Button>
               )}
+              {!credit && !quotation && saved?.status === "issued" && (
+                <Button
+                  ref={cancelTrigger}
+                  type="button"
+                  variant="outline"
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    setError(null);
+                    setCancellationReason("");
+                    setCancelOpen(true);
+                  }}
+                >
+                  Cancel invoice
+                </Button>
+              )}
               <Button onClick={download} disabled={Boolean(busy)}>
                 <Download />
                 {busy === "download" ? "Downloading…" : "Download PDF"}
@@ -1436,6 +1826,20 @@ function InvoiceForm({
             </>
           ) : (
             <>
+              {saved && (
+                <Button
+                  ref={deleteTrigger}
+                  type="button"
+                  variant="outline"
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    setError(null);
+                    setDeleteOpen(true);
+                  }}
+                >
+                  <Trash2 /> Delete draft
+                </Button>
+              )}
               <Button
                 form="business-invoice-form"
                 type="submit"
@@ -1464,10 +1868,44 @@ function InvoiceForm({
           )}
         </div>
       </div>
+      {saved?.status === "cancelled" && (
+        <section
+          aria-label="Cancellation details"
+          className="flex flex-wrap items-start justify-between gap-3 border-y py-3 text-sm"
+        >
+          <div className="space-y-1">
+            <Badge variant="destructive">Cancelled</Badge>
+            <p>{saved.cancellation_reason}</p>
+          </div>
+          {saved.cancelled_at && (
+            <p className="text-muted-foreground">
+              {new Intl.DateTimeFormat("en-IN", {
+                dateStyle: "medium",
+                timeStyle: "short",
+                timeZone: "Asia/Kolkata",
+              }).format(new Date(saved.cancelled_at))}
+              <span> IST</span>
+            </p>
+          )}
+        </section>
+      )}
       {quotation && issued && saved && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-y py-3">
           <p className="text-sm">
             {quotationLabel(saved!)}
+            {saved.sent_on && (
+              <span className="ml-3 text-muted-foreground">
+                Sent {businessDocumentDate(saved.sent_on)}
+              </span>
+            )}
+            {saved.purchase_order_number && saved.status === "accepted" && (
+              <span className="ml-3 text-muted-foreground">
+                PO {saved.purchase_order_number}
+                {saved.purchase_order_date
+                  ? ` · ${businessDocumentDate(saved.purchase_order_date)}`
+                  : ""}
+              </span>
+            )}
             <span className="ml-3 text-muted-foreground">
               Quotations are not included in sales or GST workings.
             </span>
@@ -1491,13 +1929,31 @@ function InvoiceForm({
               </Button>
             ) : (
               <>
-                {saved.status !== "accepted" && (
+                {saved.status !== "accepted" && saved.status !== "awaiting_po" && (
                   <Button
                     variant="outline"
                     disabled={Boolean(busy)}
-                    onClick={() => quotationAction("accepted")}
+                    onClick={() => {
+                      setError(null);
+                      setSentOn(saved.sent_on || localDate());
+                      setSentOpen(true);
+                    }}
                   >
-                    {busy === "accepted" ? "Saving…" : "Mark accepted"}
+                    Mark sent
+                  </Button>
+                )}
+                {saved.status === "awaiting_po" && (
+                  <Button
+                    variant="outline"
+                    disabled={Boolean(busy)}
+                    onClick={() => {
+                      setError(null);
+                      setPurchaseOrderNumber(saved.purchase_order_number || "");
+                      setPurchaseOrderDate(saved.purchase_order_date || "");
+                      setAcceptOpen(true);
+                    }}
+                  >
+                    Mark accepted
                   </Button>
                 )}
                 {saved.status !== "declined" && (
@@ -1580,9 +2036,169 @@ function InvoiceForm({
             ? "The finalized quotation is locked. Record the customer’s response before converting it to an invoice."
             : "Finalizing locks this quotation and creates its PDF."
           : issued
-            ? "Issued documents are locked. Use a credit note to reduce or reverse an invoice."
+            ? saved?.status === "cancelled"
+              ? "This invoice is cancelled and remains locked. Its original PDF is still available."
+              : "Issued documents are locked. Use a credit note to reduce or reverse an invoice."
             : "Issuing saves the current invoice, assigns a number, locks it, and shares it with your CA."}
       </p>
+      <AlertDialog
+        open={cancelOpen}
+        onOpenChange={(open) => {
+          if (!open && busy !== "cancel") setCancelOpen(false);
+        }}
+      >
+        <AlertDialogContent initialFocus={keepInvoice} finalFocus={cancelTrigger}>
+          <form className="contents" onSubmit={cancelInvoice}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel invoice?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The invoice number and original PDF will be kept. The cancellation will be
+                included in your GST records.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Field label="Reason for cancellation" id="invoice-cancellation-reason">
+              <Textarea
+                id="invoice-cancellation-reason"
+                value={cancellationReason}
+                required
+                maxLength={500}
+                disabled={busy === "cancel"}
+                onChange={(event) => {
+                  setCancellationReason(event.target.value);
+                  setError(null);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {cancellationReason.length}/500 characters
+              </p>
+            </Field>
+            <Errors error={error} />
+            <AlertDialogFooter>
+              <AlertDialogCancel ref={keepInvoice} disabled={busy === "cancel"}>
+                Keep invoice
+              </AlertDialogCancel>
+              <AlertDialogAction
+                type="submit"
+                variant="destructive"
+                disabled={busy === "cancel" || !cancellationReason.trim()}
+              >
+                {busy === "cancel" ? "Cancelling…" : "Cancel invoice"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={sentOpen} onOpenChange={(open) => busy !== "awaiting_po" && setSentOpen(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Mark quotation sent</DialogTitle>
+          <DialogDescription>
+            This moves the quotation to Awaiting PO.
+          </DialogDescription>
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (sentOn) quotationAction("awaiting_po", { sent_on: sentOn });
+            }}
+          >
+            <Field label="Sent date" id="quotation-sent-on">
+              <Input
+                id="quotation-sent-on"
+                type="date"
+                required
+                value={sentOn}
+                disabled={busy === "awaiting_po"}
+                onChange={(event) => setSentOn(event.target.value)}
+              />
+            </Field>
+            <Errors error={error} />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={busy === "awaiting_po"} onClick={() => setSentOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy === "awaiting_po" || !sentOn}>
+                {busy === "awaiting_po" ? "Saving…" : "Mark sent"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={acceptOpen} onOpenChange={(open) => busy !== "accepted" && setAcceptOpen(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Mark quotation accepted</DialogTitle>
+          <DialogDescription>
+            Add the customer’s PO details if you have them. Both fields are optional.
+          </DialogDescription>
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              quotationAction("accepted", {
+                purchase_order_number: purchaseOrderNumber.trim(),
+                purchase_order_date: purchaseOrderDate,
+              });
+            }}
+          >
+            <Field label="PO number (optional)" id="quotation-po-number">
+              <Input
+                id="quotation-po-number"
+                maxLength={100}
+                value={purchaseOrderNumber}
+                disabled={busy === "accepted"}
+                onChange={(event) => setPurchaseOrderNumber(event.target.value)}
+              />
+            </Field>
+            <Field label="PO date (optional)" id="quotation-po-date">
+              <Input
+                id="quotation-po-date"
+                type="date"
+                value={purchaseOrderDate}
+                disabled={busy === "accepted"}
+                onChange={(event) => setPurchaseOrderDate(event.target.value)}
+              />
+            </Field>
+            <Errors error={error} />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={busy === "accepted"} onClick={() => setAcceptOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy === "accepted"}>
+                {busy === "accepted" ? "Saving…" : "Mark accepted"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!open && busy !== "delete") setDeleteOpen(false);
+        }}
+      >
+        <AlertDialogContent initialFocus={cancelDelete} finalFocus={deleteTrigger}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete draft {quotation ? "quotation" : credit ? "credit note" : "invoice"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes this draft. It cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Errors error={error} />
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={cancelDelete} disabled={busy === "delete"}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy === "delete"}
+              onClick={deleteDraft}
+            >
+              {busy === "delete" ? "Deleting…" : "Delete draft"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={numberingOpen} onOpenChange={setNumberingOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogTitle>Set quotation numbering</DialogTitle>

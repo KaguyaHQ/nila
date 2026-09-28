@@ -614,11 +614,50 @@ export interface paths {
         get: operations["getBusinessInvoice"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Deletes a draft document. Requires the Phoenix session and X-CSRF-Token header. */
+        delete: operations["deleteBusinessInvoice"];
         options?: never;
         head?: never;
         /** @description Requires the Phoenix session and X-CSRF-Token header. */
         patch: operations["updateBusinessInvoice"];
+        trace?: never;
+    };
+    "/api/business/{business_id}/invoices/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Cancels an issued ordinary invoice without deleting its number, PDF, or audit evidence. Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["cancelBusinessInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/business/{business_id}/invoices/{id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Copies an invoice or quotation into a new unnumbered draft. Requires the Phoenix session and X-CSRF-Token header. */
+        post: operations["copyBusinessInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/business/{business_id}/invoices/{id}/issue": {
@@ -2167,7 +2206,7 @@ export interface components {
             original_invoice_id: number | null;
             converted_invoice_id: number | null;
             /** @enum {string} */
-            status: "draft" | "issued" | "accepted" | "declined" | "converted";
+            status: "draft" | "issued" | "awaiting_po" | "accepted" | "declined" | "converted" | "cancelled";
             customer_id: number;
             billing_address_id: number | null;
             shipping_address_id: number | null;
@@ -2183,6 +2222,10 @@ export interface components {
             totals: components["schemas"]["BusinessTotals"];
             snapshot: components["schemas"]["BusinessSnapshot"];
             issued_at: string | null;
+            sent_on: string | null;
+            cancelled_at: string | null;
+            cancelled_by_id: number | null;
+            cancellation_reason: string | null;
             inserted_at: string;
             subject: string | null;
             delivery_state_code: string | null;
@@ -2422,6 +2465,11 @@ export interface components {
         BusinessServiceWrite: {
             service: components["schemas"]["BusinessServiceInput"];
         };
+        BusinessCancellationWrite: {
+            cancellation: {
+                reason: string;
+            };
+        };
         BusinessInvoiceWrite: {
             invoice: components["schemas"]["InvoiceInput"];
         };
@@ -2450,7 +2498,10 @@ export interface components {
         };
         QuotationStatus: {
             /** @enum {string} */
-            status: "accepted" | "declined";
+            status: "awaiting_po" | "accepted" | "declined";
+            sent_on?: string;
+            purchase_order_number?: string;
+            purchase_order_date?: string;
         };
         BusinessServicePatch: {
             service: {
@@ -6153,6 +6204,67 @@ export interface operations {
             };
         };
     };
+    deleteBusinessInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                business_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Draft deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessDeleted"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The selected business is unavailable. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The draft was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Only an unreferenced draft can be deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
     updateBusinessInvoice: {
         parameters: {
             query?: never;
@@ -6236,6 +6348,141 @@ export interface operations {
             };
             /** @description Request failed; no successful write is implied. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    cancelBusinessInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                business_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessCancellationWrite"];
+            };
+        };
+        responses: {
+            /** @description Invoice cancelled or already cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceResult"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The selected business is unavailable. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The invoice was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The invoice has issued credit notes or its filing period cannot be cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The cancellation reason or document type is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+        };
+    };
+    copyBusinessInvoice: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                business_id: number;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New draft created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessInvoiceResult"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The selected business is unavailable. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description The source document was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiProblem"];
+                };
+            };
+            /** @description Only an ordinary invoice or quotation can be copied. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -70,6 +70,11 @@ sales source in one transaction. A failed issue leaves a new invoice unsaved or
 an existing draft unchanged, with no number used. **Save draft** remains available
 for unfinished work.
 
+The editor keeps unfinished new invoice and quotation work in the browser. It
+restores that work after a reload and asks before in-app navigation discards
+changes. Saved drafts use the latest successful save as their clean baseline;
+issuing, finalizing or deleting clears the local recovery copy.
+
 The portal is `/app/business/:business_id/invoices`, where `business_id` is the
 authorized client ID. A user can access several businesses, including clients
 invited from different CA firms, and can also belong to a CA firm. Business
@@ -96,10 +101,11 @@ unchanged when branding is updated. Goods lines require an explicit unit.
 
 A finalized quotation cannot be edited. **Revise quotation** creates a linked
 draft with its own number when finalized; the original PDF stays intact. The
-business can mark a finalized quotation accepted or declined. Accepted
-quotations convert into an invoice draft with the customer, items, prices,
-subject, delivery address/state, place of supply and notes copied. The quote's
-customer reference stays on the quote; the invoice's PO number and date start blank.
+business marks it sent with the sent date, moving it to **Awaiting PO**, then
+records acceptance with an optional customer PO number and date or marks it
+declined. Accepted quotations convert into an invoice draft with the customer,
+items, prices, subject, delivery address/state, place of supply, notes and any
+accepted PO details copied. The finalized quotation PDF remains unchanged.
 Conversion keeps a link to that invoice and retries return the same invoice.
 The invoice date is today; quotation validity does not become a payment due
 date.
@@ -115,6 +121,19 @@ and SHA-256 hash, and a sales source for the CA's existing working. Drafts stay
 out of the working. Filed months reject new issues. Issued documents cannot be
 edited; linked credit notes preserve the original document and cap credited
 amounts by original item type, HSN/SAC, rate and tax amounts.
+
+An issued ordinary invoice can be cancelled while its GST month remains open.
+Cancellation requires a reason and records who cancelled it and when. The
+original number, snapshot and PDF remain available, while the retained sales
+source is marked cancelled and the CA working is recalculated. An invoice with
+an issued credit note cannot also be cancelled because that would reverse the
+sale twice. Quotations and credit notes use their own existing workflows and
+cannot be cancelled through this action.
+
+An ordinary invoice or quotation can be copied into a new unnumbered draft. The
+copy keeps the customer, addresses, place of supply, items, subject, delivery
+details and notes, uses today's date, and does not carry issue links, PDFs, due
+dates or customer purchase-order references. Credit notes cannot be copied.
 
 Typst renders the snapshot using the bundled template and fonts: Switzer for
 document text, with a size-matched Inter rupee symbol. Both business
