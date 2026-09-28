@@ -10,7 +10,6 @@ import {
 } from "@tanstack/react-router";
 import { ArrowLeft, ChevronsUpDown, Download, FileText, Plus } from "lucide-react";
 import {
-  Fragment,
   createContext,
   type FormEvent,
   lazy,
@@ -23,11 +22,11 @@ import {
 } from "react";
 import { type InvoiceCalculation, InvoiceDocument } from "@/components/business/invoice-document";
 import { AddBusinessDialog } from "@/components/business/add-business-dialog";
-import { CustomerAddressPicker } from "@/components/business/customer-address-picker";
 import { StateCombobox } from "@/components/business/state-combobox";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -47,6 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   BusinessApiError,
   type BusinessBootstrap,
@@ -234,10 +234,7 @@ export function BusinessLayout() {
             className={`mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-8 ${editingInvoice ? "max-w-[1440px]" : "max-w-6xl"}`}
           >
             <Link to="/business/$businessId/invoices" params={{ businessId }} className="font-semibold">
-              Nila{" "}
-              <span className="ml-3 font-normal text-muted-foreground">
-                {query.data.business.name}
-              </span>
+              Nila
             </Link>
             <div className="flex items-center gap-3">
               <DropdownMenu open={workspaceMenuOpen} onOpenChange={setWorkspaceMenuOpen}>
@@ -437,142 +434,135 @@ export function BusinessCustomers() {
   const queryKey = businessQueryKey(businessId);
   const data = useBusiness();
   const cache = useQueryClient();
+  const navigate = useNavigate();
   const empty = { name: "", gstin: "", address: "", state_code: "" };
-  const [editing, setEditing] = useState<number | null>(null);
   const [form, setForm] = useState(empty);
   const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const customerSave = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: (customer: typeof empty) =>
+      businessRequest("createBusinessCustomer", {
+        businessId,
+        body: { customer },
+      }),
+    onSuccess: () => cache.invalidateQueries({ queryKey }),
+  });
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError(null);
+    if (customerSave.isPending) return;
     try {
-      await businessRequest(editing ? "updateBusinessCustomer" : "createBusinessCustomer", { businessId,
-        id: editing ?? undefined,
-        body: { customer: form },
-      });
-      await cache.invalidateQueries({ queryKey });
+      const result = await customerSave.mutateAsync(form);
       setShow(false);
-      setForm(empty);
-      setEditing(null);
-    } catch (error) {
-      setError(error as Error);
-    } finally {
-      setBusy(false);
+      await navigate({
+        to: "/business/$businessId/customers/$customerId",
+        params: { businessId, customerId: String(result.customer.id) },
+      });
+    } catch {
+      // The mutation keeps its error visible in the dialog.
     }
   }
-  function edit(customer: BusinessCustomer) {
-    setEditing(customer.id);
-    setForm({
-      name: customer.name,
-      gstin: customer.gstin ?? "",
-      address: customer.address,
-      state_code: customer.state_code,
-    });
-    setError(null);
+  function add() {
+    setForm(empty);
+    customerSave.reset();
     setShow(true);
   }
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Customers</h1>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setForm(empty);
-            setError(null);
-            setShow(true);
-          }}
-        >
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold">Customers</h1>
+          <p className="text-sm text-muted-foreground">
+            {data.customers.length === 1 ? "1 customer" : `${data.customers.length} customers`}
+          </p>
+        </div>
+        <Button onClick={add}>
           <Plus /> Add customer
         </Button>
       </div>
-      {show && (
-        <form
-          id="business-customer-form"
-          onSubmit={submit}
-          className="max-w-xl space-y-5 rounded-lg border p-5"
-        >
-          <h2 className="text-lg font-medium">{editing ? "Edit customer" : "Add customer"}</h2>
-          <Errors error={error} />
-          <fieldset disabled={busy} className="space-y-4">
-            <Field label="Customer name" id="customer-name">
-              <Input
-                id="customer-name"
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </Field>
-            <Field label="GSTIN (optional)" id="customer-gstin">
-              <Input
-                id="customer-gstin"
-                value={form.gstin}
-                maxLength={15}
-                onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-              />
-            </Field>
-            <Field label="Billing address" id="customer-address">
-              <Input
-                id="customer-address"
-                required
-                value={form.address ?? ""}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-              />
-            </Field>
-            <Field label="State" id="customer-state">
-              <StateSelect
-                id="customer-state"
-                value={form.state_code ?? ""}
-                onChange={(value) => setForm({ ...form, state_code: value })}
-              />
-            </Field>
-            <div className="flex gap-3">
-              <Button type="submit">{busy ? "Saving…" : "Save customer"}</Button>
-              <Button type="button" variant="outline" onClick={() => setShow(false)}>
-                Cancel
-              </Button>
-            </div>
-          </fieldset>
-        </form>
-      )}
+      <Dialog open={show} onOpenChange={(next) => !customerSave.isPending && setShow(next)}>
+        <DialogContent className="sm:max-w-lg">
+          <div className="space-y-1">
+            <DialogTitle>Add customer</DialogTitle>
+            <DialogDescription>
+              Start with the billing details. Add hospital locations after saving.
+            </DialogDescription>
+          </div>
+          <form id="business-customer-form" onSubmit={submit} className="space-y-4">
+            <Errors error={customerSave.error} />
+            <fieldset disabled={customerSave.isPending} className="space-y-4">
+              <Field label="Customer name" id="customer-name">
+                <Input
+                  id="customer-name"
+                  required
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                />
+              </Field>
+              <Field label="GSTIN (optional)" id="customer-gstin">
+                <Input
+                  id="customer-gstin"
+                  value={form.gstin}
+                  maxLength={15}
+                  onChange={(event) => setForm({ ...form, gstin: event.target.value.toUpperCase() })}
+                />
+              </Field>
+              <Field label="Primary billing address" id="customer-address">
+                <Textarea
+                  id="customer-address"
+                  required
+                  rows={3}
+                  value={form.address}
+                  onChange={(event) => setForm({ ...form, address: event.target.value })}
+                />
+              </Field>
+              <Field label="State" id="customer-state">
+                <StateSelect
+                  id="customer-state"
+                  value={form.state_code}
+                  onChange={(value) => setForm({ ...form, state_code: value })}
+                />
+              </Field>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShow(false)}>Cancel</Button>
+                <Button type="submit">{customerSave.isPending ? "Saving…" : "Save customer"}</Button>
+              </div>
+            </fieldset>
+          </form>
+        </DialogContent>
+      </Dialog>
       <div className="overflow-hidden rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Customer</TableHead>
+              <TableHead className="w-1/2 pl-4">Customer</TableHead>
               <TableHead>GSTIN</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
+              <TableHead>Service locations</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.customers.map((customer) => (
-              <Fragment key={customer.id}>
-                <TableRow>
-                  <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell>{customer.gstin || "Unregistered"}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" onClick={() => edit(customer)}>
-                      Edit<span className="sr-only"> {customer.name}</span>
-                    </Button>
+                <RecordTableRow key={customer.id}>
+                  <TableCell className="pl-4 font-medium">
+                    <RecordTableLink
+                      to="/business/$businessId/customers/$customerId"
+                      params={{ businessId, customerId: String(customer.id) }}
+                      className="hover:underline hover:underline-offset-4"
+                    >
+                      {customer.name}
+                    </RecordTableLink>
                   </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell colSpan={3} className="py-2">
-                    <CustomerAddressManager
-                      customerId={customer.id}
-                      addresses={data.customer_addresses.filter(
-                        (address) => address.customer_id === customer.id,
-                      )}
-                      states={data.states}
-                    />
+                  <TableCell className={customer.gstin ? "" : "text-muted-foreground"}>
+                    {customer.gstin || "Unregistered"}
                   </TableCell>
-                </TableRow>
-              </Fragment>
+                  <TableCell className="text-muted-foreground">
+                    {data.customer_addresses.filter((address) =>
+                      address.customer_id === customer.id &&
+                      address.usage !== "billing" &&
+                      !address.is_primary_billing,
+                    ).length}
+                  </TableCell>
+                </RecordTableRow>
             ))}
             {data.customers.length === 0 && (
               <TableRow>
@@ -588,67 +578,265 @@ export function BusinessCustomers() {
   );
 }
 
-function CustomerAddressManager({
-  customerId,
-  addresses,
-  states,
-}: {
-  customerId: number;
-  addresses: BusinessCustomerAddress[];
-  states: BusinessBootstrap["states"];
-}) {
-  const [billingId, setBillingId] = useState<number | null>(
-    addresses.find((address) => address.is_primary_billing)?.id ?? null,
+export function BusinessCustomerDetail() {
+  const businessId = useBusinessId();
+  const { customerId } = useParams({ strict: false }) as { customerId: string };
+  const data = useBusiness();
+  const cache = useQueryClient();
+  const customer = data.customers.find((entry) => entry.id === Number(customerId));
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [nameOpen, setNameOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [addressOpen, setAddressOpen] = useState(false);
+  const [addressPurpose, setAddressPurpose] = useState<"billing" | "location">("location");
+  const [editingAddress, setEditingAddress] = useState<BusinessCustomerAddress | null>(null);
+  const [addressDraft, setAddressDraft] = useState<Omit<BusinessCustomerAddress, "id" | "customer_id">>({
+    label: "", address: "", state_code: "", gstin: null, usage: "shipping",
+    is_primary_billing: false, is_primary_shipping: false,
+  });
+  const nameSave = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: (input: { id: number; name: string; address: string; state_code: string; gstin: string }) =>
+      businessRequest("updateBusinessCustomer", {
+        businessId,
+        id: input.id,
+        body: { customer: { name: input.name, address: input.address, state_code: input.state_code, gstin: input.gstin } },
+      }),
+    onSuccess: () => cache.invalidateQueries({ queryKey: businessQueryKey(businessId) }),
+  });
+  const addressSave = useMutation({
+    retry: false,
+    networkMode: "always",
+    mutationFn: (input: { id: number | null; address: typeof addressDraft }) =>
+      businessRequest(input.id ? "updateBusinessCustomerAddress" : "createBusinessCustomerAddress", {
+        businessId,
+        customer_id: Number(customerId),
+        id: input.id ?? undefined,
+        body: { address: input.address },
+      }),
+    onSuccess: () => cache.invalidateQueries({ queryKey: businessQueryKey(businessId) }),
+  });
+
+  async function submitName(event: FormEvent) {
+    event.preventDefault();
+    if (!customer || nameSave.isPending) return;
+    try {
+      await nameSave.mutateAsync({
+        id: customer.id, name, address: customer.address,
+        state_code: customer.state_code, gstin: customer.gstin ?? "",
+      });
+      setNameOpen(false);
+    } catch {
+      // The mutation keeps its error visible in the dialog.
+    }
+  }
+
+  function openAddress(address: BusinessCustomerAddress | null, purpose: "billing" | "location") {
+    setEditingAddress(address);
+    setAddressPurpose(purpose);
+    setAddressDraft(address ? {
+      label: address.label,
+      address: address.address,
+      state_code: address.state_code,
+      gstin: address.gstin,
+      usage: address.usage,
+      is_primary_billing: address.is_primary_billing,
+      is_primary_shipping: address.is_primary_shipping,
+    } : {
+      label: "", address: "", state_code: "", gstin: null,
+      usage: purpose === "billing" ? "billing" : "shipping",
+      is_primary_billing: false, is_primary_shipping: false,
+    });
+    addressSave.reset();
+    setAddressOpen(true);
+  }
+
+  async function submitAddress(event: FormEvent) {
+    event.preventDefault();
+    if (addressSave.isPending) return;
+    try {
+      await addressSave.mutateAsync({ id: editingAddress?.id ?? null, address: addressDraft });
+      setAddressOpen(false);
+    } catch {
+      // The mutation keeps its error visible in the dialog.
+    }
+  }
+
+  if (!customer) {
+    return <div className="mx-auto max-w-4xl space-y-4">
+      <h1 className="text-2xl font-semibold">Customer not found</h1>
+      <Link to="/business/$businessId/customers" params={{ businessId }} className="text-sm underline underline-offset-4">Back to customers</Link>
+    </div>;
+  }
+
+  const addresses: BusinessCustomerAddress[] = data.customer_addresses.filter(
+    (address) => address.customer_id === customer.id,
   );
-  const [shippingId, setShippingId] = useState<number | null>(
-    addresses.find((address) => address.is_primary_shipping)?.id ?? null,
+  const primary = addresses.find((address) => address.is_primary_billing);
+  const locations = addresses.filter(
+    (address) => address.id !== primary?.id && address.usage !== "billing",
   );
-  return (
-    <details className="rounded-md border px-3 py-2">
-      <summary className="cursor-pointer text-sm text-muted-foreground">
-        Manage addresses ({addresses.length})
-      </summary>
-      <div className="space-y-3 pt-3">
-        {addresses.length > 0 && (
-          <ul className="space-y-1 text-sm">
-            {addresses.map((address) => (
-              <li key={address.id}>
-                <span className="font-medium">{address.label}</span>
-                <span className="text-muted-foreground"> · {address.state_code}</span>
-                {address.gstin && <span className="text-muted-foreground"> · GSTIN {address.gstin}</span>}
-                {address.is_primary_billing && <span className="text-muted-foreground"> · Default billing</span>}
-                {address.is_primary_shipping && <span className="text-muted-foreground"> · Default shipping</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Billing addresses</p>
-            <CustomerAddressPicker
-              customerId={customerId}
-              addresses={addresses}
-              type="billing"
-              value={billingId}
-              states={states}
-              onSelect={(address) => setBillingId(address?.id ?? null)}
-            />
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Shipping addresses</p>
-            <CustomerAddressPicker
-              customerId={customerId}
-              addresses={addresses}
-              type="shipping"
-              value={shippingId}
-              states={states}
-              onSelect={(address) => setShippingId(address?.id ?? null)}
-            />
-          </div>
+  const stateName = (code: string) => data.states.find((state) => state.code === code)?.name ?? code;
+  const billingAddresses = addresses.filter(
+    (address) => address.id !== primary?.id && address.usage !== "shipping",
+  );
+  const query = search.trim().toLocaleLowerCase();
+  const filteredLocations = query
+    ? locations.filter((address) => [address.label, address.address, stateName(address.state_code), address.gstin ?? ""]
+      .some((value) => value.toLocaleLowerCase().includes(query)))
+    : locations;
+  const pageSize = 25;
+  const visibleLocations = filteredLocations.slice(page * pageSize, (page + 1) * pageSize);
+
+  return <div className="mx-auto max-w-4xl space-y-8">
+    <div className="space-y-3">
+      <Link to="/business/$businessId/customers" params={{ businessId }} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-4" /> Customers
+      </Link>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{customer.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{customer.gstin || "Unregistered customer"}</p>
         </div>
+        <Button variant="outline" onClick={() => { setName(customer.name); nameSave.reset(); setNameOpen(true); }}>
+          Edit name
+        </Button>
       </div>
-    </details>
-  );
+    </div>
+
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">Billing addresses</h2>
+          <p className="text-sm text-muted-foreground">Used when preparing invoices for this customer.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => openAddress(null, "billing")}><Plus /> Add billing address</Button>
+      </div>
+      <div className="divide-y rounded-lg border text-sm">
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-medium">{primary?.label ?? "Primary address"}</p>
+              <Badge variant="secondary">Default billing</Badge>
+            </div>
+            <p className="mt-2 whitespace-pre-wrap">{primary?.address ?? customer.address}</p>
+            <p className="mt-1 text-muted-foreground">{stateName(primary?.state_code ?? customer.state_code)}{(primary?.gstin ?? customer.gstin) ? ` · GSTIN ${primary?.gstin ?? customer.gstin}` : ""}</p>
+          </div>
+          {primary && <Button variant="ghost" size="sm" onClick={() => openAddress(primary, "billing")}>Edit</Button>}
+        </div>
+        {billingAddresses.map((address) => <div key={address.id} className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <p className="font-medium">{address.label}</p>
+            <p className="mt-1 whitespace-pre-wrap">{address.address}</p>
+            <p className="mt-1 text-muted-foreground">{stateName(address.state_code)}{address.gstin ? ` · GSTIN ${address.gstin}` : ""}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => openAddress(address, "billing")}>Edit</Button>
+        </div>)}
+      </div>
+    </section>
+
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">Service locations</h2>
+          <p className="text-sm text-muted-foreground">{locations.length} saved ship-to {locations.length === 1 ? "location" : "locations"} for invoices.</p>
+        </div>
+        <Button onClick={() => openAddress(null, "location")}><Plus /> Add location</Button>
+      </div>
+      <Input
+        aria-label="Search service locations"
+        placeholder="Search hospitals, addresses, states, or GSTINs"
+        value={search}
+        onChange={(event) => { setSearch(event.target.value); setPage(0); }}
+        className="max-w-md"
+      />
+      <div className="overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader><TableRow><TableHead className="pl-4">Location</TableHead><TableHead>Address</TableHead><TableHead>State</TableHead><TableHead className="w-16 pr-4"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+          <TableBody>
+            {visibleLocations.map((address) => <TableRow key={address.id}>
+              <TableCell className="pl-4 font-medium">{address.label}</TableCell>
+              <TableCell className="max-w-96 whitespace-normal">
+                <span className="line-clamp-2">{address.address}</span>
+                {address.gstin && <span className="text-xs text-muted-foreground">GSTIN {address.gstin}</span>}
+              </TableCell>
+              <TableCell>{stateName(address.state_code)}</TableCell>
+              <TableCell className="pr-4 text-right"><Button variant="ghost" size="sm" onClick={() => openAddress(address, "location")}>Edit<span className="sr-only"> {address.label}</span></Button></TableCell>
+            </TableRow>)}
+            {filteredLocations.length === 0 && <TableRow><TableCell colSpan={4} className="py-10 text-center text-muted-foreground">{query ? "No locations match your search." : "No service locations yet. Add the first hospital or ship-to site."}</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </div>
+      {filteredLocations.length > pageSize && <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredLocations.length)} of {filteredLocations.length}</span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((current) => current - 1)}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={(page + 1) * pageSize >= filteredLocations.length} onClick={() => setPage((current) => current + 1)}>Next</Button>
+        </div>
+      </div>}
+    </section>
+
+    <Dialog open={nameOpen} onOpenChange={(next) => !nameSave.isPending && setNameOpen(next)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogTitle>Edit customer name</DialogTitle>
+        <form onSubmit={submitName} className="space-y-4">
+          <Errors error={nameSave.error} />
+          <fieldset disabled={nameSave.isPending} className="space-y-4">
+            <Field label="Customer name" id="edit-customer-name">
+              <Input id="edit-customer-name" required value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setNameOpen(false)}>Cancel</Button>
+              <Button type="submit">{nameSave.isPending ? "Saving…" : "Save name"}</Button>
+            </div>
+          </fieldset>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={addressOpen} onOpenChange={(next) => !addressSave.isPending && setAddressOpen(next)}>
+      <DialogContent className="sm:max-w-lg">
+        <div className="space-y-1">
+          <DialogTitle>{editingAddress ? "Edit" : "Add"} {addressPurpose === "billing" ? "billing address" : "service location"}</DialogTitle>
+          <DialogDescription>
+            {addressPurpose === "billing"
+              ? "Save the address and GST details used when billing this customer."
+              : "Save a hospital or other ship-to site for future invoices."}
+          </DialogDescription>
+        </div>
+        <form onSubmit={submitAddress} className="space-y-4">
+          <Errors error={addressSave.error} />
+          <fieldset disabled={addressSave.isPending} className="space-y-4">
+            <Field label={addressPurpose === "billing" ? "Address label" : "Hospital or location name"} id="saved-address-label">
+              <Input id="saved-address-label" required maxLength={100} value={addressDraft.label} onChange={(event) => setAddressDraft({ ...addressDraft, label: event.target.value })} />
+            </Field>
+            <Field label="Address" id="saved-address-text">
+              <Textarea id="saved-address-text" required maxLength={2000} rows={3} value={addressDraft.address} onChange={(event) => setAddressDraft({ ...addressDraft, address: event.target.value })} />
+            </Field>
+            <Field label="State" id="saved-address-state">
+              <StateSelect id="saved-address-state" value={addressDraft.state_code} onChange={(state_code) => setAddressDraft({ ...addressDraft, state_code })} />
+            </Field>
+            <Field label="GSTIN (optional)" id="saved-address-gstin">
+              <Input id="saved-address-gstin" maxLength={15} value={addressDraft.gstin ?? ""} onChange={(event) => setAddressDraft({ ...addressDraft, gstin: event.target.value.toUpperCase() })} />
+            </Field>
+            {addressPurpose === "billing" && !editingAddress?.is_primary_billing && <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={addressDraft.is_primary_billing}
+                onCheckedChange={(checked) => setAddressDraft({ ...addressDraft, is_primary_billing: Boolean(checked) })}
+              />
+              Make this the default billing address
+            </label>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" onClick={() => setAddressOpen(false)}>Cancel</Button>
+              <Button type="submit">{addressSave.isPending ? "Saving…" : editingAddress ? "Save changes" : "Save address"}</Button>
+            </div>
+          </fieldset>
+        </form>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }
 
 export function BusinessServices() {
