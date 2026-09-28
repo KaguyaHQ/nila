@@ -34,6 +34,7 @@ defmodule Nila.Gst.Issues do
     # Arithmetic and extraction checks on one invoice
     "missing_taxable_value" => {"blocking", :correction},
     "missing_tax_amount" => {"blocking", :correction},
+    "rsp_tax_unresolved" => {"blocking", :correction},
     "line_arithmetic" => {"required", :correction},
     "cgst_sgst_unequal" => {"required", :correction},
     "lopsided_tax_split" => {"required", :correction},

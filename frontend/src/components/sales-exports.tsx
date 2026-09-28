@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { urlDestination } from "@/lib/route-url";
 import type { SalesExportItem, SalesWorkspace } from "@/lib/sales-api";
-import { Link } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -26,6 +26,8 @@ export function SalesExports({ data }: { data: SalesWorkspace }) {
 }
 
 function ExportList({ data }: { data: SalesWorkspace }) {
+  const { section } = useParams({ strict: false });
+  const search = useSearch({ strict: false });
   const [busy, setBusy] = useState<SalesExportItem["id"] | null>(null);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const operation = useRef<AbortController | null>(null);
@@ -148,6 +150,16 @@ function ExportList({ data }: { data: SalesWorkspace }) {
                   ) : (
                     <Link
                       {...urlDestination(blocker.path)}
+                      search={{
+                        ...urlDestination(blocker.path).search,
+                        ...(blocker.path.includes("/invoices/")
+                          ? {
+                              origin: "return",
+                              returnTask: search.returnTask,
+                              returnSection: section,
+                            }
+                          : {}),
+                      }}
                       className="underline underline-offset-4"
                     >
                       {blocker.message}

@@ -166,7 +166,7 @@ defmodule NilaWeb.Gstr1ControllerTest do
     assert Enum.any?(
              workspace["exports"]["blockers"],
              &(&1["message"] == issue["message"] and
-                 &1["path"] == "/gst/#{client.id}/2026-07/sales/checks")
+                 String.starts_with?(&1["path"], "/gst/#{client.id}/2026-07/sales?returnTask="))
            )
   end
 

@@ -77,6 +77,7 @@ defmodule Nila.Gst.Sales.TaxpayerChecks do
                 "legal_name" => lookup.legal_name,
                 "trade_name" => lookup.trade_name,
                 "registration_status" => lookup.registration_status,
+                "cancellation_date" => (lookup.payload || %{})["cxdt"],
                 "checked_at" => DateTime.to_iso8601(lookup.checked_at)
               }
             end

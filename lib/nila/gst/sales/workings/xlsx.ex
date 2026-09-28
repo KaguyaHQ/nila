@@ -176,7 +176,8 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
         quantity: v["qty"],
         rate: v["rate"],
         treatment: if((v["iamt"] || 0) != 0, do: "Interstate", else: "Intrastate"),
-        taxable: v["txval"]
+        taxable: v["txval"],
+        supplied_tax: Map.take(v, ~w(camt samt iamt))
       }
     end
   end
@@ -585,6 +586,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
            :text},
           row.source
         ]
+        |> valuation_cells(row)
       end)
 
     sheet =
@@ -623,7 +625,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
     |> XlsxWriter.write(
       2,
       0,
-      "Source = reviewed invoice amounts. Calculated = taxable value x tax rate.",
+      "Source = reviewed invoice amounts. Calculated = taxable value x tax rate; RSP rows use the stated valuation basis instead.",
       format: @subtitle_format
     )
   end
@@ -710,6 +712,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
            "=IF(COUNT(I#{excel_row}:K#{excel_row})<3,\"\",SUM(I#{excel_row}:K#{excel_row}))",
            :money}
         ]
+        |> supplied_hsn_cells(row)
       end)
 
     summary = context.hsn_rows |> Enum.group_by(&{&1.hsn, &1.rate, &1.uqc}) |> Enum.sort()
@@ -997,6 +1000,35 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
     end
   end
 
+  # Supplied B2CS summaries are not invoices and carry no invoice valuation result.
+  defp valuation_cells(cells, %{document_type: "Supplied summary"}), do: cells
+
+  defp valuation_cells(cells, %{tax_determination: determination}) do
+    if determination.calculate_from_taxable? do
+      cells
+    else
+      basis = determination.regime |> Atom.to_string() |> String.upcase()
+
+      explanation =
+        case determination.amount_origin do
+          :reviewer_entered -> "edited tax amounts; HSN reconciled"
+          :invoice_value_residual -> "invoice value less taxable value; HSN reconciled"
+          :unresolved -> "tax basis needs review"
+        end
+
+      Enum.reduce([11, 12, 14, 15, 17, 18], cells, &List.replace_at(&2, &1, nil))
+      |> List.replace_at(20, basis <> ": " <> explanation)
+    end
+  end
+
+  defp supplied_hsn_cells(cells, %{supplied_tax: tax}) do
+    Enum.reduce(Enum.with_index(~w(camt samt iamt), 8), cells, fn {head, index}, acc ->
+      List.replace_at(acc, index, {:money, tax[head]})
+    end)
+  end
+
+  defp supplied_hsn_cells(cells, _row), do: cells
+
   defp tax_rows(invoices) do
     invoices
     |> Enum.reject(&is_nil(Gstr1.filing_table(&1)))
@@ -1029,6 +1061,7 @@ defmodule Nila.Gst.Sales.Workings.Xlsx do
           section: section(invoice),
           treatment: treatment,
           rate: rate,
+          tax_determination: Nila.Gst.Sales.TaxDetermination.from_invoice(invoice),
           taxable: taxable,
           cgst: cgst,
           sgst: sgst,

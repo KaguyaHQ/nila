@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
@@ -65,6 +65,7 @@ const docTypes = [
   "Delivery challan — liquid gas",
   "Other delivery challan",
 ];
+const rowKey = (row: Row) => `${row.source_filename ?? ""}:${row.sheet}:${row.row}`;
 const money = (value: number) =>
   value.toLocaleString("en-IN", { style: "currency", currency: "INR" });
 async function result<T>(response: Response): Promise<T> {
@@ -73,7 +74,27 @@ async function result<T>(response: Response): Promise<T> {
   return body;
 }
 
-export function SalesReportChecks({ data }: { data: SalesWorkspace }) {
+export function SalesReportChecks({
+  data,
+  scope = "return",
+  section,
+  selectedTask,
+}: {
+  data: SalesWorkspace;
+
+  scope?: "sales" | "return";
+
+  section?: string;
+
+  selectedTask?: string;
+}) {
+  const [selection, setSelection] = useState(selectedTask ?? "");
+  const [dirtyTasks, setDirtyTasks] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (selectedTask) setSelection(selectedTask);
+  }, [selectedTask]);
+
   const path = `/api/workspace/sales/${data.client.id}/${data.period}/reports`;
   const cache = useQueryClient();
   const query = useQuery({
@@ -86,7 +107,14 @@ export function SalesReportChecks({ data }: { data: SalesWorkspace }) {
   const save = useMutation({
     retry: false,
     networkMode: "always",
-    mutationFn: ({ task, values }: { task: Task; values: Record<string, unknown> }) =>
+    mutationFn: ({
+      task,
+      values,
+    }: {
+      task: Task;
+      values: Record<string, unknown>;
+      draftKey: string;
+    }) =>
       fetch(path, {
         method: "PATCH",
         credentials: "same-origin",
@@ -105,7 +133,12 @@ export function SalesReportChecks({ data }: { data: SalesWorkspace }) {
           values,
         }),
       }).then(result),
-    onSuccess: async () => {
+    onSuccess: async (_result, { draftKey }) => {
+      setDirtyTasks((ids) => {
+        const next = new Set(ids);
+        next.delete(draftKey);
+        return next;
+      });
       setFailed(null);
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["sales"] }),
@@ -116,63 +149,126 @@ export function SalesReportChecks({ data }: { data: SalesWorkspace }) {
     },
     onError: (_error, { task }) => setFailed(task.id),
   });
+  useBlocker({
+    shouldBlockFn: () =>
+      save.isPending ||
+      (dirtyTasks.size > 0 && !window.confirm("Discard your unsaved report changes?")),
+    enableBeforeUnload: dirtyTasks.size > 0 || save.isPending,
+  });
   if (query.isPending) return <p role="status">Loading report issues…</p>;
   if (query.error) return <p role="alert">{query.error.message}</p>;
-  for (const task of query.data.tasks) seen.current.set(task.id, task);
-  const current = new Set(query.data.tasks.map((task) => task.id));
+
+  const belongs = (task: Task) => {
+    if (task.kind === "invoice") return false;
+    const sales = task.kind === "notes";
+
+    if (sales !== (scope === "sales")) return false;
+
+    if (!section) return true;
+
+    const sheet = task.sheet.toLowerCase();
+
+    if (section === "hsn") return sheet.includes("hsn") || task.kind === "reconciliation";
+
+    if (section === "b2cs") return sheet.includes("b2cs") || task.kind === "basis";
+
+    if (section === "documents") return sheet.includes("doc");
+
+    return sheet === section.toLowerCase();
+  };
+
+  const tasks = query.data.tasks.filter(belongs);
+
+  for (const task of tasks) seen.current.set(task.id, task);
+
+  const current = new Set(tasks.map((task) => task.id));
+
+  const available = [...seen.current.values()].filter(belongs);
+
+  const active = available.find((task) => task.id === selection) ?? tasks[0] ?? available[0];
+
+  if (!available.length) return null;
+
   return (
     <div className="space-y-4">
-      <p role="status" className="text-sm">
-        {current.size
-          ? `${current.size} ${current.size === 1 ? "issue" : "issues"} remaining.`
-          : "No report issues remaining."}
-      </p>
-      {[...seen.current.values()].map((task) => (
-        <ReportTask
-          key={task.id}
-          task={task}
-          data={data}
-          states={query.data.states}
-          resolved={!current.has(task.id)}
-          disabled={
-            !query.data.editable || save.isPending || query.isFetching || failed === task.id
-          }
-          error={failed === task.id ? save.error?.message : undefined}
-          onRefresh={async () => {
-            const refreshed = await query.refetch();
-            if (refreshed.error) return null;
-            setFailed(null);
-            save.reset();
-            return refreshed.data?.tasks.find((item) => item.id === task.id)?.basis ?? null;
-          }}
-          onSave={(values, reviewedBasis, row) => {
-            if (!save.isPending)
-              save.mutate({
-                task: {
-                  ...task,
-                  basis: reviewedBasis,
-                  ...(row ? { sheet: row.sheet, row: row.row, source_filename: row.source_filename, source_ids: [] } : {}),
-                },
-                values,
-              });
-          }}
-        />
-      ))}
-      {current.size === 0 && (
-        <Link
-          to="/gst/$clientId/$period/sales"
-          params={{ clientId: String(data.client.id), period: data.period }}
-          className="text-sm underline"
-        >
-          Back to summary and downloads
-        </Link>
+      {available.length > 1 && (
+        <label className="block max-w-xl space-y-2 text-sm">
+          <span className="font-medium">
+            {scope === "sales" ? "Review sales" : "Review return section"}
+          </span>
+          <SelectField
+            aria-label={scope === "sales" ? "Review sales" : "Review return section"}
+            value={active?.id ?? ""}
+            onValueChange={(nextValue) => setSelection(nextValue)}
+          >
+            {available.map((task) => (
+              <SelectFieldOption key={task.id} value={task.id}>
+                {task.title}
+                {current.has(task.id) ? "" : " — Saved"}
+              </SelectFieldOption>
+            ))}
+          </SelectField>
+        </label>
       )}
+      <p role="status" className="text-sm text-muted-foreground">
+        {current.size
+          ? `${current.size} ${current.size === 1 ? "check remains" : "checks remain"}.`
+          : "Changes saved. No checks remain in this section."}
+      </p>
+      {available.map((task) => (
+        <div key={task.id} hidden={task.id !== active?.id}>
+          <ReportTask
+            task={task}
+            onDirty={(formKey) =>
+              setDirtyTasks((ids) => new Set([...ids, `${task.id}/${formKey}`]))
+            }
+            scope={scope}
+            returnSection={section}
+            data={data}
+            states={query.data.states}
+            resolved={!current.has(task.id)}
+            disabled={
+              !query.data.editable || save.isPending || query.isFetching || failed === task.id
+            }
+            error={failed === task.id ? save.error?.message : undefined}
+            onRefresh={async () => {
+              const refreshed = await query.refetch();
+              if (refreshed.error) return null;
+              setFailed(null);
+              save.reset();
+              return refreshed.data?.tasks.find((item) => item.id === task.id)?.basis ?? null;
+            }}
+            onSave={(values, reviewedBasis, row) => {
+              if (!save.isPending)
+                save.mutate({
+                  draftKey: `${task.id}/${row ? rowKey(row) : "main"}`,
+                  task: {
+                    ...task,
+                    basis: reviewedBasis,
+
+                    ...(row
+                      ? {
+                          sheet: row.sheet,
+                          row: row.row,
+                          source_filename: row.source_filename,
+                          source_ids: [],
+                        }
+                      : {}),
+                  },
+                  values,
+                });
+            }}
+          />
+        </div>
+      ))}
     </div>
   );
 }
 
 function ReportTask({
   task,
+  scope,
+  returnSection,
   data,
   states,
   resolved,
@@ -180,8 +276,11 @@ function ReportTask({
   error,
   onSave,
   onRefresh,
+  onDirty,
 }: {
   task: Task;
+  scope: "sales" | "return";
+  returnSection?: string;
   data: SalesWorkspace;
   states: States;
   resolved: boolean;
@@ -189,6 +288,7 @@ function ReportTask({
   error?: string;
   onSave: (values: Record<string, unknown>, reviewedBasis: string, row?: Row) => void;
   onRefresh: () => Promise<string | null>;
+  onDirty: (key: string) => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(task.fields.map((field) => [field, String(task.values[field] ?? "")])),
@@ -210,8 +310,9 @@ function ReportTask({
   }, [resolved]);
   return (
     <section
-      onChangeCapture={() => {
+      onChangeCapture={(event) => {
         dirty.current = true;
+        onDirty((event.target as HTMLElement).closest("form")?.dataset.draftKey ?? "main");
       }}
       ref={section}
       tabIndex={-1}
@@ -240,6 +341,11 @@ function ReportTask({
                 clientId: String(data.client.id),
                 period: data.period,
                 invoiceId: task.source_ids[0],
+              }}
+              search={{
+                origin: scope === "return" ? "return" : "register",
+                returnTask: task.id,
+                returnSection,
               }}
               className="text-sm underline"
             >
@@ -387,6 +493,11 @@ function ReportTask({
                           period: data.period,
                           invoiceId: row.source_id!,
                         }}
+                        search={{
+                          origin: scope === "return" ? "return" : "register",
+                          returnTask: task.id,
+                          returnSection,
+                        }}
                         className="underline"
                       >
                         {String(row.values.number ?? row.source_id)}
@@ -401,7 +512,8 @@ function ReportTask({
               {task.rows.map((row) => (
                 <details key={`${row.source_filename}:${row.sheet}:${row.row}`}>
                   <summary className="cursor-pointer text-sm underline">
-                    Edit {row.source_filename ? `${row.source_filename} · ` : ""}{row.sheet}, row {row.row}
+                    Edit {row.source_filename ? `${row.source_filename} · ` : ""}
+                    {row.sheet}, row {row.row}
                   </summary>
                   <SummaryCorrection
                     row={row}
@@ -460,7 +572,9 @@ function SourceRows({ rows, filename }: { rows: Row[]; filename: string }) {
             {rows.map((row) => (
               <TableRow key={`${row.source_filename}:${row.sheet}:${row.row}`}>
                 <TableCell>
-                  {row.source_filename && <div className="text-xs text-muted-foreground">{row.source_filename}</div>}
+                  {row.source_filename && (
+                    <div className="text-xs text-muted-foreground">{row.source_filename}</div>
+                  )}
                   {row.sheet} · {row.row}
                 </TableCell>
                 {relevant.map((field) => (
@@ -524,6 +638,7 @@ function SummaryCorrection({
   );
   return (
     <form
+      data-draft-key={rowKey(row)}
       className="mt-3 flex flex-wrap items-end gap-2"
       onSubmit={(event) => {
         event.preventDefault();

@@ -115,7 +115,7 @@ defmodule NilaWeb.Gst.SalesExportState do
         %{
           id: task["id"],
           message: task["title"],
-          path: "/gst/#{client_id}/#{period}/sales/checks",
+          path: report_task_path(task, client_id, period),
           external: false
         }
       end)
@@ -144,7 +144,9 @@ defmodule NilaWeb.Gst.SalesExportState do
 
             [] ->
               {if(Nila.Gst.Sales.Review.MonthChecks.supported?(issue),
-                 do: "/gst/#{client_id}/#{period}/sales/checks"
+                 do:
+                   "/gst/#{client_id}/#{period}/sales?" <>
+                     URI.encode_query(%{"returnTask" => target})
                ), false}
 
             _ ->
@@ -174,13 +176,38 @@ defmodule NilaWeb.Gst.SalesExportState do
           %{
             id: "remaining",
             message: "Resolve the remaining sales checks.",
-            path: "/gst/#{client_id}/#{period}/sales/checks",
+            path: "/gst/#{client_id}/#{period}/sales/register?filter=needs_review",
             external: false
           }
         ]
 
       blockers ->
         blockers
+    end
+  end
+
+  defp report_task_path(task, client_id, period) do
+    base = "/gst/#{client_id}/#{period}/sales"
+
+    case task["kind"] do
+      "invoice" ->
+        base <>
+          "/register?" <>
+          URI.encode_query(%{
+            "selected" => List.first(task["source_ids"] || []),
+            "filter" => "needs_review"
+          })
+
+      "notes" ->
+        base <>
+          "/register?" <>
+          URI.encode_query(%{"returnTask" => task["id"], "filter" => "needs_review"})
+
+      "uploads" ->
+        base <> "/uploads"
+
+      _ ->
+        base <> "?" <> URI.encode_query(%{"returnTask" => task["id"]})
     end
   end
 

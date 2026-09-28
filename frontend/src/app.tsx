@@ -32,7 +32,6 @@ import { LiveSalesLayout, LiveSalesRegister, LiveSalesSummary } from "@/pages/li
 import { LiveSalesUpload, LiveSalesUploads } from "@/pages/live-sales-uploads";
 import NoticesPage from "@/pages/notices";
 import PurchaseReview from "@/pages/purchase-review";
-import SalesChecks from "@/pages/sales-checks";
 import SalesInvoiceReview from "@/pages/sales-invoice";
 import SalesRegister from "@/pages/sales-register";
 import SalesSection from "@/pages/sales-section";
@@ -49,6 +48,7 @@ import {
   Navigate,
   Outlet,
   RouterProvider,
+  redirect,
 } from "@tanstack/react-router";
 
 function NotFound() {
@@ -271,7 +271,9 @@ const salesRegister = createRoute({
 const salesChecks = createRoute({
   getParentRoute: () => sales,
   path: "sales/checks",
-  component: SalesChecks,
+  beforeLoad: ({ params, search }) => {
+    throw redirect({ to: "/gst/$clientId/$period/sales", params, search, replace: true });
+  },
 });
 const salesSection = createRoute({
   getParentRoute: () => sales,

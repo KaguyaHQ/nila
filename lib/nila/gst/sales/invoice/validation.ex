@@ -15,6 +15,7 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
   alias Nila.Gstin
   alias Nila.Gst.Dates
   alias Nila.Gst.Sales.Invoice
+  alias Nila.Gst.Sales.TaxDetermination
 
   @money_tolerance_paise 50
   @bucket_tolerance_paise 1
@@ -386,7 +387,8 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       tax_paise = line_tax_paise(line)
       rate = line_rate(line)
 
-      if is_nil(taxable_paise) or not tax_amounts_complete?(line) or
+      if not TaxDetermination.from_invoice(invoice).calculate_from_taxable? or
+           is_nil(taxable_paise) or not tax_amounts_complete?(line) or
            (Invoice.tax_excluded_from_total?(invoice) and tax_paise == 0) or
            (taxable_paise == 0 and tax_paise == 0 and Decimal.equal?(rate, 0)) do
         []
@@ -480,6 +482,10 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
       {"grand_total_mismatch", invoice.printed_total_paise, payable_paise(invoice, totals),
        ["printed_grand_total", "reverse_charge", "tax_payment", "line_items"]}
     ]
+    |> Enum.reject(fn {code, _, _, _} ->
+      code == "grand_total_mismatch" and
+        not TaxDetermination.from_invoice(invoice).independent_invoice_total?
+    end)
     |> Enum.flat_map(fn {code, printed, derived_paise, fields} ->
       case {printed, derived_paise} do
         {printed_paise, derived_paise}
@@ -935,42 +941,59 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
   end
 
   defp missing_tax_amount_issues(invoice) do
-    if Invoice.tax_excluded_from_total?(invoice) or
-         Invoice.supply_type(invoice) in ~w(nil_rated exempt non_gst) do
-      []
-    else
-      missing =
-        invoice.lines
-        |> Enum.with_index(1)
-        |> Enum.flat_map(fn {line, index} ->
-          missing_heads = missing_tax_heads(line)
+    determination = TaxDetermination.from_invoice(invoice)
 
-          if missing_heads == [] or lopsided_tax_line?(line) do
+    cond do
+      determination.unresolved_issue != nil ->
+        [
+          issue(
+            invoice,
+            determination.unresolved_issue.code,
+            determination.unresolved_issue.message,
+            ["line_items"],
+            Issues.level_for(determination.unresolved_issue.code)
+          )
+        ]
+
+      Invoice.tax_excluded_from_total?(invoice) or
+          Invoice.supply_type(invoice) in ~w(nil_rated exempt non_gst) ->
+        []
+
+      true ->
+        missing =
+          invoice.lines
+          |> Enum.with_index(1)
+          |> Enum.flat_map(fn {line, index} ->
+            missing_heads = missing_tax_heads(line)
+
+            if missing_heads == [] or lopsided_tax_line?(line) do
+              []
+            else
+              [{index, missing_heads}]
+            end
+          end)
+
+        case missing do
+          [] ->
             []
-          else
-            [{index, missing_heads}]
-          end
-        end)
 
-      case missing do
-        [] ->
-          []
+          lines ->
+            numbers = Enum.map(lines, &elem(&1, 0))
 
-        lines ->
-          numbers = Enum.map(lines, &elem(&1, 0))
-          fields = Enum.flat_map(lines, fn {index, heads} -> tax_amount_fields(index, heads) end)
+            fields =
+              Enum.flat_map(lines, fn {index, heads} -> tax_amount_fields(index, heads) end)
 
-          [
-            invoice
-            |> issue(
-              "missing_tax_amount",
-              "GST amount is missing for #{line_word(numbers)} #{Enum.join(numbers, ", ")}; check the source invoice and correct the missing tax amount",
-              fields,
-              Issues.level_for("missing_tax_amount")
-            )
-            |> Map.put("lines", numbers)
-          ]
-      end
+            [
+              invoice
+              |> issue(
+                "missing_tax_amount",
+                "GST amount is missing for #{line_word(numbers)} #{Enum.join(numbers, ", ")}; check the source invoice and correct the missing tax amount",
+                fields,
+                Issues.level_for("missing_tax_amount")
+              )
+              |> Map.put("lines", numbers)
+            ]
+        end
     end
   end
 
@@ -1102,7 +1125,8 @@ defmodule Nila.Gst.Sales.Invoice.Validation do
   end
 
   defp bucket_rounding_issues(invoice) do
-    if taxable_values_complete?(invoice) and not Invoice.tax_excluded_from_total?(invoice) do
+    if taxable_values_complete?(invoice) and not Invoice.tax_excluded_from_total?(invoice) and
+         TaxDetermination.from_invoice(invoice).calculate_from_taxable? do
       bucket_rounding_issues_for_complete_invoice(invoice)
     else
       []

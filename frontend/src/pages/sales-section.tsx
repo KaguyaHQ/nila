@@ -1,3 +1,4 @@
+import { ReturnReview } from "@/components/return-review";
 import { SalesExports } from "@/components/sales-exports";
 import { RecordTableLink, RecordTableRow } from "@/components/record-table-row";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { urlDestination } from "@/lib/route-url";
 import type { SalesSectionDetail, SalesSectionRow } from "@/lib/sales-api";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useSales } from "@/state/sales-workspace";
@@ -27,11 +28,13 @@ function SectionRow({
   columns,
   showSources,
   depth = 0,
+  section,
 }: {
   row: SalesSectionRow;
   columns: SectionGroup["columns"];
   showSources: boolean;
   depth?: number;
+  section: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const children = row.children ?? [];
@@ -69,6 +72,7 @@ function SectionRow({
             {row.invoice_path && (
               <SourceLink
                 {...urlDestination(row.invoice_path)}
+                search={{ origin: "return", returnSection: section }}
                 className="inline-flex items-center gap-1 whitespace-nowrap text-sm underline-offset-4 hover:underline"
                 aria-label={`Review source invoice ${title}`}
               >
@@ -86,13 +90,14 @@ function SectionRow({
             columns={columns}
             showSources={showSources}
             depth={depth + 1}
+            section={section}
           />
         ))}
     </>
   );
 }
 
-function SectionTable({ group }: { group: SectionGroup }) {
+function SectionTable({ group, section }: { group: SectionGroup; section: string }) {
   if (group.rows.length === 0)
     return (
       <p className="text-sm text-muted-foreground">
@@ -125,6 +130,7 @@ function SectionTable({ group }: { group: SectionGroup }) {
                 row={row}
                 columns={group.columns}
                 showSources={showSources}
+                section={section}
               />
             ))}
           </TableBody>
@@ -136,6 +142,7 @@ function SectionTable({ group }: { group: SectionGroup }) {
 
 export default function SalesSection() {
   const data = useSales();
+  const search = useSearch({ strict: false });
   const { section = "" } = useParams({ strict: false });
   const detail =
     data.details && Object.hasOwn(data.details, section) ? data.details[section] : undefined;
@@ -181,22 +188,14 @@ export default function SalesSection() {
       </div>
       <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0 space-y-6">
-          {section === "documents" && (
-            <Link
-              to="/gst/$clientId/$period/sales/checks"
-              params={{ clientId: String(data.client.id), period: data.period }}
-              className="inline-flex text-sm font-medium underline underline-offset-4"
-            >
-              Review month checks and recorded decisions
-            </Link>
-          )}
+          <ReturnReview data={data} section={section} selectedTask={search.returnTask} />
           {detail.note && (
             <p className="rounded-lg border bg-muted/30 px-4 py-3 text-sm leading-6 text-muted-foreground">
               {detail.note}
             </p>
           )}
           {detail.groups.map((group) => (
-            <SectionTable key={`${section}-${group.id}`} group={group} />
+            <SectionTable key={`${section}-${group.id}`} group={group} section={section} />
           ))}
           {detail.groups.length === 0 && (
             <p className="rounded-xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">

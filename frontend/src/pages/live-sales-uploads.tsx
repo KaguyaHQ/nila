@@ -106,11 +106,13 @@ export function SalesUploadDialog({
 }) {
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<"pdf" | "excel">("pdf");
+  const choosePdfs = useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={open} onOpenChange={(next) => (!busy ? onOpenChange(next) : undefined)}>
       <DialogContent
         className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl"
         showCloseButton={!busy}
+        initialFocus={choosePdfs}
       >
         <DialogHeader>
           <DialogTitle>Add sales files</DialogTitle>
@@ -119,11 +121,35 @@ export function SalesUploadDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex gap-2" aria-label="Source type">
-          <Button variant={kind === "pdf" ? "default" : "outline"} disabled={busy} onClick={() => setKind("pdf")}>PDF bills</Button>
-          <Button variant={kind === "excel" ? "default" : "outline"} disabled={busy} onClick={() => setKind("excel")}>Excel report</Button>
+          <Button
+            variant={kind === "pdf" ? "default" : "outline"}
+            disabled={busy}
+            onClick={() => setKind("pdf")}
+          >
+            PDF bills
+          </Button>
+          <Button
+            variant={kind === "excel" ? "default" : "outline"}
+            disabled={busy}
+            onClick={() => setKind("excel")}
+          >
+            Excel report
+          </Button>
         </div>
-        {kind === "pdf" ? <UploadForm key={`${data.client.id}/${data.period}`} data={data} onBusyChange={setBusy} />
-          : <SalesReportUpload data={data} onBusyChange={setBusy} onImported={() => onOpenChange(false)} />}
+        {kind === "pdf" ? (
+          <UploadForm
+            key={`${data.client.id}/${data.period}`}
+            data={data}
+            onBusyChange={setBusy}
+            chooseButton={choosePdfs}
+          />
+        ) : (
+          <SalesReportUpload
+            data={data}
+            onBusyChange={setBusy}
+            onImported={() => onOpenChange(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -132,9 +158,11 @@ export function SalesUploadDialog({
 function UploadForm({
   data,
   onBusyChange,
+  chooseButton,
 }: {
   data: SalesWorkspace;
   onBusyChange?: (busy: boolean) => void;
+  chooseButton: React.RefObject<HTMLButtonElement | null>;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -347,6 +375,7 @@ function UploadForm({
           )}
           <div className={files.length ? "flex items-center gap-2" : "mt-5"}>
             <Button
+              ref={chooseButton}
               variant={files.length ? "outline" : "default"}
               disabled={busy || locked || !data.can_upload}
               onClick={() => picker.current?.click()}
@@ -484,7 +513,15 @@ function isReportFile(name: string) {
   return /\.(?:xls|xlsx|csv)$/i.test(name);
 }
 
-function RemoveReport({ data, dumpId, fileCount }: { data: SalesWorkspace; dumpId: number; fileCount: number }) {
+function RemoveReport({
+  data,
+  dumpId,
+  fileCount,
+}: {
+  data: SalesWorkspace;
+  dumpId: number;
+  fileCount: number;
+}) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -494,15 +531,19 @@ function RemoveReport({ data, dumpId, fileCount }: { data: SalesWorkspace; dumpI
     retry: false,
     networkMode: "always",
     mutationFn: async () => {
-      const response = await fetch(`/api/workspace/sales/${data.client.id}/${data.period}/reports`, {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "",
+      const response = await fetch(
+        `/api/workspace/sales/${data.client.id}/${data.period}/reports`,
+        {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token":
+              document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? "",
+          },
+          body: JSON.stringify({ dump_id: dumpId }),
         },
-        body: JSON.stringify({ dump_id: dumpId }),
-      });
+      );
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "The report could not be removed.");
     },
@@ -515,29 +556,55 @@ function RemoveReport({ data, dumpId, fileCount }: { data: SalesWorkspace; dumpI
         cache.invalidateQueries({ queryKey: ["sales-checks"] }),
       ]);
     },
-    onSettled: () => { submitting.current = false; },
+    onSettled: () => {
+      submitting.current = false;
+    },
   });
   return (
     <>
-      <Button variant="outline" size="sm" ref={trigger} onClick={() => { remove.reset(); setOpen(true); }}>
+      <Button
+        variant="outline"
+        size="sm"
+        ref={trigger}
+        onClick={() => {
+          remove.reset();
+          setOpen(true);
+        }}
+      >
         Remove report
       </Button>
-      <AlertDialog open={open} onOpenChange={(next) => { if (!submitting.current) setOpen(next); }}>
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!submitting.current) setOpen(next);
+        }}
+      >
         <AlertDialogContent initialFocus={cancel} finalFocus={trigger}>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this report?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove all {fileCount} {fileCount === 1 ? "file" : "files"} from this month’s working. The original files stay saved.
+              Remove all {fileCount} {fileCount === 1 ? "file" : "files"} from this month’s working.
+              The original files stay saved.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {remove.error && <p role="alert" className="text-sm text-destructive">{remove.error.message}</p>}
+          {remove.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {remove.error.message}
+            </p>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel ref={cancel} disabled={remove.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={() => {
-              if (submitting.current) return;
-              submitting.current = true;
-              remove.mutate();
-            }}>
+            <AlertDialogCancel ref={cancel} disabled={remove.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (submitting.current) return;
+                submitting.current = true;
+                remove.mutate();
+              }}
+            >
               {remove.isPending ? "Removing…" : "Remove report"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -554,11 +621,11 @@ export function LiveSalesUploads() {
     if (batch.files.some((file) => isReportFile(file.name))) {
       return (
         <Link
-          to="/gst/$clientId/$period/sales/checks"
+          to="/gst/$clientId/$period/sales"
           params={{ clientId: String(data.client.id), period: data.period }}
           className="inline-flex items-center gap-2 text-sm font-medium hover:underline"
         >
-          Review report checks <ArrowRight className="size-4" />
+          Review return <ArrowRight className="size-4" />
         </Link>
       );
     }
@@ -652,7 +719,10 @@ export function LiveSalesUploads() {
                   <div className="flex flex-wrap items-start justify-between gap-6 px-5 py-5">
                     <div className="min-w-0 flex-1 basis-64 space-y-4">
                       {batch.files.map((file) => (
-                        <div key={`${batch.id}:${file.original_url ?? file.id}`} className="flex items-start gap-3">
+                        <div
+                          key={`${batch.id}:${file.original_url ?? file.id}`}
+                          className="flex items-start gap-3"
+                        >
                           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted/30">
                             <FileText className="size-5 text-muted-foreground" />
                           </div>
@@ -680,7 +750,9 @@ export function LiveSalesUploads() {
                                   rel="noopener noreferrer"
                                   className="underline underline-offset-4 hover:text-foreground"
                                 >
-                                  {isReportFile(file.name) ? "Download original report" : "Open source PDF"}
+                                  {isReportFile(file.name)
+                                    ? "Download original report"
+                                    : "Open source PDF"}
                                   <span className="sr-only"> for {file.name} (new tab)</span>
                                 </a>
                               )}
@@ -754,13 +826,19 @@ export function LiveSalesUploads() {
                         >
                           {batch.files.some((file) => isReportFile(file.name))
                             ? "Review report checks"
-                            : "Open upload"} <ArrowRight />
+                            : "Open upload"}{" "}
+                          <ArrowRight />
                         </Button>
                       )}
-                      {data.can_upload && batch.files.some((file) => isReportFile(file.name)) &&
+                      {data.can_upload &&
+                        batch.files.some((file) => isReportFile(file.name)) &&
                         batch.files.some((file) => file.state !== "discarded") && (
-                        <RemoveReport data={data} dumpId={batch.files[0].id} fileCount={batch.files.length} />
-                      )}
+                          <RemoveReport
+                            data={data}
+                            dumpId={batch.files[0].id}
+                            fileCount={batch.files.length}
+                          />
+                        )}
                       {data.can_upload && !batch.files.some((file) => isReportFile(file.name)) && (
                         <SalesRemovalActions
                           clientId={data.client.id}

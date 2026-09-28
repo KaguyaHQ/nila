@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import {
   Dialog,
   DialogContent,
@@ -18,92 +19,104 @@ import {
 } from "@/lib/sales-checks-api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowUpRight, FileText, Undo2 } from "lucide-react";
+import { ArrowUpRight, FileText, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useSales } from "@/state/sales-workspace";
+import type { SalesWorkspace } from "@/lib/sales-api";
 import { SalesReportChecks } from "@/components/sales-report-checks";
-
 const supportedChecks = new Set(["sequence_gaps", "pages_unaccounted", "evidence_unavailable"]);
 const changedMessage = "This check changed. Review the updated check before confirming it again.";
-
-export default function SalesChecks() {
-  const workspace = useSales();
+export function ReturnReview({
+  data: workspace,
+  section,
+  selectedTask,
+}: {
+  data: SalesWorkspace;
+  section?: string;
+  selectedTask?: string;
+}) {
   const client = String(workspace.client.id);
   const period = workspace.period;
   const query = useQuery({
     queryKey: ["sales-checks", client, period],
     queryFn: ({ signal }) => fetchSalesChecks(client, period, signal),
     staleTime: 0,
+    enabled: !section || section === "documents",
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
   });
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <Link
-          to="/gst/$clientId/$period/sales"
-          params={{ clientId: String(workspace.client.id), period: workspace.period }}
-          className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" /> Sales summary
-        </Link>
-        <h1
-          id="monthly-checks-heading"
-          tabIndex={-1}
-          className="text-2xl font-semibold tracking-tight outline-none"
-        >
-          Monthly checks
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {workspace.client.name} · {workspace.month_label}
-        </p>
-      </div>
+    <div id="return-review" tabIndex={-1} className="space-y-5 outline-none">
       {(workspace.report_count ?? 0) > 0 && (
-        <SalesReportChecks key={`${client}/${period}`} data={workspace} />
-      )}
-      {query.isPending ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading monthly checks…
-        </p>
-      ) : query.isError ? (
-        <div className="space-y-4">
-          <p role="alert" className="text-sm text-destructive">
-            {query.error.message}
-          </p>
-          {query.error instanceof ApiError && query.error.status === 401 ? (
-            <a href="/users/log_in" className="text-sm underline">
-              Sign in
-            </a>
-          ) : (
-            <Button variant="outline" onClick={() => query.refetch()}>
-              Try again
-            </Button>
-          )}
-        </div>
-      ) : (
-        <ChecksList
-          hideEmpty={(workspace.report_count ?? 0) > 0}
-          key={`${client}/${period}`}
-          data={query.data}
-          refreshing={query.isFetching}
-          reload={() => query.refetch()}
+        <SalesReportChecks
+          key={`${client}/${period}/${section ?? "all"}`}
+          data={workspace}
+          scope="return"
+          section={section}
+          selectedTask={selectedTask}
         />
+      )}
+      {(!section || section === "documents") && (
+        <section aria-label="Source evidence and document numbers" className="space-y-4">
+          {query.isPending ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              Loading source and document checks…
+            </p>
+          ) : query.isError ? (
+            <div className="space-y-4">
+              <p role="alert" className="text-sm text-destructive">
+                {query.error.message}
+              </p>
+              {query.error instanceof ApiError && query.error.status === 401 ? (
+                <a href="/users/log_in" className="text-sm underline">
+                  Sign in
+                </a>
+              ) : (
+                <Button variant="outline" onClick={() => query.refetch()}>
+                  Try again
+                </Button>
+              )}
+            </div>
+          ) : (
+            <ChecksList
+              hideEmpty={(workspace.report_count ?? 0) > 0}
+              key={`${client}/${period}`}
+              data={query.data}
+              selectedTask={selectedTask}
+              refreshing={query.isFetching}
+              reload={() => query.refetch()}
+            />
+          )}
+        </section>
       )}
     </div>
   );
 }
-
 function ChecksList({
   hideEmpty,
+  selectedTask,
   data,
   refreshing,
   reload,
 }: {
   hideEmpty?: boolean;
+  selectedTask?: string;
   data: MonthlySalesChecks;
   refreshing: boolean;
   reload: () => unknown;
 }) {
   const cache = useQueryClient();
+  const [activeTarget, setActiveTarget] = useState(
+    selectedTask ??
+      data.checks.find((check) => check.status === "open")?.target ??
+      data.checks[0]?.target ??
+      "",
+  );
+  useEffect(() => {
+    if (selectedTask) setActiveTarget(selectedTask);
+  }, [selectedTask]);
+  const activeCheck =
+    data.checks.find((check) => check.target === activeTarget) ??
+    data.checks.find((check) => check.status === "open") ??
+    data.checks[0];
   const [selected, setSelected] = useState<MonthlySalesCheck | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [changedCheck, setChangedCheck] = useState<string | null>(null);
@@ -158,7 +171,6 @@ function ChecksList({
     selected?.basis && pending?.basis === selected.basis && pending?.status === "open",
   );
   useEffect(() => () => operation.current?.abort(), []);
-
   function openConfirmation(check: MonthlySalesCheck, button: HTMLButtonElement) {
     opener.current = button;
     setSelected(check);
@@ -191,11 +203,10 @@ function ChecksList({
     event.preventDefault();
     if (selected && selectionCurrent && !mustReview) void decide(selected, "confirm");
   }
-
   return (
     <>
       {!data.can_edit && (
-        <p id="monthly-checks-lock" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
+        <p id="return-checks-lock" className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           {data.lock_reason || "Your role allows viewing these checks, not changing them."}
         </p>
       )}
@@ -212,7 +223,25 @@ function ChecksList({
         )
       ) : (
         <div className="space-y-4">
-          {data.checks.map((check) => {
+          {data.checks.length > 1 && (
+            <label className="block max-w-xl space-y-2 text-sm">
+              <span className="font-medium">Source and document checks</span>
+              <SelectField
+                aria-label="Source and document checks"
+                className="w-full"
+                value={activeCheck?.target ?? ""}
+                onValueChange={(nextValue) => setActiveTarget(nextValue)}
+              >
+                {data.checks.map((check) => (
+                  <SelectFieldOption key={check.target} value={check.target}>
+                    {check.title}
+                    {check.status === "resolved" ? " — Confirmed" : ""}
+                  </SelectFieldOption>
+                ))}
+              </SelectField>
+            </label>
+          )}
+          {(activeCheck ? [activeCheck] : []).map((check) => {
             const supported = supportedChecks.has(check.code);
             const canAct = data.can_edit && Boolean(check.basis) && !refreshing && busy === null;
             return (
@@ -261,6 +290,12 @@ function ChecksList({
                       <Link
                         key={`${path.label}:${path.path}`}
                         {...urlDestination(path.path)}
+                        search={{
+                          ...urlDestination(path.path).search,
+                          ...(path.path.includes("/invoices/")
+                            ? { origin: "return", returnTask: check.target }
+                            : {}),
+                        }}
                         className="text-sm underline underline-offset-4"
                       >
                         {path.label}
@@ -280,7 +315,7 @@ function ChecksList({
                       size="sm"
                       className="h-auto min-h-8 max-w-full py-2 text-left whitespace-normal"
                       disabled={!canAct}
-                      aria-describedby={!data.can_edit ? "monthly-checks-lock" : undefined}
+                      aria-describedby={!data.can_edit ? "return-checks-lock" : undefined}
                       onClick={(event) => {
                         if (check.status === "resolved") void decide(check, "reopen");
                         else openConfirmation(check, event.currentTarget);
@@ -300,7 +335,6 @@ function ChecksList({
           })}
         </div>
       )}
-
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {
@@ -311,12 +345,12 @@ function ChecksList({
           finalFocus={() =>
             opener.current?.isConnected && !opener.current.disabled
               ? opener.current
-              : document.getElementById("monthly-checks-heading")
+              : document.getElementById("return-review")
           }
           showCloseButton={!busy}
         >
           <DialogHeader>
-            <DialogTitle>{selected?.title ?? "Monthly check"}</DialogTitle>
+            <DialogTitle>{selected?.title ?? "Source check"}</DialogTitle>
             <DialogDescription>
               Confirm only after checking the source records for this month.
             </DialogDescription>

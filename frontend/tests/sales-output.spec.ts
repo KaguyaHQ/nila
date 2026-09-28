@@ -158,7 +158,10 @@ test("section uses projected values and source links; HSN contributors expand wi
   await expect(page.getByRole("cell", { name: "₹1,23,456.78", exact: true })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Review source invoice INV-001", exact: true }),
-  ).toHaveAttribute("href", "/app/gst/1/2026-06/sales/invoices/one");
+  ).toHaveAttribute(
+    "href",
+    "/app/gst/1/2026-06/sales/invoices/one?origin=return&returnSection=hsn",
+  );
   await expect(
     page.getByRole("button", { name: "GSTR-1 return JSON", exact: true }),
   ).toBeDisabled();
@@ -211,19 +214,19 @@ test("section invoice rows open review while grouped totals stay put", async ({
   await expect(page).toHaveURL(/\/sections\/b2b$/);
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await amount.click();
-  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+  await expect(page).toHaveURL(/\/sales\/invoices\/one\?origin=return&returnSection=(b2b|hsn)$/);
   await page.goBack();
   const link = page.getByRole("link", { name: "Review source invoice INV-001" });
   await link.focus();
   await expect(link).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+  await expect(page).toHaveURL(/\/sales\/invoices\/one\?origin=return&returnSection=(b2b|hsn)$/);
   await page.goto("/app/gst/1/2026-06/sales/sections/hsn");
   await page.getByRole("cell", { name: "₹7,12,393.00", exact: true }).click();
   await expect(page).toHaveURL(/\/sections\/hsn$/);
   await page.getByRole("button", { name: "Show contributing invoices for 998719" }).click();
   await page.getByRole("cell", { name: "₹1,23,456.78", exact: true }).click();
-  await expect(page).toHaveURL(/\/sales\/invoices\/one$/);
+  await expect(page).toHaveURL(/\/sales\/invoices\/one\?origin=return&returnSection=(b2b|hsn)$/);
 });
 
 test("both downloads keep the page open and use the server's filenames", async ({ page }) => {

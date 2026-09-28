@@ -33,7 +33,6 @@ const titles: Record<string, string> = {
   "/sales/register": "Sales register",
   "/sales/upload": "Add sales bills",
   "/sales/uploads": "Uploads",
-  "/sales/checks": "Month checks",
   "/purchases": "Purchases & ITC",
   "/purchases/register": "Source register",
   "/sales/sections/b2b": "B2B",
@@ -111,8 +110,9 @@ export function Shell({
   useEffect(() => {
     document.title = `${title} · Nila${live || firm ? "" : " preview"}`;
     const frame = requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      document.getElementById("main-content")?.focus({ preventScroll: true });
+      if (!pathname.endsWith("/sales/register")) window.scrollTo(0, 0);
+      const main = document.getElementById("main-content");
+      if (!main?.contains(document.activeElement)) main?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [pathname, title]);

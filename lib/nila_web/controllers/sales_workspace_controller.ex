@@ -55,6 +55,8 @@ defmodule NilaWeb.SalesWorkspaceController do
             date: invoice["invoice_date"],
             customer: invoice["buyer_name"] || "—",
             gstin: invoice["buyer_gstin"],
+            issues: if(item, do: SalesWorkspace.open_issues(item), else: []),
+            buyer_registration: SalesWorkspace.buyer_registration(invoice),
             status: status,
             taxable: Helpers.rupees(figures.taxable),
             tax: Helpers.rupees(figures.tax),

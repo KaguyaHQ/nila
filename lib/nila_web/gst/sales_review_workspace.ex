@@ -69,7 +69,9 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
         place_of_supply:
           InvoicePresentation.place_of_supply_label(context.item.treatment["place_of_supply"])
       },
+      buyer_registration: NilaWeb.Gst.SalesPresentation.buyer_registration(invoice),
       facts: field_values(invoice, facts),
+      tax_calculation: tax_calculation(invoice),
       lines:
         Enum.with_index(invoice["line_items"] || [])
         |> Enum.map(fn {line, index} ->
@@ -140,6 +142,8 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
             id: item.source_id,
             number: text(item.invoice["invoice_number"]),
             customer: text(item.invoice["buyer_name"]),
+            buyer_gstin: item.invoice["buyer_gstin"],
+            issue_codes: Enum.map(NilaWeb.Gst.SalesPresentation.open_issues(item), & &1.code),
             amount: InvoicePresentation.rupees(Validation.comparison_totals(item.invoice).total),
             status: if(item.open_actionable_targets == [], do: "ready", else: "needs_review")
           }
@@ -152,6 +156,43 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
           %{label: label, value: StateCodes.code_for(label)}
         end)
     }
+  end
+
+  defp tax_calculation(invoice) do
+    determination = Nila.Gst.Sales.TaxDetermination.from_invoice(invoice)
+
+    case determination.amount_origin do
+      :invoice_value_residual ->
+        difference = (determination.reconciliation || %{})["difference"]
+
+        %{
+          method: "invoice_value_residual",
+          label: "Derived from invoice value",
+          detail:
+            "Invoice value less reported taxable value. Net registered sales reconcile with the supplied HSN tax" <>
+              if(is_number(difference),
+                do: " (#{InvoicePresentation.rupees(abs(difference))} difference).",
+                else: "."
+              )
+        }
+
+      :reviewer_entered ->
+        %{
+          method: "reviewer_entered",
+          label: "Edited tax amounts",
+          detail: "The entered amounts reconcile with the invoice value and the supplied HSN tax."
+        }
+
+      :unresolved ->
+        %{
+          method: "unresolved",
+          label: "RSP tax needs supporting amounts",
+          detail: "GST cannot be calculated from the selling value for these goods."
+        }
+
+      _ ->
+        nil
+    end
   end
 
   defp issue_copy(%{"code" => "buyer_gst_name_review"} = issue, invoice) do

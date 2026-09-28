@@ -42,10 +42,10 @@ defmodule Nila.Gst.Sales.ReportReview do
            Enum.any?(invoice["line_items"] || [], &((&1["igst_amount"] || 0) != 0))}
         end)
         |> Enum.sort_by(&elem(&1, 0))
-        |> Enum.map(fn {{section, _, _, _}, group} ->
+        |> Enum.map(fn {{section, pos, category, interstate?}, group} ->
           ids = Enum.map(group, & &1["id"]) |> Enum.sort()
 
-          task(report, "notes:#{Enum.join(ids, ",")}", %{
+          task(report, "notes:" <> Jason.encode!([section, pos, category, interstate?]), %{
             "kind" => "notes",
             "title" =>
               "Check #{length(group)} #{if section == "CDNUR", do: "unregistered", else: "registered"} credit/debit notes",
@@ -196,7 +196,9 @@ defmodule Nila.Gst.Sales.ReportReview do
     do:
       Map.merge(
         %{
-          "id" => "#{report["dump_id"]}:#{id}",
+          "id" =>
+            "#{report["dump_id"]}:" <>
+              Base.url_encode64(:crypto.hash(:sha256, id), padding: false),
           "dump_id" => report["dump_id"],
           "basis" => report["basis"],
           "filename" => report["filename"],

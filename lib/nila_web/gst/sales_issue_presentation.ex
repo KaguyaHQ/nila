@@ -77,6 +77,9 @@ defmodule NilaWeb.Gst.SalesIssuePresentation do
       "missing_tax_amount" ->
         "GST amount missing"
 
+      "rsp_tax_unresolved" ->
+        "RSP tax needs supporting amounts"
+
       "unreadable_amount" ->
         "Amount unreadable"
 

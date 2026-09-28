@@ -41,6 +41,11 @@ import {
   Upload,
 } from "lucide-react";
 import { useContext } from "react";
+import { useSalesRegisterScroll } from "@/lib/sales-register-scroll";
+import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
+import { SalesRecordInspector } from "@/components/sales-record-inspector";
+import { ReturnReview } from "@/components/return-review";
+import { SalesReportChecks } from "@/components/sales-report-checks";
 
 const Workspace = SalesWorkspaceContext;
 const money = (value: string | null) => value ?? "—";
@@ -263,25 +268,12 @@ function PeriodHeading({
 
 export function LiveSalesSummary() {
   const data = useSales();
+  const search = useSearch({ from: "/gst/$clientId/$period" });
   const unprepared = data.invoice_count === 0 && data.rows.length === 0;
   const emptyMonth = unprepared && data.uploads.files === 0 && !data.uploads.unfinished;
   return (
     <>
       <PeriodHeading />
-      {(data.report_count ?? 0) > 0 && (
-        <p className="mb-5 text-sm">
-          Report imported · {data.invoice_count} invoices and credit notes.{" "}
-          <Link
-            to="/gst/$clientId/$period/sales/checks"
-            params={{ clientId: String(data.client.id), period: data.period }}
-            className="font-medium underline underline-offset-4"
-          >
-            {(data.report_issue_count ?? 0) > 0
-              ? `Fix ${data.report_issue_count} remaining ${data.report_issue_count === 1 ? "issue" : "issues"}`
-              : "Review report checks"}
-          </Link>
-        </p>
-      )}
       {data.uploads.unfinished && (
         <p role="status" className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
           Some uploads are still being read or need attention.{" "}
@@ -308,7 +300,7 @@ export function LiveSalesSummary() {
                     : "No invoices in the working yet."}
             </p>
           </div>
-          {data.review_count > 0 && !(data.report_count ?? 0) && (
+          {data.review_count > 0 && (
             <Button
               nativeButton={false}
               role="link"
@@ -370,19 +362,6 @@ export function LiveSalesSummary() {
           </Button>
         </div>
       </Card>
-      {data.month_issue_count > 0 && !(data.report_count ?? 0) && (
-        <p className="mt-5 text-sm">
-          <Link
-            to="/gst/$clientId/$period/sales/checks"
-            params={{ clientId: String(data.client.id), period: data.period }}
-            className="font-medium underline underline-offset-4"
-          >
-            Review {data.month_issue_count} month{" "}
-            {data.month_issue_count === 1 ? "check" : "checks"}
-          </Link>
-          <span className="text-muted-foreground"> before downloading GSTR-1 JSON.</span>
-        </p>
-      )}
       <div
         className={`mt-8 grid items-start gap-7 ${emptyMonth ? "" : "xl:grid-cols-[minmax(0,1fr)_220px]"}`}
       >
@@ -465,6 +444,11 @@ export function LiveSalesSummary() {
           </aside>
         )}
       </div>
+      {!emptyMonth && (
+        <div className="mt-8">
+          <ReturnReview data={data} selectedTask={search.returnTask} />
+        </div>
+      )}
     </>
   );
 }
@@ -472,30 +456,54 @@ export function LiveSalesSummary() {
 export function LiveSalesRegister() {
   const data = useSales();
   const params = useSearch({ from: "/gst/$clientId/$period/sales/register" });
-  const setParams = useNavigate({ from: "/gst/$clientId/$period/sales/register" });
-  const filter = ["needs_review", "ready", "excluded"].includes(params.filter ?? "")
-    ? params.filter!
-    : "all";
+  const navigate = useNavigate({ from: "/gst/$clientId/$period/sales/register" });
+  useSalesRegisterScroll(
+    JSON.stringify([
+      data.client.id,
+      data.period,
+      params.q,
+      params.filter,
+      params.issue,
+      params.buyer,
+    ]),
+  );
+  const filter = params.filter ?? "all";
   const search = params.q ?? "";
-  const visible = data.rows.filter(
+  const codes = new Map<string, string>();
+  data.rows.forEach((row) => row.issues?.forEach((issue) => codes.set(issue.code, issue.title)));
+  const filtered = data.rows.filter(
     (row) =>
       (filter === "all" || row.status === filter) &&
+      (!params.issue ||
+        params.issue === "report_notes" ||
+        row.issues?.some((issue) => issue.code === params.issue)) &&
       `${row.number} ${row.customer} ${row.gstin ?? ""}`
         .toLowerCase()
         .includes(search.trim().toLowerCase()),
   );
-  function set(key: "filter" | "q", value: string) {
-    setParams({
-      search: {
-        ...params,
-        ...(key === "filter"
-          ? { filter: salesSearch({ filter: value }).filter }
-          : { q: value || undefined }),
-      },
+  const buyers = new Map<string, { name: string; count: number }>();
+  filtered.forEach((row) => {
+    if (row.gstin) {
+      const existing = buyers.get(row.gstin);
+      buyers.set(row.gstin, { name: row.customer, count: (existing?.count ?? 0) + 1 });
+    }
+  });
+  const visible = filtered.filter((row) => !params.buyer || row.gstin === params.buyer);
+  const selected = data.rows.find((row) => row.id === params.selected && row.path);
+  const update = (changes: Partial<typeof params>) =>
+    void navigate({
+      search: { ...params, ...changes },
       resetScroll: false,
-      replace: key === "q",
+      replace: Object.hasOwn(changes, "q"),
     });
-  }
+  const rowSearch = (id: string) => ({ ...params, selected: id });
+  const reviewUrl = selected?.path
+    ? `${selected.path}?${new URLSearchParams(Object.entries({ ...params, origin: "register", selected: selected.id }).filter((entry): entry is [string, string] => typeof entry[1] === "string"))}`
+    : "";
+  const registration =
+    params.issue?.includes("gstin") ||
+    params.issue?.includes("registration") ||
+    params.issue?.includes("buyer_name");
   return (
     <>
       <Link
@@ -503,172 +511,261 @@ export function LiveSalesRegister() {
         params={{ clientId: String(data.client.id), period: data.period }}
         className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-4" />
-        Sales summary
+        <ArrowLeft className="size-4" /> Return summary
       </Link>
       <PeriodHeading register />
-      <section className="overflow-hidden rounded-xl border bg-card" aria-label="Sales invoices">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b p-4">
-          <ToggleGroup
-            aria-label="Filter invoices by status"
-            className="flex-wrap"
-            size="sm"
-            value={[filter]}
-            onValueChange={(values) => {
-              const value = values[0];
-              if (value) set("filter", value === "all" ? "" : value);
-            }}
-          >
-            {[
-              ["all", "All invoices"],
-              ["needs_review", "Needs review"],
-              ["ready", "Ready"],
-              ["excluded", "Excluded"],
-            ].map(([value, label]) => (
-              <ToggleGroupItem key={value} value={value}>
-                {label}
-                <span className="ml-1 text-muted-foreground">
-                  {data.rows.filter((row) => value === "all" || row.status === value).length}
-                </span>
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input
-              data-shortcut-search
-              aria-label="Search customer, invoice or GSTIN"
-              placeholder="Search customer, invoice or GSTIN"
-              className="pl-9"
-              value={search}
-              onChange={(e) => set("q", e.target.value)}
-            />
-          </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <ToggleGroup
+          aria-label="Filter invoices by status"
+          size="sm"
+          value={[filter]}
+          onValueChange={(values) => {
+            if (values[0])
+              update({
+                filter: salesSearch({ filter: values[0] }).filter,
+                selected: undefined,
+                buyer: undefined,
+              });
+          }}
+        >
+          {[
+            ["all", "All"],
+            ["needs_review", "Needs attention"],
+            ["ready", "Ready"],
+            ["excluded", "Excluded"],
+          ].map(([value, label]) => (
+            <ToggleGroupItem key={value} value={value}>
+              {label}
+              <span className="ml-1 text-muted-foreground">
+                {data.rows.filter((row) => value === "all" || row.status === value).length}
+              </span>
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <div className="relative ml-auto w-72">
+          <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            data-shortcut-search
+            aria-label="Search customer, invoice or GSTIN"
+            placeholder="Search customer, invoice or GSTIN"
+            className="pl-9"
+            value={search}
+            onChange={(event) =>
+              update({ q: event.target.value || undefined, selected: undefined })
+            }
+          />
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-5">Invoice</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead className="text-right">Taxable value</TableHead>
-              <TableHead className="text-right">GST</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>
-                <span className="sr-only">Review invoice</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.map((row) => (
-              <RecordTableRow key={row.id}>
-                <TableCell className="py-4 pl-5">
-                  {row.path ? (
-                    <Link
-                      {...urlDestination(
-                        `${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`,
-                      )}
-                      className="font-medium hover:underline"
-                    >
-                      {row.number}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{row.number}</span>
-                  )}
-                </TableCell>
-                <TableCell className="whitespace-nowrap">{row.date ?? "—"}</TableCell>
-                <TableCell>
-                  <p className="max-w-72 whitespace-normal font-medium">{row.customer}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {row.gstin || "GSTIN not recorded"}
-                  </p>
-                </TableCell>
-                <TableCell className="text-right whitespace-nowrap tabular-nums">
-                  {money(row.taxable)}
-                </TableCell>
-                <TableCell className="text-right whitespace-nowrap tabular-nums">
-                  {money(row.tax)}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="secondary"
-                    className={row.status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
-                  >
-                    {row.status === "needs_review"
-                      ? "Needs review"
-                      : row.status === "ready"
-                        ? "Ready"
-                        : "Excluded"}
-                  </Badge>
-                  {row.reason && (
-                    <p className="mt-1 max-w-60 whitespace-normal text-xs text-muted-foreground">
-                      {row.reason}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <SelectField
+          aria-label="Check type"
+          value={params.returnTask ? "report_notes" : (params.issue ?? "")}
+          onValueChange={(nextValue) =>
+            update({
+              issue: nextValue || undefined,
+              returnTask: undefined,
+              buyer: undefined,
+              selected: undefined,
+            })
+          }
+        >
+          <SelectFieldOption value="">All checks</SelectFieldOption>
+          {[...codes].map(([code, title]) => (
+            <SelectFieldOption key={code} value={code}>
+              {title}
+            </SelectFieldOption>
+          ))}
+          {(data.report_count ?? 0) > 0 && <SelectFieldOption value="report_notes">Note treatment</SelectFieldOption>}
+        </SelectField>
+        <SelectField
+          aria-label="Buyer group"
+          value={params.buyer ?? ""}
+          onValueChange={(nextValue) => {
+            const buyer = nextValue || undefined;
+            update({
+              buyer,
+              selected: buyer ? filtered.find((row) => row.gstin === buyer)?.id : undefined,
+            });
+          }}
+        >
+          <SelectFieldOption value="">All buyers</SelectFieldOption>
+          {[...buyers].map(([gstin, buyer]) => (
+            <SelectFieldOption key={gstin} value={gstin}>
+              {buyer.name} · {buyer.count} {buyer.count === 1 ? "invoice" : "invoices"}
+            </SelectFieldOption>
+          ))}
+        </SelectField>
+        {(params.issue || params.buyer || search) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              update({
+                issue: undefined,
+                returnTask: undefined,
+                buyer: undefined,
+                q: undefined,
+                selected: undefined,
+              })
+            }
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+      {params.issue === "report_notes" || params.returnTask ? (
+        <SalesReportChecks data={data} scope="sales" selectedTask={params.returnTask} />
+      ) : (
+        <>
+          {registration && !params.buyer && (
+            <div className="mb-4 flex flex-wrap gap-2" aria-label="Affected buyers">
+              {[...buyers].map(([gstin, buyer]) => (
+                <Button
+                  key={gstin}
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    update({
+                      buyer: gstin,
+                      selected: filtered.find((row) => row.gstin === gstin)?.id,
+                    })
+                  }
+                >
+                  {buyer.name} · {buyer.count}
+                </Button>
+              ))}
+            </div>
+          )}
+          <div className={selected ? "grid items-start gap-4 grid-cols-[minmax(0,1fr)_420px]" : ""}>
+            <section
+              className="min-w-0 overflow-hidden rounded-xl border bg-card"
+              aria-label="Sales invoices"
+            >
+              {params.buyer && (
+                <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">
+                      {buyers.get(params.buyer)?.name ?? params.buyer}
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      {params.buyer} · {visible.length} affected invoices
                     </p>
-                  )}
-                </TableCell>
-                <TableCell className="pr-5 text-right">
-                  {row.path && (
-                    <RecordTableLink
-                      {...urlDestination(
-                        `${row.path}?${new URLSearchParams({ filter: filter === "needs_review" || filter === "ready" ? filter : "all", ...(search ? { q: search } : {}) })}`,
-                      )}
-                      aria-label={`Review invoice ${row.number}`}
-                      className="inline-flex items-center gap-1 font-medium hover:underline"
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => update({ buyer: undefined, selected: undefined })}
+                  >
+                    All buyers
+                  </Button>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-4">Invoice / Customer</TableHead>
+                    {!selected && <TableHead>Date</TableHead>}
+                    <TableHead className="text-right">Taxable</TableHead>
+                    {!selected && <TableHead className="text-right">GST</TableHead>}
+                    <TableHead>Needs attention</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visible.map((row) => (
+                    <RecordTableRow
+                      key={row.id}
+                      data-state={selected?.id === row.id ? "selected" : undefined}
                     >
-                      Review <ArrowRight className="size-4" aria-hidden="true" />
-                    </RecordTableLink>
+                      <TableCell className="py-3 pl-4">
+                        {row.path ? (
+                          <RecordTableLink
+                            to="/gst/$clientId/$period/sales/register"
+                            params={{ clientId: String(data.client.id), period: data.period }}
+                            search={rowSearch(row.id)}
+                            resetScroll={false}
+                            className="font-medium hover:underline"
+                            aria-label={`Inspect invoice ${row.number}`}
+                          >
+                            {row.number}
+                          </RecordTableLink>
+                        ) : (
+                          <span className="font-medium">{row.number}</span>
+                        )}
+                        <p className="mt-1 max-w-64 whitespace-normal text-xs text-muted-foreground">
+                          {row.customer}
+                        </p>
+                      </TableCell>
+                      {!selected && (
+                        <TableCell className="whitespace-nowrap">{row.date ?? "—"}</TableCell>
+                      )}
+                      <TableCell className="text-right tabular-nums">
+                        {money(row.taxable)}
+                      </TableCell>
+                      {!selected && (
+                        <TableCell className="text-right tabular-nums">{money(row.tax)}</TableCell>
+                      )}
+                      <TableCell>
+                        <p className="max-w-56 whitespace-normal text-xs">
+                          {row.reason ||
+                            (row.status === "ready"
+                              ? "Ready"
+                              : row.status === "excluded"
+                                ? "Excluded"
+                                : "Needs review")}
+                        </p>
+                      </TableCell>
+                    </RecordTableRow>
+                  ))}
+                  {!visible.length && (
+                    <TableRow>
+                      <TableCell colSpan={selected ? 3 : 5}>
+                        <Empty>
+                          <EmptyHeader>
+                            <EmptyTitle>
+                              {data.rows.length ? "No invoices match" : "No sales invoices yet"}
+                            </EmptyTitle>
+                            <EmptyDescription>
+                              {data.rows.length
+                                ? "Try another search or clear the filters."
+                                : "Add sales bills to prepare this month."}
+                            </EmptyDescription>
+                          </EmptyHeader>
+                          <EmptyContent>
+                            <Button
+                              variant="outline"
+                              onClick={() => void navigate({ search: {}, resetScroll: false })}
+                            >
+                              Clear filters
+                            </Button>
+                          </EmptyContent>
+                        </Empty>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </TableCell>
-              </RecordTableRow>
-            ))}
-            {visible.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-14 text-center">
-                  <Empty>
-                    <EmptyHeader>
-                      <EmptyTitle>
-                        {data.rows.length ? "No invoices match" : "No sales invoices yet"}
-                      </EmptyTitle>
-                      <EmptyDescription>
-                        {data.rows.length
-                          ? "Try another search or clear the filters."
-                          : "Add sales bills to build this month's register."}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                      {(search || filter !== "all") && (
-                        <Button
-                          variant="outline"
-                          className="mt-4"
-                          onClick={() => setParams({ search: {}, resetScroll: false })}
-                        >
-                          Clear filters
-                        </Button>
-                      )}
-                      {!data.rows.length && !search && filter === "all" && data.can_upload && (
-                        <Button
-                          nativeButton={false}
-                          role="link"
-                          render={<Link {...urlDestination(data.links.upload)} />}
-                        >
-                          Add invoices
-                        </Button>
-                      )}
-                    </EmptyContent>
-                  </Empty>
-                </TableCell>
-              </TableRow>
+                </TableBody>
+              </Table>
+              <p
+                role="status"
+                className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground"
+              >
+                Showing {visible.length} of {data.rows.length} invoices
+              </p>
+            </section>
+            {selected && (
+              <SalesRecordInspector
+                key={selected.id}
+                clientId={String(data.client.id)}
+                period={data.period}
+                invoiceId={selected.id}
+                issue={params.issue}
+                affectedCount={params.buyer ? visible.length : 1}
+                reviewUrl={reviewUrl}
+                onClose={() => update({ selected: undefined })}
+              />
             )}
-          </TableBody>
-        </Table>
-        <p role="status" className="border-t bg-muted/20 px-5 py-3 text-sm text-muted-foreground">
-          Showing {visible.length} of {data.rows.length} invoices
-        </p>
-      </section>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Register amounts are extracted from source invoices. The summary shows their contribution to
-        the GST working.
-      </p>
+          </div>
+        </>
+      )}
     </>
   );
 }

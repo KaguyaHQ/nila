@@ -27,6 +27,12 @@ export function salesSearch(search: Record<string, unknown>) {
     q: text(search.q),
     filter: choice(search.filter, ["all", "needs_review", "ready", "excluded"] as const),
     upload: choice(search.upload, ["invoices"] as const),
+    selected: text(search.selected),
+    issue: text(search.issue),
+    buyer: text(search.buyer),
+    origin: choice(search.origin, ["register", "return"] as const),
+    returnTask: text(search.returnTask),
+    returnSection: text(search.returnSection),
   });
 }
 export function purchaseSearch(search: Record<string, unknown>) {

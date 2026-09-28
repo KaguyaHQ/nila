@@ -54,6 +54,44 @@ defmodule NilaWeb.SalesWorkspaceControllerTest do
     assert body["user"]["org"] == org.name
   end
 
+  test "register groups use structured issues and saved buyer registration evidence", %{
+    conn: conn,
+    client: client,
+    org: org
+  } do
+    {:ok, month} = Months.get_by_period(org.id, client.id, "2025-10")
+    [invoice | _] = month.invoices
+    gstin = invoice["buyer_gstin"]
+
+    Nila.Repo.insert!(%Nila.Gst.Portal.TaxpayerLookup{
+      gstin: gstin,
+      legal_name: "TEST BUYER",
+      trade_name: "TEST BUYER",
+      registration_status: "Cancelled suo-moto",
+      checked_at: DateTime.utc_now(),
+      payload: %{"cxdt" => "01/05/2024"}
+    })
+
+    body = conn |> get("/api/workspace/sales/#{client.id}/2025-10") |> contract_response(200)
+    row = Enum.find(body["rows"], &(&1["id"] == invoice["id"]))
+    assert Enum.any?(row["issues"], &(&1["code"] == "buyer_gst_registration_review"))
+    assert row["buyer_registration"]["gstin"] == gstin
+    assert row["buyer_registration"]["cancellation_date"] == "01/05/2024"
+    assert row["buyer_registration"]["registration_status"] == "Cancelled suo-moto"
+
+    review =
+      conn
+      |> get(
+        "/api/workspace/sales/#{client.id}/2025-10/invoices/#{URI.encode_www_form(invoice["id"])}"
+      )
+      |> contract_response(200)
+
+    assert review["buyer_registration"] == row["buyer_registration"]
+    queued = Enum.find(review["queue"], &(&1["id"] == invoice["id"]))
+    assert queued["buyer_gstin"] == gstin
+    assert "buyer_gst_registration_review" in queued["issue_codes"]
+  end
+
   test "an empty month is valid without fixture invoices", %{conn: conn, client: client} do
     response = get(conn, "/api/workspace/sales/#{client.id}/2026-01")
     body = contract_response(response, 200)

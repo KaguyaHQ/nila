@@ -28,8 +28,60 @@ defmodule Nila.Gst.Sales.ReportReviewTest do
       )
 
     assert [%{"kind" => "row", "fields" => ["rate"]}] = ReportReview.build(working)
+    [task] = ReportReview.build(working)
+    assert byte_size(task["id"]) < 60
+
+    assert task["id"] !=
+             hd(ReportReview.build(%{working | return_reports: [Map.put(report, "dump_id", 2)]}))[
+               "id"
+             ]
+
     fixed = put_in(report, ["rows"], [put_in(row, ["values", "rate"], 18)])
     assert [] == ReportReview.build(%{working | return_reports: [fixed]})
+  end
+
+  test "note group selection stays stable when one note leaves the group" do
+    notes =
+      for id <- ~w(note-a note-b) do
+        %{
+          "id" => id,
+          "invoice_number" => id,
+          "invoice_date" => "2026-08-01",
+          "seller_gstin" => "33AEWPH4158J1Z3",
+          "return_report_dump_id" => 1,
+          "return_report_section" => "CDNUR",
+          "document_type" => "credit_note",
+          "place_of_supply" => "33",
+          "original_sale_category" => "b2cl",
+          "recipient_registration" => "unregistered",
+          "line_items" => []
+        }
+      end
+
+    report = %{
+      "dump_id" => 1,
+      "filename" => "notes.xlsx",
+      "rows" => [],
+      "basis" => "unchanged-source"
+    }
+
+    header = Gstr1.production_header("33AEWPH4158J1Z3", "2026-08")
+
+    build = fn invoices ->
+      Workings.materialize(invoices, [], header, [], return_reports: [report])
+      |> ReportReview.build()
+      |> Enum.find(&(&1["kind"] == "notes"))
+    end
+
+    before = build.(notes)
+
+    after_correction =
+      build.([Map.put(hd(notes), "original_sale_category", "b2cs"), List.last(notes)])
+
+    assert before["source_ids"] == ~w(note-a note-b)
+    assert after_correction["source_ids"] == ["note-b"]
+    assert before["id"] == after_correction["id"]
+    assert before["basis"] == after_correction["basis"]
   end
 
   test "report client names are not treated as printed seller names" do

@@ -65,6 +65,7 @@ defmodule Nila.Gst.Sales.Workings do
           else: invoice
       end)
       |> ensure_source_ids(Keyword.get(opts, :source_namespace, "legacy"))
+      |> Enum.map(&Nila.Gst.Sales.TaxDetermination.reset/1)
       |> Enum.map(&Invoice.resolve_line_amounts/1)
       |> InvoiceReadiness.annotate(compliance)
 
@@ -107,6 +108,16 @@ defmodule Nila.Gst.Sales.Workings do
       apply_exclusions(pristine_source_invoices, exclusions)
 
     reports = Keyword.get(opts, :return_reports, [])
+
+    # Re-evaluate the evidence after corrections and duplicate exclusions. A
+    # previously reconciled population cannot authorize a changed population.
+    active_invoices =
+      active_invoices
+      |> Nila.Gst.Sales.TaxDetermination.prepare(reports)
+      |> InvoiceReadiness.annotate(compliance)
+
+    valued = Map.new(active_invoices, &{&1["id"], &1})
+    source_invoices = Enum.map(source_invoices, &Map.get(valued, &1["id"], &1))
 
     {projection, report_issues, supplied_rows} =
       Nila.Gst.Sales.ReturnSources.apply(

@@ -37,6 +37,7 @@ export function InvoiceRateDetails({
   onEdit: (section: ReviewChange["section"], button: HTMLButtonElement, index?: number) => void;
 }) {
   const total = data.totals.find((row) => row.field === "grand_total" || row.field === "total");
+  const taxCalculation = data.tax_calculation;
   return (
     <div className="space-y-4">
       <section aria-label="Invoice value" className="space-y-3">
@@ -75,7 +76,7 @@ export function InvoiceRateDetails({
                 <TableRow>
                   <TableHead>Tax rate</TableHead>
                   <TableHead className="text-right">Taxable value</TableHead>
-                  <TableHead className="text-right">Calculated GST</TableHead>
+                  <TableHead className="text-right">{taxCalculation ? "GST" : "Calculated GST"}</TableHead>
                   <TableHead className="w-10">
                     <span className="sr-only">Edit</span>
                   </TableHead>
@@ -119,9 +120,15 @@ export function InvoiceRateDetails({
             </Table>
           </div>
         )}
+        {taxCalculation && (
+          <div className="space-y-1 text-sm">
+            <p className="font-medium">{taxCalculation.label}</p>
+            <p className="text-muted-foreground">{taxCalculation.detail}</p>
+          </div>
+        )}
       </section>
       <Separator />
-      {total && total.status !== "unavailable" && (
+      {!taxCalculation && total && total.status !== "unavailable" && (
         <Collapsible className="space-y-2">
           {total.status === "matches" ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">

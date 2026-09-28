@@ -448,6 +448,115 @@ defmodule Nila.Gst.Sales.Workings.XlsxTest do
     assert files["xl/worksheets/sheet2.xml"] =~ ~s(HYPERLINK("#'Calculations'!M5")
   end
 
+  test "RSP calculations retain effective taxes and do not compare them with taxable times rate" do
+    for {status, label} <- [
+          {"derived", "RSP: invoice value less taxable value; HSN reconciled"},
+          {"unresolved", "RSP: tax basis needs review"}
+        ] do
+      invoice =
+        mixed_rate_invoice()
+        |> Map.put("line_items", [line("RSP goods", "24039990", 100, 28, 1)])
+        |> put_in(["line_items", Access.at(0), "cgst_amount"], 35)
+        |> put_in(["line_items", Access.at(0), "sgst_amount"], 35)
+        |> Map.put("tax_valuation", %{
+          "basis" => "rsp",
+          "method" => "invoice_value_residual",
+          "status" => status
+        })
+
+      projection = %{invoices: [invoice], active_invoices: [invoice], issues: [], derived: %{}}
+      assert {:ok, bytes} = WorkingsXlsx.build(projection, client(), "2026-07")
+      files = entries(bytes)
+      taxes = files["xl/worksheets/sheet5.xml"]
+
+      for column <- ~w(K N) do
+        assert taxes =~ ~r/<c r="#{column}5"[^>]*><v>35(?:\.0+)?<\/v>/
+      end
+
+      refute taxes =~ "ROUND(J5*I5"
+      refute taxes =~ "K5-L5"
+      assert shared_cell(files, "xl/worksheets/sheet5.xml", "U5") == label
+    end
+  end
+
+  test "summary-only B2CS working keeps supplied amounts and ordinary comparison formulas" do
+    supplied = %{
+      "section" => "b2cs",
+      "sheet" => "B2CS",
+      "row" => 2,
+      "filename" => "sales.xlsx",
+      "values" => %{
+        "seller_gstin" => client().gstin,
+        "pos" => "33",
+        "rate" => 18,
+        "txval" => 100,
+        "camt" => 9,
+        "samt" => 9,
+        "iamt" => 0
+      }
+    }
+
+    projection = %{
+      invoices: [],
+      active_invoices: [],
+      issues: [],
+      derived: %{},
+      supplied_rows: [supplied]
+    }
+
+    assert {:ok, bytes} = WorkingsXlsx.build(projection, client(), "2026-07")
+    files = entries(bytes)
+    taxes = files["xl/worksheets/sheet5.xml"]
+
+    for column <- ~w(K N) do
+      assert taxes =~ ~r/<c r="#{column}5"[^>]*><v>9(?:\.0+)?<\/v>/
+    end
+
+    assert taxes =~ "ROUND(J5*I5/2,2)"
+    assert taxes =~ "K5-L5"
+    assert shared_cell(files, "xl/worksheets/sheet5.xml", "F5") == "Supplied summary"
+  end
+
+  test "supplied HSN taxes stay as supplied even when they differ from taxable times rate" do
+    invoice = Map.put(mixed_rate_invoice(), "return_report_section", "B2B")
+
+    supplied = %{
+      "section" => "hsn_b2b",
+      "sheet" => "HSNB2B",
+      "row" => 2,
+      "filename" => "report.xlsx",
+      "values" => %{
+        "hsn_sc" => "24039990",
+        "uqc" => "NOS",
+        "qty" => 1,
+        "rate" => 28,
+        "txval" => 100,
+        "camt" => 35,
+        "samt" => 35,
+        "iamt" => 0
+      }
+    }
+
+    projection = %{
+      invoices: [invoice],
+      active_invoices: [invoice],
+      issues: [],
+      derived: %{},
+      supplied_rows: [supplied]
+    }
+
+    assert {:ok, bytes} = WorkingsXlsx.build(projection, client(), "2026-07")
+    hsn = entries(bytes)["xl/worksheets/sheet4.xml"]
+
+    for column <- ~w(I J) do
+      assert hsn =~ ~r/<c r="#{column}5"[^>]*><v>35(?:\.0+)?<\/v>/
+    end
+
+    refute hsn =~ "ROUND(H5*F5"
+    assert hsn =~ "SUM(I5:K5)"
+    assert hsn =~ "SUMIFS"
+  end
+
   defp workbook_files(invoice) do
     invoice = Map.put(invoice, "id", "missing-amount-source")
     issues = InvoiceValidation.issues([invoice]) |> Enum.map(&Map.put(&1, "status", "open"))

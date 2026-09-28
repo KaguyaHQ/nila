@@ -78,6 +78,36 @@ defmodule NilaWeb.SalesReviewControllerTest do
     assert get_resp_header(response, "cache-control") == ["private, no-store"]
   end
 
+  test "review projection distinguishes residual tax from an independent calculation", %{
+    user: user,
+    client: client,
+    invoice: invoice
+  } do
+    alias NilaWeb.Gst.SalesReviewWorkspace
+    scope = Nila.Accounts.Scope.for_user(user)
+    {:ok, context} = SalesReviewWorkspace.load(scope, client, "2025-10", invoice["id"])
+    assert SalesReviewWorkspace.project(context).tax_calculation == nil
+
+    valuation = %{
+      "basis" => "rsp",
+      "method" => "invoice_value_residual",
+      "status" => "derived",
+      "reconciliation" => %{"difference" => 0.27, "scope" => "hsn_b2b_net"}
+    }
+
+    context = put_in(context.item.invoice["tax_valuation"], valuation)
+    projected = SalesReviewWorkspace.project(context)
+    assert projected.tax_calculation.method == "invoice_value_residual"
+    assert projected.tax_calculation.detail =~ "₹0.27 difference"
+    assert projected.tax_calculation.label == "Derived from invoice value"
+
+    context = put_in(context.item.invoice["tax_valuation"]["method"], "reviewer_entered")
+    assert SalesReviewWorkspace.project(context).tax_calculation.label == "Edited tax amounts"
+
+    context = put_in(context.item.invoice["tax_valuation"]["status"], "unresolved")
+    assert SalesReviewWorkspace.project(context).tax_calculation.method == "unresolved"
+  end
+
   test "serves original workbook cells with invoice row links and retained report headings", %{
     conn: conn,
     path: path,

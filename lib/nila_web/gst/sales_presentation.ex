@@ -19,6 +19,33 @@ defmodule NilaWeb.Gst.SalesPresentation do
     {"ecommerce", "Supplies through e-commerce operator"}
   ]
 
+  @doc "Saved buyer lookup evidence; no lookup or refresh is performed here."
+  def buyer_registration(invoice) do
+    case get_in(invoice, ["taxpayer_checks", "buyer"]) do
+      %{"gstin" => gstin} = facts when is_binary(gstin) ->
+        if gstin == Nila.Gst.Portal.Taxpayers.normalize(invoice["buyer_gstin"]) do
+          Map.new(
+            ~w(gstin legal_name trade_name registration_status checked_at cancellation_date),
+            fn key ->
+              {key, if(facts[key] in [nil, ""], do: nil, else: facts[key])}
+            end
+          )
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  def open_issues(item) do
+    item.actionable_issues
+    |> Enum.filter(&(&1["status"] == "open"))
+    |> Enum.map(
+      &%{code: &1["code"], title: NilaWeb.Gst.SalesIssuePresentation.register_reason(&1)}
+    )
+    |> Enum.uniq_by(& &1.code)
+  end
+
   @doc "Presentation of the effective return for the React sales overview."
   def summary_rows(workings, client, period) do
     review = Nila.Gst.Sales.Review.build(workings)

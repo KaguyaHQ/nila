@@ -127,6 +127,7 @@ defmodule Nila.Gst.Sales.Invoice do
 
           line
           |> Map.put(line_field, value)
+          |> mark_corrected_tax(line_field)
           |> update_corrected_taxable(line_field)
         end)
         |> clear_verification_failure(field)
@@ -170,6 +171,12 @@ defmodule Nila.Gst.Sales.Invoice do
         |> clear_verification_failure(field)
     end
   end
+
+  defp mark_corrected_tax(line, field) when field in ~w(cgst_amount sgst_amount igst_amount) do
+    Map.update(line, "corrected_tax_fields", [field], &Enum.uniq([field | &1]))
+  end
+
+  defp mark_corrected_tax(line, _field), do: line
 
   defp clear_verification_failure(%{"verification" => verification} = invoice, field)
        when is_map(verification) do

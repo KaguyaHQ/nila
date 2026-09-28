@@ -9767,6 +9767,70 @@
                     "string",
                     "null"
                   ]
+                },
+                "issues": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "title"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "buyer_registration": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "gstin": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "legal_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "trade_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "registration_status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "checked_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "cancellation_date": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -10106,6 +10170,29 @@
       "SalesInvoiceReviewData": {
         "type": "object",
         "properties": {
+          "tax_calculation": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "method",
+              "label",
+              "detail"
+            ],
+            "additionalProperties": false
+          },
           "client": {
             "type": "object",
             "properties": {
@@ -10354,8 +10441,12 @@
                   },
                   "spreadsheet": {
                     "anyOf": [
-                      {"$ref": "#/components/schemas/SalesSpreadsheetSource"},
-                      {"type": "null"}
+                      {
+                        "$ref": "#/components/schemas/SalesSpreadsheetSource"
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   }
                 },
@@ -10415,6 +10506,18 @@
                 },
                 "amount": {
                   "type": "string"
+                },
+                "buyer_gstin": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "issue_codes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -10468,6 +10571,51 @@
               "string",
               "null"
             ]
+          },
+          "buyer_registration": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "gstin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "legal_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "trade_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registration_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "checked_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cancellation_date": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

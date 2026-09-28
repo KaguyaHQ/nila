@@ -16,6 +16,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   alias Nila.Gst.StateCodes
   alias Nila.Gst.Dates
   alias Nila.Gst.Sales.Invoice
+  alias Nila.Gst.Sales.TaxDetermination
   alias Nila.Gst.Sales.Gstr1.Documents
   alias Nila.Gst.Sales.Invoice.Validation, as: InvoiceValidation
 
@@ -96,7 +97,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     seller_state = state_code(invoice["seller_gstin"])
     pos = effective_place_of_supply(invoice)
 
-    if not is_nil(filing_table(invoice)) and Invoice.taxable_values_complete?(invoice) do
+    if not is_nil(filing_table(invoice)) and Invoice.taxable_values_complete?(invoice) and
+         not TaxDetermination.unresolved?(invoice) do
       invoice
       |> derive_items(seller_state, pos)
       |> Enum.map(&(&1["itm_det"] || %{}))
@@ -144,6 +146,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
     classified =
       for invoice <- invoices,
           Invoice.taxable_values_complete?(invoice),
+          not TaxDetermination.unresolved?(invoice),
           table = filing_table(invoice),
           not is_nil(table),
           do: {invoice, table}
@@ -487,12 +490,19 @@ defmodule Nila.Gst.Sales.Gstr1 do
   end
 
   defp document_value(document) do
-    tax = if Invoice.tax_excluded_from_total?(document), do: 0, else: invoice_tax(document)
-    round2(invoice_taxable(document) + tax)
+    if TaxDetermination.from_invoice(document).preserve_invoice_value? do
+      round2(document["printed_grand_total"])
+    else
+      tax = if Invoice.tax_excluded_from_total?(document), do: 0, else: invoice_tax(document)
+      round2(invoice_taxable(document) + tax)
+    end
   end
 
   defp document_bucket_tax(document, lines, rate, seller_state, pos) do
     cond do
+      not TaxDetermination.from_invoice(document).calculate_from_taxable? ->
+        TaxDetermination.working_tax(lines)
+
       Invoice.without_payment?(document) ->
         %{txval: round2(sum(lines, "taxable_value")), camt: 0, samt: 0, iamt: 0}
 
@@ -524,6 +534,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
   """
   def hsn_summary(invoices) do
     invoices
+    |> Enum.reject(&TaxDetermination.unresolved?/1)
     |> Enum.filter(&Invoice.taxable_values_complete?/1)
     |> Enum.flat_map(&document_hsn_contributions/1)
     |> Enum.group_by(&{&1["hsn_sc"], &1["rt"]})
@@ -554,7 +565,8 @@ defmodule Nila.Gst.Sales.Gstr1 do
     |> Enum.group_by(&{hsn_code(&1["hsn_sac"]), line_rate(&1)})
     |> Enum.map(fn {{hsn, rate}, lines} ->
       tax =
-        if Invoice.zero_rated?(document) do
+        if Invoice.zero_rated?(document) or
+             not TaxDetermination.from_invoice(document).calculate_from_taxable? do
           document_bucket_tax(
             document,
             lines,
@@ -842,6 +854,15 @@ defmodule Nila.Gst.Sales.Gstr1 do
   defp invoice_taxable(invoice), do: sum(invoice["line_items"], "taxable_value")
 
   defp invoice_tax(invoice) do
+    if not TaxDetermination.from_invoice(invoice).calculate_from_taxable? do
+      tax = TaxDetermination.working_tax(invoice["line_items"] || [])
+      tax.camt + tax.samt + tax.iamt
+    else
+      ordinary_invoice_tax(invoice)
+    end
+  end
+
+  defp ordinary_invoice_tax(invoice) do
     invoice["line_items"]
     |> Enum.group_by(&line_rate/1)
     |> Enum.map(fn {rate, lines} ->

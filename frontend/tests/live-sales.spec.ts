@@ -222,11 +222,12 @@ test("Excel issues save inline, retain the source and return to downloads", asyn
   });
   await page.goto("/app/gst/1/2026-06/sales");
   await expect(page.getByText("Supplied return report", { exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "Fix 1 remaining issue" }).click();
   const issue = page.getByRole("region", { name: "HSN/SAC 999799" });
   await expect(issue.getByLabel("GST rate", { exact: true })).toHaveValue("");
   await issue.getByLabel("GST rate", { exact: true }).fill("18");
-  await expect(issue.getByRole("cell").filter({ hasText: "HSN summary · 14" })).toContainText("HSN(B2B).xlsx");
+  await expect(issue.getByRole("cell").filter({ hasText: "HSN summary · 14" })).toContainText(
+    "HSN(B2B).xlsx",
+  );
   await issue.getByText("Show full row", { exact: true }).click();
   await expect(issue.getByRole("columnheader", { name: "H", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -242,8 +243,9 @@ test("Excel issues save inline, retain the source and return to downloads", asyn
   await expect(issue).toContainText("Saved");
   await expect(issue).toBeFocused();
   expect(saved).toBe(2);
-  await expect(page.getByText("No report issues remaining.", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Back to summary and downloads" }).click();
+  await expect(
+    page.getByText("Changes saved. No checks remain in this section.", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "GSTR-1 summary" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Fix 1 remaining issue" })).toHaveCount(0);
 });
@@ -338,10 +340,9 @@ test("real workspace uses server data, changes month/client and preserves regist
   await page.getByRole("link", { name: "View sales register", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/gst\/1\/2026-06\/sales\/register$/);
   expect(await page.evaluate(() => (window as any).sameDocument)).toBe(true);
-  await expect(page.getByRole("link", { name: "REAL-101", exact: true })).toHaveAttribute(
-    "href",
-    "/app/gst/1/2026-06/sales/invoices/one?filter=all",
-  );
+  await expect(
+    page.getByRole("link", { name: "Inspect invoice REAL-101", exact: true }),
+  ).toHaveAttribute("href", "/app/gst/1/2026-06/sales/register?selected=one");
   await page.getByRole("textbox", { name: "Search customer, invoice or GSTIN" }).fill("Customer A");
   await page.reload();
   await expect(
@@ -349,7 +350,9 @@ test("real workspace uses server data, changes month/client and preserves regist
   ).toHaveValue("Customer A");
   await page.getByRole("button", { name: "Next month", exact: true }).click();
   await expect(page).toHaveURL(/\/2026-07\/sales\/register/);
-  await expect(page.getByRole("link", { name: "REAL-101", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Inspect invoice REAL-101", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText("No sales invoices yet", { exact: true })).toBeVisible();
   await page.getByLabel("Switch client: Breeze Tech", { exact: true }).click();
   await page.getByRole("option", { name: "Second client", exact: true }).click();
@@ -365,10 +368,10 @@ test("sales rows open review while links, text selection and keyboard stay usabl
   data.rows[0].reason = "Check buyer name against GST records";
   await page.route("**/api/workspace/sales/*/*", (route) => route.fulfill({ json: data }));
   const register = "/app/gst/1/2026-06/sales/register?filter=needs_review&q=Customer";
-  const review = /sales\/invoices\/one\?filter=needs_review&q=Customer$/;
+  const review = /sales\/register\?filter=needs_review&q=Customer&selected=one$/;
   await page.goto(register);
   const row = page.getByRole("row").filter({ hasText: "REAL-101" });
-  const link = page.getByRole("link", { name: "Review invoice REAL-101", exact: true });
+  const link = page.getByRole("link", { name: "Inspect invoice REAL-101", exact: true });
   await expect(link).toBeVisible();
   await expect(row).toHaveCSS("cursor", "pointer");
   await row.hover();

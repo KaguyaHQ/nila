@@ -185,6 +185,96 @@ async function setup(page: Page) {
   );
 }
 
+test("RSP review explains derived tax without claiming an independent total check", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/one", (route) => {
+    const data = invoice();
+    data.invoice.number = "I/26-27/010432";
+    data.invoice.buyer_name = "KALYANI STORE";
+    data.issues = [];
+    data.checks = [];
+    data.tax_calculation = {
+      method: "invoice_value_residual",
+      label: "Derived from invoice value",
+      detail:
+        "Invoice value less reported taxable value. Net registered sales reconcile with the supplied HSN tax (₹0.27 difference).",
+    };
+    data.totals = [
+      {
+        field: "total",
+        label: "Invoice value",
+        calculated: "₹21,825.39",
+        printed: "₹21,825.39",
+        difference: null,
+        status: "matches",
+      },
+    ];
+    data.lines[0].display = {
+      taxable_value: "₹14,996.82",
+      cgst_rate: "20",
+      sgst_rate: "20",
+      cgst_amount: "₹3,414.29",
+      sgst_amount: "₹3,414.28",
+    };
+    data.source = {
+      name: "B2B.xlsx",
+      url: null,
+      images: [],
+      pages: [],
+      spreadsheet: {
+        url: "/rsp-source",
+        selected: [{ file: "B2B.xlsx", sheet: "B2B", rows: [4] }],
+        granularity: "invoice_rate_components",
+      },
+    };
+    return route.fulfill({ json: data });
+  });
+  await page.route("**/rsp-source?*", (route) =>
+    route.fulfill({
+      json: {
+        file: "B2B.xlsx",
+        sheet: "B2B",
+        files: [{ name: "B2B.xlsx", sheets: ["B2B"] }],
+        columns: ["A", "B", "C"],
+        relevant_columns: ["A", "B", "C"],
+        header_rows: [1],
+        download_url: "/original/B2B.xlsx",
+        rows: [
+          {
+            row: 1,
+            cells: { A: "Invoice Number", B: "Invoice Value", C: "Taxable Value" },
+            invoice_ids: [],
+          },
+          {
+            row: 4,
+            cells: { A: "I/26-27/010432", B: "21825.39", C: "14996.82" },
+            invoice_ids: ["one"],
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one");
+  await expect(page.getByText("Derived from invoice value", { exact: true })).toBeVisible();
+  await expect(page.getByText(/₹0.27 difference/)).toBeVisible();
+  await expect(page.getByText("Invoice value agrees with the tax breakdown.")).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Calculated GST", exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("region", { name: "Source spreadsheet", exact: true })).toContainText(
+    "21825.39",
+  );
+  await page.getByRole("button", { name: "Edit rate component 1", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Source spreadsheet", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Edit rate component 1", exact: true }),
+  ).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath("rsp-derived-tax.png"), fullPage: true });
+});
+
 test("Excel review browses original rows, finds distant evidence and reuses the sheet between invoices", async ({
   page,
 }, testInfo) => {
@@ -1116,4 +1206,95 @@ test("remove invoice confirms scope, prevents repeat saves and opens the next in
   await expect(page).toHaveURL(/invoices\/two/);
   await expect(page.getByRole("heading", { name: "Invoice INV-002" })).toBeVisible();
   expect(saves).toBe(1);
+});
+
+test("expanded review stays within the selected buyer and returns to the same Sales selection", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const data = invoice(id);
+    data.queue = [
+      {
+        ...data.queue[0],
+        buyer_gstin: "33AIEPL7786Q1ZE",
+        issue_codes: ["buyer_gst_registration_review"],
+      },
+      {
+        ...data.queue[1],
+        buyer_gstin: "33OTHERBUYER",
+        issue_codes: ["buyer_gst_registration_review"],
+      },
+      {
+        ...data.queue[0],
+        id: "three",
+        number: "INV-003",
+        buyer_gstin: "33AIEPL7786Q1ZE",
+        issue_codes: ["buyer_gst_registration_review"],
+      },
+    ];
+    return route.fulfill({ json: data });
+  });
+  await page.goto(
+    "/app/gst/1/2026-06/sales/invoices/one?origin=register&selected=one&buyer=33AIEPL7786Q1ZE&issue=buyer_gst_registration_review&q=%20%2033AIEPL7786Q1ZE%20%20",
+  );
+  await expect(page.getByText("1 of 2 invoices", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next invoice", exact: true }).click();
+  await expect(page).toHaveURL(/invoices\/three/);
+  const back = page.getByRole("link", { name: "Back to register", exact: true });
+  const href = new URL((await back.getAttribute("href"))!, "http://localhost");
+  expect(href.searchParams.get("selected")).toBe("three");
+  expect(href.searchParams.get("buyer")).toBe("33AIEPL7786Q1ZE");
+  expect(href.searchParams.get("issue")).toBe("buyer_gst_registration_review");
+});
+
+test("evidence opened from Return points back to the selected return task", async ({ page }) => {
+  await setup(page);
+  await page.goto("/app/gst/1/2026-06/sales/invoices/one?origin=return&returnTask=hsn-check");
+  const back = page.getByRole("link", { name: "Back to return", exact: true });
+  await expect(back).toBeVisible();
+  const href = new URL((await back.getAttribute("href"))!, "http://localhost");
+  expect(href.pathname).toBe("/app/gst/1/2026-06/sales");
+  expect(href.searchParams.get("returnTask")).toBe("hsn-check");
+  await expect(page.getByRole("button", { name: "Next invoice", exact: true })).toBeEnabled();
+});
+
+test("note evidence navigation stays inside the selected task", async ({ page }) => {
+  await setup(page);
+  let sourceIds = ["one", "three"];
+  await page.route("**/api/workspace/sales/1/2026-06/reports", (route) =>
+    route.fulfill({
+      json: {
+        tasks: [{ id: "note-treatment", kind: "notes", source_ids: sourceIds }],
+        reports: [],
+        states: [],
+        editable: true,
+      },
+    }),
+  );
+  await page.route("**/api/workspace/sales/1/2026-06/invoices/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const data = invoice(id);
+    data.queue = [
+      data.queue[0],
+      data.queue[1],
+      { ...data.queue[0], id: "three", number: "INV-003" },
+    ];
+    return route.fulfill({ json: data });
+  });
+  await page.goto(
+    "/app/gst/1/2026-06/sales/invoices/one?origin=register&returnTask=note-treatment&issue=report_notes",
+  );
+  await expect(page.getByText("1 of 2 invoices", { exact: true })).toBeVisible();
+  sourceIds = ["three"]; // Another correction resolved the first member; the task keeps its identity.
+  await page.reload();
+  await expect(page.getByText("1 in this view", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next invoice", exact: true }).click();
+  await expect(page).toHaveURL(/invoices\/three/);
+  await expect(page.getByRole("button", { name: "Next invoice", exact: true })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Back to register", exact: true })).toHaveAttribute(
+    "href",
+    /returnTask=note-treatment/,
+  );
 });

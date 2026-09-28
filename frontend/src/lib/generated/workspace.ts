@@ -1522,6 +1522,18 @@ export interface components {
                 tax: string;
                 reason: string | null;
                 path: string | null;
+                issues?: {
+                    code: string;
+                    title: string;
+                }[];
+                buyer_registration?: {
+                    gstin?: string | null;
+                    legal_name?: string | null;
+                    trade_name?: string | null;
+                    registration_status?: string | null;
+                    checked_at?: string | null;
+                    cancellation_date?: string | null;
+                } | null;
             }[];
             sections: {
                 id: string;
@@ -1590,6 +1602,11 @@ export interface components {
             download_url: string;
         };
         SalesInvoiceReviewData: {
+            tax_calculation?: {
+                method: string;
+                label: string;
+                detail: string;
+            } | null;
             client: {
                 id: number;
                 name: string;
@@ -1656,6 +1673,8 @@ export interface components {
                 status: "needs_review" | "ready";
                 customer?: string;
                 amount?: string;
+                buyer_gstin?: string | null;
+                issue_codes?: string[];
             }[];
             can_edit: boolean;
             lock_reason: string | null;
@@ -1665,6 +1684,14 @@ export interface components {
                 totals: string[];
             };
             upload_ref?: string | null;
+            buyer_registration?: {
+                gstin?: string | null;
+                legal_name?: string | null;
+                trade_name?: string | null;
+                registration_status?: string | null;
+                checked_at?: string | null;
+                cancellation_date?: string | null;
+            } | null;
         };
         ReviewChange: {
             /** @enum {string} */

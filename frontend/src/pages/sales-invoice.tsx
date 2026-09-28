@@ -1,3 +1,4 @@
+import type { components } from "@/lib/generated/workspace";
 import { InvoiceRateDetails } from "@/components/invoice-rate-details";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { SalesRemovalActions } from "@/components/sales-removal-actions";
@@ -131,10 +132,20 @@ export default function SalesInvoiceReview() {
     staleTime: 0,
     retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1,
   });
+  const returnTo =
+    params.origin === "return"
+      ? params.returnSection
+        ? "/gst/$clientId/$period/sales/sections/$section"
+        : "/gst/$clientId/$period/sales"
+      : "/gst/$clientId/$period/sales/register";
   const backSearch = {
     filter:
       params.filter === "needs_review" || params.filter === "ready" ? params.filter : undefined,
     q: params.q,
+    selected: params.origin === "register" || params.selected ? invoiceId : undefined,
+    issue: params.issue,
+    buyer: params.buyer,
+    returnTask: params.returnTask,
   };
   if (query.isPending)
     return (
@@ -165,13 +176,13 @@ export default function SalesInvoiceReview() {
             role="link"
             render={
               <Link
-                to="/gst/$clientId/$period/sales/register"
-                params={{ clientId, period }}
+                to={returnTo}
+                params={{ clientId, period, section: params.returnSection ?? "" }}
                 search={backSearch}
               />
             }
           >
-            Back to register
+            {params.origin === "return" ? "Back to return" : "Back to register"}
           </Button>
         </div>
       </main>
@@ -252,6 +263,7 @@ function InvoiceReview({
       cache.setQueryData(["sales-review", clientId, period, invoiceId], saved);
       void cache.invalidateQueries({ queryKey: ["sales"] });
       void cache.invalidateQueries({ queryKey: ["sales-uploads"] });
+      void cache.invalidateQueries({ queryKey: ["sales-reports", Number(clientId), period] });
       void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
       setNotice(change ? "Changes saved." : "Decision saved.");
       setDialogOpen(false);
@@ -271,25 +283,72 @@ function InvoiceReview({
   });
   const busy = mutation.isPending || transitioning;
   const error = mutation.error;
+  const taskQuery = useQuery({
+    queryKey: ["sales-reports", Number(clientId), period],
+    enabled: Boolean(params.returnTask),
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/workspace/sales/${clientId}/${period}/reports`, {
+        signal,
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("Could not load the selected task.");
+      return response.json() as Promise<components["schemas"]["SalesReturnReports"]>;
+    },
+  });
+  const task = taskQuery.data?.tasks.find((item) => item.id === params.returnTask);
+  const taskIds = new Set(task?.source_ids ?? []);
+  const constrainTaskQueue = Boolean(
+    params.returnTask &&
+      (params.origin === "register" || params.issue === "report_notes" || task?.kind === "notes"),
+  );
   const requestedFilter = params.filter;
   const filter =
     requestedFilter === "ready" || requestedFilter === "needs_review" ? requestedFilter : "all";
-  const visible = data.queue.filter((item) => filter === "all" || item.status === filter);
+  const matchesScope = (item: SalesInvoiceReviewData["queue"][number]) =>
+    (!constrainTaskQueue || taskIds.has(item.id)) &&
+    (!params.buyer || item.buyer_gstin === params.buyer) &&
+    (!params.issue ||
+      params.issue === "report_notes" ||
+      (item.issue_codes ?? []).includes(params.issue)) &&
+    (!params.q ||
+      `${item.number} ${item.customer ?? ""} ${item.buyer_gstin ?? ""}`
+        .toLowerCase()
+        .includes(params.q.trim().toLowerCase()));
+  const scopedQueue = data.queue.filter(matchesScope);
+  const visible = scopedQueue.filter((item) => filter === "all" || item.status === filter);
   const position = visible.findIndex((item) => item.id === data.invoice.id);
   // Keep the current invoice on screen if a save removes it from the filter.
   // Neighbours still follow its position in the full, server-ordered queue.
   const currentIndex = data.queue.findIndex((item) => item.id === data.invoice.id);
   const matchesFilter = (item: SalesInvoiceReviewData["queue"][number]) =>
-    filter === "all" || item.status === filter;
+    matchesScope(item) && (filter === "all" || item.status === filter);
   const previous = data.queue.slice(0, currentIndex).filter(matchesFilter).at(-1);
   const next = data.queue.slice(currentIndex + 1).find(matchesFilter);
   const positionLabel =
-    position >= 0
-      ? `${position + 1} of ${visible.length} ${filter === "needs_review" ? "needing review" : filter === "ready" ? "ready invoices" : "invoices"}`
-      : filter === "needs_review" && visible.length === 0
-        ? "No invoices need review"
-        : `${visible.length} ${filter === "needs_review" ? "still need review" : "in this view"}`;
-  const registerSearch = { filter: filter === "all" ? undefined : filter, q: params.q };
+    constrainTaskQueue && !task
+      ? taskQuery.isFetching
+        ? "Loading selected task…"
+        : "Selected task unavailable · return to choose another"
+      : position >= 0
+        ? `${position + 1} of ${visible.length} ${filter === "needs_review" ? "needing review" : filter === "ready" ? "ready invoices" : "invoices"}`
+        : filter === "needs_review" && visible.length === 0
+          ? "No invoices need review"
+          : `${visible.length} ${filter === "needs_review" ? "still need review" : "in this view"}`;
+  const returnTo =
+    params.origin === "return"
+      ? params.returnSection
+        ? "/gst/$clientId/$period/sales/sections/$section"
+        : "/gst/$clientId/$period/sales"
+      : "/gst/$clientId/$period/sales/register";
+  const registerSearch = {
+    filter: filter === "all" ? undefined : filter,
+    q: params.q,
+    selected: params.origin === "register" || params.selected ? invoiceId : undefined,
+    issue: params.issue,
+    buyer: params.buyer,
+    returnTask: params.returnTask,
+  };
   const status = data.queue.find((item) => item.id === data.invoice.id)?.status;
   const canEdit = data.can_edit && !refreshing && !busy;
   const fieldErrors = error instanceof ReviewApiError ? error.fields : {};
@@ -337,7 +396,7 @@ function InvoiceReview({
     });
   }
   function changeFilter(value: string) {
-    const matching = data.queue.filter((item) => value === "all" || item.status === value);
+    const matching = scopedQueue.filter((item) => value === "all" || item.status === value);
     const currentMatches = matching.some((item) => item.id === data.invoice.id);
     if (!currentMatches && matching.length) go(matching[0].id, value);
     else {
@@ -370,8 +429,8 @@ function InvoiceReview({
       ) {
         event.preventDefault();
         navigate({
-          to: "/gst/$clientId/$period/sales/register",
-          params: { clientId, period },
+          to: returnTo,
+          params: { clientId, period, section: params.returnSection ?? "" },
           search: registerSearch,
         });
         return;
@@ -617,14 +676,15 @@ function InvoiceReview({
             role="link"
             render={
               <Link
-                to="/gst/$clientId/$period/sales/register"
-                params={{ clientId, period }}
+                to={returnTo}
+                params={{ clientId, period, section: params.returnSection ?? "" }}
                 search={registerSearch}
               />
             }
             disabled={busy || inlineEditor}
           >
-            <ArrowLeft /> Back to register <Kbd aria-hidden="true">Esc</Kbd>
+            <ArrowLeft /> {params.origin === "return" ? "Back to return" : "Back to register"}{" "}
+            <Kbd aria-hidden="true">Esc</Kbd>
           </Button>
           <ShortcutHelpButton />
           <span className="text-sm text-muted-foreground">
@@ -651,7 +711,7 @@ function InvoiceReview({
                 {item.label}{" "}
                 <span className="ml-1 tabular-nums text-muted-foreground">
                   {
-                    data.queue.filter(
+                    scopedQueue.filter(
                       (invoice) => item.value === "all" || invoice.status === item.value,
                     ).length
                   }
