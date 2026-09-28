@@ -142,3 +142,7 @@ Scope excludes exports, SEZ, reverse charge, composition/exempt billing,
 e-invoice IRNs, inventory, payment collection and automatic email/WhatsApp sending.
 Place of supply is explicit because some supplies have special rules; the CA
 must confirm the applicable place and tax rate. Existing CA checks remain active.
+
+For agent-assisted one-time migrations from existing workbooks, use the stable JSON packet
+and dry-run command in [Business migration packets](business-migration.md). Source-specific
+spreadsheet interpretation stays outside Nila; Phoenix validates and writes the business facts.

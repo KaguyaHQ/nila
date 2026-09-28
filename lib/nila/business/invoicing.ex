@@ -539,6 +539,47 @@ defmodule Nila.Business.Invoicing do
     )
   end
 
+  @doc "Finalizes a migrated quotation under its original number without changing live numbering."
+  def finalize_imported_quotation(%Client{} = client, actor_id, attrs, number, opts \\ [])
+      when is_binary(number) do
+    number = String.trim(number)
+    attrs = Map.put(string_keys(attrs), "document_type", "quotation")
+
+    if number == "" or String.length(number) > 100 do
+      {:error, :invalid_imported_number}
+    else
+      Repo.transact(
+        fn ->
+          current_client =
+            Repo.one!(
+              from c in Client,
+                where: c.id == ^client.id and c.org_id == ^client.org_id,
+                lock: "FOR UPDATE"
+            )
+
+          with false <-
+                 Repo.exists?(
+                   from i in Invoice,
+                     where: i.client_id == ^current_client.id and i.number == ^number
+                 ),
+               {:ok, draft} <- save_draft(current_client, actor_id, attrs),
+               do:
+                 issue_in_transaction(
+                   current_client,
+                   draft.id,
+                   actor_id,
+                   Keyword.put(opts, :imported_number, number)
+                 )
+        end,
+        timeout: 60_000
+      )
+      |> case do
+        {:ok, true} -> {:error, :number_already_used}
+        result -> result
+      end
+    end
+  end
+
   def finalize_invoice(%Client{} = client, actor_id, attrs, id \\ nil, opts \\ []) do
     attrs = string_keys(attrs)
     type = if(attrs["original_invoice_id"], do: "credit_note", else: "invoice")
@@ -613,9 +654,9 @@ defmodule Nila.Business.Invoicing do
          {:ok, lines} <-
            calculate_lines(invoice.lines, profile.state_code == invoice.place_of_supply),
          {:ok, original} <- issue_original(current_client, invoice, lines),
-         number <- next_number(current_client, invoice, profile),
+         number <- opts[:imported_number] || next_number(current_client, invoice, profile),
          snapshot <- snapshot(current_client, profile, customer, invoice, lines, number, original),
-         {:ok, bytes} <- render(snapshot, opts),
+         {:ok, bytes} <- render(snapshot, Keyword.delete(opts, :imported_number)),
          key <-
            "orgs/#{current_client.org_id}/clients/#{current_client.id}/business/#{invoice.id}/#{Ecto.UUID.generate()}.pdf",
          {:ok, _stored} <- Storage.put(key, bytes, content_type: "application/pdf"),
