@@ -311,6 +311,8 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
   const cache = useQueryClient();
   const [name, setName] = useState(client?.name ?? "");
   const [gstin, setGstin] = useState(client?.gstin ?? "");
+  const nameInput = useRef<HTMLInputElement>(null);
+  const gstinInput = useRef<HTMLInputElement>(null);
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const save = useMutation({
@@ -337,7 +339,15 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
       void cache.invalidateQueries({ queryKey: ["gstr2b", saved.client.id] });
       if (!controller.signal.aborted) {
         toast.add({ title: client ? "Client updated." : "Client added.", type: "success" });
-        navigate({ to: "/clients", search: { period: data.period } });
+        navigate(
+          client
+            ? { to: "/clients", search: { period: data.period } }
+            : {
+                to: "/gst/$clientId/$period/sales",
+                params: { clientId: String(saved.client.id), period: data.period },
+                search: { upload: "invoices" },
+              },
+        );
       }
     },
     onSettled: (_saved, _error, { controller }) => {
@@ -347,6 +357,11 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
   const busy = save.isPending;
   const error = save.error;
   const fieldErrors = error instanceof ClientApiError ? error.fields : {};
+  useEffect(() => {
+    if (!(error instanceof ClientApiError)) return;
+    if (error.fields.name?.length) nameInput.current?.focus();
+    else if (error.fields.gstin?.length) gstinInput.current?.focus();
+  }, [error]);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!canEdit || operation.current || save.isPending) return;
@@ -389,6 +404,8 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
           </label>
           <Input
             id="client-name"
+            ref={nameInput}
+            autoFocus
             name="name"
             autoComplete="organization"
             required
@@ -411,6 +428,7 @@ function IdentityForm({ client, canEdit }: { client?: ClientIdentity; canEdit: b
           </label>
           <Input
             id="client-gstin"
+            ref={gstinInput}
             name="gstin"
             autoComplete="off"
             maxLength={15}

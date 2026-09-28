@@ -121,4 +121,9 @@ test("client directory also offers the command palette", async ({ page }) => {
   await page.getByRole("combobox", { name: "Search pages, clients or a month" }).fill("Breeze");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/app/gst/1/2026-06/sales");
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search pages, clients or a month" }).fill("Add client");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/app/clients/new?period=2026-06");
+  await expect(page.getByLabel("Client name", { exact: true })).toBeFocused();
 });

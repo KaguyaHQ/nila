@@ -130,6 +130,40 @@ test("add form retains server validation errors and sends only client identity w
   page,
 }) => {
   await setup(page);
+  await page.route("**/api/workspace/sales/3/2026-06", (route) =>
+    route.fulfill({
+      json: {
+        client: { id: 3, name: "New client" },
+        clients: [{ id: 3, name: "New client" }],
+        user: { name: "Accountant", org: "Test firm" },
+        period: "2026-06",
+        month_label: "June 2026",
+        can_upload: true,
+        invoice_count: 0,
+        review_count: 0,
+        month_issue_count: 0,
+        uploads: { files: 0, unfinished: false },
+        rows: [],
+        sections: [],
+        links: {},
+      },
+    }),
+  );
+  await page.route("**/api/workspace/sales/3/2026-06/uploads/keyboard-batch", (route) =>
+    route.fulfill({ json: { id: "keyboard-batch", processing: true, files: [] } }),
+  );
+  await page.route("**/api/workspace/sales/3/2026-06/uploads/prepare", (route) =>
+    route.fulfill({
+      json: {
+        token: "keyboard-token",
+        files: [{ name: "bill.pdf", url: "http://127.0.0.1:5174/storage/keyboard-bill" }],
+      },
+    }),
+  );
+  await page.route("**/storage/keyboard-bill", (route) => route.fulfill({ status: 200, body: "" }));
+  await page.route("**/api/workspace/sales/3/2026-06/uploads", (route) =>
+    route.fulfill({ json: { ok: true, batch_ref: "keyboard-batch" } }),
+  );
   let writes = 0;
   await page.route(rootApi, async (route) => {
     if (route.request().method() === "GET") return route.fallback();
@@ -147,16 +181,28 @@ test("add form retains server validation errors and sends only client identity w
     );
   });
   await page.goto("/app/clients/new?period=2026-06");
+  await expect(page.getByLabel("Client name", { exact: true })).toBeFocused();
   await page.getByLabel("Client name", { exact: true }).fill("New client");
   await page.getByLabel("GSTIN (optional)").fill("bad");
   await page.getByRole("button", { name: "Add client", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Check the client details.");
   await expect(page.getByLabel("GSTIN (optional)")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("GSTIN (optional)")).toBeFocused();
   await expect(page.getByText("is invalid", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Client name", { exact: true })).toHaveValue("New client");
   await page.getByLabel("GSTIN (optional)").fill("");
   await page.getByRole("button", { name: "Add client", exact: true }).click();
-  await expect(page).toHaveURL(/\/clients\?period=2026-06$/);
+  await expect(page).toHaveURL(/\/gst\/3\/2026-06\/sales\?upload=invoices$/);
+  await expect(page.getByRole("button", { name: "Choose PDFs" })).toBeFocused();
+  const [picker] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Enter")]);
+  await picker.setFiles({
+    name: "bill.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n"),
+  });
+  await page.getByRole("button", { name: "Upload 1 PDF" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/sales\/uploads\/keyboard-batch$/);
   expect(writes).toBe(2);
 });
 

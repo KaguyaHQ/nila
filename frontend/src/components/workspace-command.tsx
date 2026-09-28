@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   FileText,
   Inbox,
+  Plus,
   Search,
   Upload,
   Users,
@@ -46,6 +47,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const opener = useRef<HTMLElement | null>(null);
+  const navigating = useRef(false);
   const period = selectedPeriod ?? live?.base.split("/")[3] ?? null;
   const directory = useQuery({
     queryKey: ["clients", period],
@@ -58,6 +60,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
   const modifier = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
   function show(button?: HTMLElement) {
+    navigating.current = false;
     opener.current =
       button ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setSearch("");
@@ -83,6 +86,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
     setOpen(false);
   }, [pathname]);
   function go(path: string) {
+    navigating.current = true;
     setOpen(false);
     navigate(urlDestination(path));
   }
@@ -171,6 +175,18 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
     },
     { label: "Notices", path: "/notices", Icon: Inbox, keywords: ["GST", "reminders"] },
   ];
+  const actions = [
+    ...(directory.data?.can_edit === true
+      ? [
+          {
+            label: "Add client",
+            path: activePeriod ? `/clients/new?period=${activePeriod}` : "/clients/new",
+            Icon: Plus,
+            keywords: ["new client", "create client"],
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -189,7 +205,7 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          finalFocus={opener}
+          finalFocus={() => (navigating.current ? false : opener.current)}
           showCloseButton={false}
           className="overflow-hidden p-0 sm:max-w-lg"
         >
@@ -219,6 +235,21 @@ export function WorkspaceCommand({ live, period: selectedPeriod }: Props) {
                   </CommandItem>
                 ))}
               </CommandGroup>
+              {actions.length > 0 && (
+                <CommandGroup heading="Actions">
+                  {actions.map(({ label, path, Icon, keywords }) => (
+                    <CommandItem
+                      key={path}
+                      value={label}
+                      keywords={keywords}
+                      onSelect={() => go(path)}
+                    >
+                      <Icon />
+                      {label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
               {live && (
                 <CommandGroup heading="Months">
                   {periods.map((month) => (
