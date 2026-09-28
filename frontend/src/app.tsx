@@ -14,6 +14,7 @@ import {
   stringifySearch,
 } from "@/lib/route-search";
 import {
+  BusinessCustomerDetail,
   BusinessCustomers,
   BusinessInvoiceEditor,
   BusinessInvoices,
@@ -170,6 +171,11 @@ const businessCustomers = createRoute({
   getParentRoute: () => business,
   path: "customers",
   component: BusinessCustomers,
+});
+const businessCustomer = createRoute({
+  getParentRoute: () => business,
+  path: "customers/$customerId",
+  component: BusinessCustomerDetail,
 });
 const businessServices = createRoute({
   getParentRoute: () => business,
@@ -337,6 +343,7 @@ const routeTree = root.addChildren([
     businessQuotationNew,
     businessQuotation,
     businessCustomers,
+    businessCustomer,
     businessServices,
     businessSettings,
     businessSettingsSection,

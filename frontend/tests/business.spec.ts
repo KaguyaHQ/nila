@@ -713,6 +713,85 @@ test("customer saves scoped and business profile confirms save", async ({ page }
   await expect(page.getByRole("status")).toHaveText("Settings saved.");
 });
 
+test("customer add stays in a dialog and records open on their own page", async ({ page }) => {
+  await setup(page);
+  let customerAddresses = [
+    { id: 40, customer_id: 4, label: "Head office", address: "1 Mount Road, Chennai", state_code: "33", gstin: null, usage: "either", is_primary_billing: true, is_primary_shipping: true },
+    ...Array.from({ length: 102 }, (_, index) => ({
+      id: index + 41, customer_id: 4,
+      label: `Hospital ${String(index + 1).padStart(3, "0")}`,
+      address: `${index + 1} Main Street, Chennai`,
+      state_code: "33", gstin: null, usage: "shipping",
+      is_primary_billing: false, is_primary_shipping: false,
+    })),
+  ];
+  await page.route(/\/api\/business\/1\/bootstrap$/, (route) => route.fulfill({ json: {
+    ...bootstrap,
+    customer_addresses: customerAddresses,
+  } }));
+  await page.route(/\/api\/business\/1\/customers\/4\/addresses$/, (route) => {
+    const input = route.request().postDataJSON().address;
+    if (input.usage === "billing") {
+      expect(input).toMatchObject({ label: "Accounts office", is_primary_billing: true });
+      customerAddresses = customerAddresses.map((entry) => ({ ...entry, is_primary_billing: false }));
+    } else {
+      expect(input).toMatchObject({ label: "New hospital", usage: "shipping", is_primary_shipping: false });
+    }
+    const address = { ...input, id: input.usage === "billing" ? 201 : 200, customer_id: 4 };
+    customerAddresses = [...customerAddresses, address];
+    return route.fulfill({ json: { address } });
+  });
+  await page.route(/\/api\/business\/1\/customers\/4\/addresses\/122$/, (route) => {
+    const input = route.request().postDataJSON().address;
+    const address = { ...customerAddresses.find((entry) => entry.id === 122)!, ...input };
+    customerAddresses = customerAddresses.map((entry) => entry.id === 122 ? address : entry);
+    return route.fulfill({ json: { address } });
+  });
+  await page.goto("/app/business/1/customers");
+  await page.getByRole("button", { name: "Add customer" }).click();
+  await expect(page.getByRole("dialog", { name: "Add customer" })).toBeVisible();
+  await expect(page.locator("#business-customer-form")).toBeVisible();
+  await page.screenshot({ path: "../outputs/customer-design/customer-pass-1.png", fullPage: true });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("link", { name: "Harbour Labs" }).click();
+  await expect(page).toHaveURL(/\/app\/business\/1\/customers\/4$/);
+  await expect(page.getByRole("heading", { name: "Service locations" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Hospital 001", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Hospital 026", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "../outputs/customer-design/customer-pass-2.png", fullPage: true });
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("cell", { name: "Hospital 026", exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Search service locations" }).fill("Hospital 082");
+  await expect(page.getByRole("cell", { name: "Hospital 082", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Hospital 026", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit Hospital 082" }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit service location" });
+  await editDialog.getByLabel("Hospital or location name").fill("Renamed hospital");
+  await editDialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(editDialog).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Search service locations" }).fill("Renamed hospital");
+  await expect(page.getByRole("cell", { name: "Renamed hospital", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add location" }).click();
+  const locationDialog = page.getByRole("dialog", { name: "Add service location" });
+  await locationDialog.getByLabel("Hospital or location name").fill("New hospital");
+  await locationDialog.getByLabel("Address", { exact: true }).fill("New Road, Chennai");
+  await chooseState(page, "#saved-address-state");
+  await locationDialog.getByRole("button", { name: "Save address" }).click();
+  await expect(locationDialog).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Search service locations" }).fill("New hospital");
+  await expect(page.getByRole("cell", { name: "New hospital", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add billing address" }).click();
+  const billingDialog = page.getByRole("dialog", { name: "Add billing address" });
+  await billingDialog.getByLabel("Address label").fill("Accounts office");
+  await billingDialog.getByLabel("Address", { exact: true }).fill("2 Mount Road, Chennai");
+  await chooseState(page, "#saved-address-state");
+  await billingDialog.getByRole("checkbox", { name: "Make this the default billing address" }).check();
+  await billingDialog.getByRole("button", { name: "Save address" }).click();
+  await expect(billingDialog).toHaveCount(0);
+  await expect(page.getByText("Accounts office")).toBeVisible();
+  await expect(page.getByText("Head office")).toBeVisible();
+});
+
 test("business details save contact info, numbering and a logo", async ({ page }, testInfo) => {
   await setup(page);
   const logoBytes = readFileSync(new URL("../../priv/static/images/og-image.png", import.meta.url));
