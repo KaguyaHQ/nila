@@ -44,6 +44,8 @@ defmodule Nila.Business.PdfTest do
       assert {:ok, bytes} = Pdf.render(data)
       text = pdf_text(bytes)
       assert text =~ "QUOTATION"
+      assert text =~ "QUOTE TOTAL"
+      assert text =~ "Taxable value"
       assert text =~ "QT/2627/0001"
       assert text =~ "Valid until"
       assert text =~ "15 Oct 2026"

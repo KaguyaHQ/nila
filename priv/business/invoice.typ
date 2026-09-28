@@ -69,7 +69,11 @@
       #v(2pt)
       #label("PO date") #data.purchase_order_date_display
     ]
-    #v(2pt)
+    #v(4pt)
+    #if quotation [
+      #label("QUOTE TOTAL")
+      #v(2pt)
+    ]
     #text(size: 16pt, weight: "semibold")[#data.total_display]
   ],
 )
@@ -145,7 +149,7 @@
 #v(8pt)
 
 #table(
-  columns: (1fr, 52pt, 31pt, 64pt, 35pt, 74pt),
+  columns: (1fr, 52pt, 45pt, 64pt, 35pt, 74pt),
   inset: (x: 5pt, y: 5pt),
   stroke: (top: none, left: none, right: none, bottom: 0.4pt + rule),
   align: (left, left, right, right, right, right),
@@ -154,8 +158,8 @@
     [#item.description],
     text(size: 8pt)[#item.sac],
     [#item.quantity#if item.at("unit", default: none) not in (none, "") [
-      #linebreak()
-      #text(size: 7pt, fill: muted)[#item.unit]
+      #h(2pt)
+      #text(size: 7.5pt, fill: muted)[#item.unit]
     ]],
     [#item.rate_display],
     [#item.gst_rate%],
@@ -165,7 +169,7 @@
 #v(7pt)
 #align(right, block(width: 68mm, breakable: false)[
   #grid(columns: (1fr, auto), align: (left, right), column-gutter: 12pt, row-gutter: 8pt,
-    label("Taxable amount"), [#data.subtotal_display],
+    label("Taxable value"), [#data.subtotal_display],
     ..data.tax_rows.map(row => (label(row.label), [#row.amount])).flatten(),
   )
   #v(7pt)
@@ -177,7 +181,7 @@
   )
 ])
 
-#v(30mm)
+#v(14mm)
 #block(breakable: false)[
   #line(length: 100%, stroke: 0.7pt + rule)
   #v(8pt)
