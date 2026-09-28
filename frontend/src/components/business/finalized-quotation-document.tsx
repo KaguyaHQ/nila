@@ -159,12 +159,12 @@ export function FinalizedQuotationDocument({
           <p className="text-muted-foreground">
             {customer?.gstin ? `GSTIN ${customer.gstin}` : "Unregistered customer"}
           </p>
-          {shipping && (
+          {(shipping || shippingName || shippingStateCode || shippingGstin) && (
             <div className="space-y-1 pt-3">
               <h3 className="text-muted-foreground">
                 Ship to{shippingName ? ` · ${shippingName}` : ""}
               </h3>
-              <p className="whitespace-pre-line text-muted-foreground">{shipping}</p>
+              {shipping && <p className="whitespace-pre-line text-muted-foreground">{shipping}</p>}
               {shippingStateCode && (
                 <p className="text-muted-foreground">{stateName(shippingStateCode)}</p>
               )}

@@ -949,7 +949,7 @@ test("saved edits survive reopen and issued party names use frozen snapshot", as
   await expect(page.getByRole("region", { name: "Issued party details" })).toContainText(
     "Original customer",
   );
-  await expect(page.getByRole("region", { name: "Issued party details" })).toContainText(
+  await expect(page.getByRole("article", { name: "Editable invoice" })).toContainText(
     "Original supplier",
   );
 });
@@ -1458,10 +1458,11 @@ test("goods quotation shows Bill to and Ship to together and saves HSN with unit
   await page.goto("/app/business/1/quotations/new");
   await chooseCustomer(page, "Harbour Labs");
   const billTo = page.getByText("Bill to").locator("..");
+  const shipTo = page.getByText("Ship to (optional)").locator("..");
   await expect(billTo).toContainText("Tamil Nadu · 33");
-  await billTo.getByRole("button", { name: "Add ship-to address" }).click();
+  await shipTo.getByRole("button", { name: "Add ship-to address" }).click();
   await page.locator("#invoice-delivery").fill("Parvathi Hospital, Chennai");
-  await expect(billTo).toContainText("Parvathi Hospital, Chennai");
+  await expect(shipTo).toContainText("Parvathi Hospital, Chennai");
   await chooseState(page, "#invoice-pos", "Place of supply");
   await chooseSelect(page.getByRole("combobox", { name: "Item type 1" }), "goods");
   await expect(page.locator("#line-0-unit")).toHaveAttribute("data-value", "");
@@ -1790,11 +1791,29 @@ test("quotation builder finalizes explicitly, accepts, and converts to one invoi
   await page.locator("#invoice-subject").fill("Compressor and Pipe Supply and Insulation");
   await page.getByRole("button", { name: "Add ship-to address" }).click();
   await page.locator("#invoice-delivery").fill("IndiraGandhi Hospital, Puducherry");
+  await expect(page.getByText("This ship-to has no state.", { exact: false })).toBeVisible();
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toBe("This ship-to site or address has no state. Finalize anyway?");
+    await dialog.dismiss();
+  });
+  await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
+  expect(finalizations).toBe(0);
   await chooseState(page, "#invoice-delivery-state", "Ship-to state", "Puducherry");
+  await expect(page.getByRole("combobox", { name: "Search ship-to state" })).toBeHidden();
   await expect(page.getByText(/Billing and delivery states differ/)).toBeVisible();
   await page.getByRole("button", { name: "Add customer reference" }).click();
   await page.locator("#invoice-reference").fill("WO-4821");
   await expect(page.locator("#invoice-reference-date")).toHaveCount(0);
+  const editor = page.getByRole("article", { name: "Editable invoice" });
+  await expect(editor.locator("span").filter({ hasText: /^Type$/ })).toBeVisible();
+  await expect(editor.getByText("Item / description", { exact: true })).toBeVisible();
+  expect((await page.locator("#line-0-description").boundingBox())?.y).toBeLessThan(1000);
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: testInfo.outputPath("quotation-editor.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Finalize quotation", exact: true }).click();
   await expect(page).toHaveURL(/\/quotations\/21$/);
   expect(finalizations).toBe(1);

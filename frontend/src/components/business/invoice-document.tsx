@@ -11,7 +11,13 @@ import { Link, useParams } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SelectFieldOption } from "@/components/ui/select-field";
 import type {
   BusinessBootstrap,
@@ -34,7 +40,7 @@ const amount = (value?: number) =>
   typeof value === "number"
     ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value / 100)
     : "—";
-const columns = "lg:grid-cols-[minmax(0,1fr)_72px_110px_84px_80px_90px_24px]";
+const columns = "lg:grid-cols-[82px_minmax(180px,1fr)_92px_64px_84px_90px_84px_104px_32px]";
 const rates = ["0.1", "0.25", "1", "1.5", "3", "5", "6", "7.5", "12", "18", "28", "40"];
 const rateItems = rates.map((rate) => ({ label: `${rate}%`, value: rate }));
 
@@ -95,12 +101,22 @@ export function InvoiceDocument({
   const shippingAddress = customerAddresses.find(
     (address) => address.id === Number(value.shipping_address_id),
   );
-  const displayBilling = issued
-    ? customer
-    : billingAddress ?? customer;
-  const issuedShipping =
-    saved?.snapshot?.delivery_address ?? original?.snapshot?.delivery_address;
+  const displayBilling = issued ? customer : (billingAddress ?? customer);
+  const issuedShipping = saved?.snapshot?.delivery_address ?? original?.snapshot?.delivery_address;
+  const issuedShippingName = saved?.snapshot?.shipping_name ?? original?.snapshot?.shipping_name;
+  const issuedShippingState =
+    saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code;
   const frozenShippingGstin = saved?.snapshot?.shipping_gstin ?? original?.snapshot?.shipping_gstin;
+  const shippingState = shippingAddress?.state_code || value.delivery_state_code;
+  const placeOfSupplySource =
+    shippingState && value.place_of_supply === shippingState
+      ? "From ship-to state"
+      : !shippingState && displayBilling?.state_code === value.place_of_supply
+        ? "From billing state"
+        : "Chosen manually";
+  const incompleteManualShipping = Boolean(
+    value.delivery_address?.trim() && !value.delivery_state_code,
+  );
   const totals = calculation?.totals;
   if (quotation && issued && saved) {
     return (
@@ -121,14 +137,16 @@ export function InvoiceDocument({
   return (
     <article
       aria-label="Editable invoice"
-      className="relative mx-auto flex min-h-[900px] w-full max-w-[920px] flex-col border bg-background px-5 py-7 sm:px-10 sm:py-9"
+      className="relative mx-auto flex min-h-[900px] w-full max-w-[1080px] flex-col border bg-background px-5 py-7 sm:px-10 sm:py-8"
     >
-      <div className="flex items-start justify-between gap-6">
+      <div>
         <div className="min-w-0 flex-1">
-          <h1 className="mb-5 text-2xl font-semibold tracking-tight">
-            {quotation ? "Quotation" : credit ? "Credit note" : "Tax invoice"}
-          </h1>
-          <div className={`grid ${quotation ? "max-w-md" : "max-w-sm"} grid-cols-[110px_minmax(0,1fr)] sm:grid-cols-[140px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 text-sm`}>
+          <div className="mb-3 flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {quotation ? "Quotation" : credit ? "Credit note" : "Tax invoice"}
+            </h1>
+          </div>
+          <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 text-sm sm:grid-cols-[120px_minmax(130px,1fr)_100px_minmax(130px,1fr)]">
             <span className="text-muted-foreground">
               {quotation ? "Quotation no." : credit ? "Credit note no." : "Invoice no."}
             </span>
@@ -140,7 +158,14 @@ export function InvoiceDocument({
                     ? "Assigned on finalizing"
                     : "Assigned on issue")}
               {quotation && !issued && onChangeQuotationNumbering && (
-                <Button type="button" variant="link" size="sm" className="h-auto p-0 font-normal" disabled={disabled} onClick={onChangeQuotationNumbering}>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 font-normal"
+                  disabled={disabled}
+                  onClick={onChangeQuotationNumbering}
+                >
                   Edit
                 </Button>
               )}
@@ -214,7 +239,9 @@ export function InvoiceDocument({
                 </label>
                 <InlineInput
                   id="invoice-reference"
-                  aria-label={quotation ? "Customer reference (optional)" : "Customer PO number (optional)"}
+                  aria-label={
+                    quotation ? "Customer reference (optional)" : "Customer PO number (optional)"
+                  }
                   disabled={disabled}
                   maxLength={100}
                   placeholder="Optional"
@@ -251,36 +278,30 @@ export function InvoiceDocument({
             </Button>
           )}
         </div>
-        <span className="pt-1 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          {issued
-            ? quotation
-              ? saved?.status === "issued"
-                ? "Ready"
-                : saved?.status
-              : "Issued"
-            : "Draft"}
-        </span>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 border-y py-3 text-sm">
+        <span className="text-muted-foreground">From</span>
+        <span className="font-medium">{supplier?.name}</span>
+        {supplier?.gstin && <span className="text-muted-foreground">· GSTIN {supplier.gstin}</span>}
+        {supplier?.address && (
+          <span className="max-w-full truncate text-muted-foreground">· {supplier.address}</span>
+        )}
+        {!issued && (
+          <Link
+            to="/business/$businessId/settings/$section"
+            params={{ businessId, section: "business" }}
+            className="ml-auto underline underline-offset-4"
+          >
+            Edit business details
+          </Link>
+        )}
       </div>
 
       <section
         aria-label={issued ? "Issued party details" : "Invoice parties"}
-        className="mb-6 mt-9 grid grid-cols-1 gap-7 text-sm sm:grid-cols-2 sm:gap-12"
+        className="my-5 grid grid-cols-1 gap-6 text-sm sm:grid-cols-2 sm:gap-10"
       >
-        <div className="space-y-2">
-          <h2 className="text-muted-foreground">From</h2>
-          <p className="font-medium">{supplier?.name}</p>
-          <p className="whitespace-pre-line text-muted-foreground">
-            {supplier?.address || "Business address not added"}
-          </p>
-          {supplier?.gstin && <p className="text-muted-foreground">GSTIN {supplier.gstin}</p>}
-          {supplier?.phone && <p className="text-muted-foreground">{supplier.phone}</p>}
-          {supplier?.email && <p className="text-muted-foreground">{supplier.email}</p>}
-          {!issued && !supplier?.address && (
-            <Link to="/business/$businessId/settings/$section" params={{ businessId, section: "business" }} className="inline-block underline underline-offset-4">
-              Add business details
-            </Link>
-          )}
-        </div>
         <div className="space-y-2">
           <h2 className="text-muted-foreground">Bill to</h2>
           {issued || credit ? (
@@ -303,7 +324,7 @@ export function InvoiceDocument({
                   shipping_address_id:
                     value.delivery_address || primaryShipping?.id === billingId
                       ? null
-                      : primaryShipping?.id ?? null,
+                      : (primaryShipping?.id ?? null),
                   delivery_address: "",
                   delivery_state_code: "",
                 });
@@ -347,9 +368,11 @@ export function InvoiceDocument({
               </p>
             </>
           )}
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-muted-foreground">Ship to (optional)</h2>
           {customer && !issued && !credit && (
-            <div className="space-y-2 pt-2">
-              <span className="block text-sm text-muted-foreground">Ship to (optional)</span>
+            <div className="space-y-2">
               <CustomerAddressPicker
                 customerId={Number(value.customer_id)}
                 addresses={customerAddresses}
@@ -389,18 +412,24 @@ export function InvoiceDocument({
               )}
               {shippingAddress ? (
                 <>
-                  <p className="whitespace-pre-line text-muted-foreground">{shippingAddress.address}</p>
+                  <p className="whitespace-pre-line text-muted-foreground">
+                    {shippingAddress.address}
+                  </p>
                   <p className="text-muted-foreground">
-                    {business.states.find((state) => state.code === shippingAddress.state_code)?.name ?? shippingAddress.state_code}
+                    {business.states.find((state) => state.code === shippingAddress.state_code)
+                      ?.name ?? shippingAddress.state_code}
                   </p>
                 </>
               ) : showDelivery || value.delivery_address ? (
                 <div className="space-y-2">
+                  <label htmlFor="invoice-delivery" className="block text-xs text-muted-foreground">
+                    Site / address
+                  </label>
                   <InlineTextarea
                     id="invoice-delivery"
                     disabled={disabled}
                     maxLength={2000}
-                    placeholder="Address, if different from billing"
+                    placeholder="Hospital, site, or one-off delivery address"
                     value={value.delivery_address || ""}
                     onChange={(e) => onChange({ delivery_address: e.target.value })}
                   />
@@ -412,22 +441,27 @@ export function InvoiceDocument({
                     disabled={disabled}
                     label="Ship-to state"
                   />
+                  {incompleteManualShipping && (
+                    <p className="rounded-md border border-border bg-muted/30 p-2 text-xs text-muted-foreground">
+                      This ship-to has no state. Add it before finalizing, or confirm that the state
+                      is unavailable.
+                    </p>
+                  )}
                 </div>
               ) : null}
             </div>
           )}
-          {(issued || credit) && issuedShipping ? (
+          {(issued || credit) &&
+          (issuedShipping || issuedShippingName || issuedShippingState || frozenShippingGstin) ? (
             <div className="space-y-1 pt-2">
-              <p className="text-muted-foreground">
-                Ship to
-                {(saved?.snapshot?.shipping_name ?? original?.snapshot?.shipping_name)
-                  ? ` · ${saved?.snapshot?.shipping_name ?? original?.snapshot?.shipping_name}`
-                  : ""}
-              </p>
-              <p className="whitespace-pre-line text-muted-foreground">{issuedShipping}</p>
-              {(saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code) && (
+              {issuedShippingName && <p className="font-medium">{issuedShippingName}</p>}
+              {issuedShipping && (
+                <p className="whitespace-pre-line text-muted-foreground">{issuedShipping}</p>
+              )}
+              {issuedShippingState && (
                 <p className="text-muted-foreground">
-                  {business.states.find((state) => state.code === (saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code))?.name ?? (saved?.snapshot?.delivery_state_code ?? original?.snapshot?.delivery_state_code)}
+                  {business.states.find((state) => state.code === issuedShippingState)?.name ??
+                    issuedShippingState}
                 </p>
               )}
               {frozenShippingGstin && (
@@ -441,13 +475,13 @@ export function InvoiceDocument({
                 htmlFor="invoice-delivery"
                 className="mb-1 block text-sm text-muted-foreground"
               >
-                Ship to (optional)
+                Site / address
               </label>
               <InlineTextarea
                 id="invoice-delivery"
                 disabled={disabled}
                 maxLength={2000}
-                placeholder="Address, if different from billing"
+                placeholder="Hospital, site, or one-off delivery address"
                 value={value.delivery_address || ""}
                 onChange={(e) => onChange({ delivery_address: e.target.value })}
               />
@@ -465,53 +499,76 @@ export function InvoiceDocument({
                 disabled={disabled}
                 label="Ship-to state"
               />
+              {incompleteManualShipping && (
+                <p className="mt-2 rounded-md border border-border bg-muted/30 p-2 text-xs text-muted-foreground">
+                  This ship-to has no state. Add it before finalizing, or confirm that the state is
+                  unavailable.
+                </p>
+              )}
             </div>
           ) : null}
         </div>
       </section>
 
-      {showSubject && (
-        <div className="mb-6 max-w-2xl">
-          <label htmlFor="invoice-subject" className="mb-1 block text-sm text-muted-foreground">
-            Work / subject (optional)
-          </label>
-          <InlineInput
-            id="invoice-subject"
-            disabled={disabled}
-            maxLength={200}
-            placeholder="What is this quotation for?"
-            value={value.subject || ""}
-            onChange={(e) => onChange({ subject: e.target.value })}
-          />
-        </div>
-      )}
+      <div className="mb-5 grid gap-5 sm:grid-cols-[minmax(0,1fr)_280px]">
+        {showSubject && (
+          <div>
+            <label htmlFor="invoice-subject" className="mb-1 block text-sm text-muted-foreground">
+              Work / subject (optional)
+            </label>
+            <InlineInput
+              id="invoice-subject"
+              disabled={disabled}
+              maxLength={200}
+              placeholder="What is this quotation for?"
+              value={value.subject || ""}
+              onChange={(e) => onChange({ subject: e.target.value })}
+            />
+          </div>
+        )}
 
-      <div className="mb-7 flex max-w-sm items-center gap-4 text-sm">
-        <label htmlFor="invoice-pos" className="shrink-0 text-muted-foreground">
-          Place of supply
-        </label>
-        <StateCombobox
-          id="invoice-pos"
-          states={business.states}
-          disabled={disabled}
-          value={value.place_of_supply}
-          onChange={(state) => onChange({ place_of_supply: state })}
-          label="Place of supply"
-          inline
-          required
-        />
+        <div className="text-sm">
+          <label htmlFor="invoice-pos" className="mb-1 block text-muted-foreground">
+            Place of supply
+          </label>
+          <StateCombobox
+            id="invoice-pos"
+            states={business.states}
+            disabled={disabled}
+            value={value.place_of_supply}
+            onChange={(state) => onChange({ place_of_supply: state })}
+            label="Place of supply"
+            inline
+            required
+          />
+          <span className="mt-1 block text-xs text-muted-foreground">{placeOfSupplySource}</span>
+        </div>
       </div>
-      {customer && (shippingAddress?.state_code || value.delivery_state_code) &&
-        displayBilling?.state_code !== (shippingAddress?.state_code || value.delivery_state_code) && (
+      {customer &&
+        (shippingAddress?.state_code || value.delivery_state_code) &&
+        displayBilling?.state_code !==
+          (shippingAddress?.state_code || value.delivery_state_code) && (
           <p className="mb-6 rounded-md border border-border bg-muted/30 p-3 text-sm">
-            Bill to: {business.states.find((state) => state.code === displayBilling?.state_code)?.name ?? displayBilling?.state_code}
-            {" · "}Ship to: {business.states.find((state) => state.code === (shippingAddress?.state_code || value.delivery_state_code))?.name ?? (shippingAddress?.state_code || value.delivery_state_code)}
-            {" · "}Place of supply: {business.states.find((state) => state.code === value.place_of_supply)?.name ?? "choose state"}
+            Bill to:{" "}
+            {business.states.find((state) => state.code === displayBilling?.state_code)?.name ??
+              displayBilling?.state_code}
+            {" · "}Ship to:{" "}
+            {business.states.find(
+              (state) => state.code === (shippingAddress?.state_code || value.delivery_state_code),
+            )?.name ??
+              (shippingAddress?.state_code || value.delivery_state_code)}
+            {" · "}Place of supply:{" "}
+            {business.states.find((state) => state.code === value.place_of_supply)?.name ??
+              "choose state"}
             {value.place_of_supply && (
-              <> · {value.place_of_supply === supplier?.gstin?.slice(0, 2) ? "CGST + SGST" : "IGST"}</>
+              <>
+                {" "}
+                · {value.place_of_supply === supplier?.gstin?.slice(0, 2) ? "CGST + SGST" : "IGST"}
+              </>
             )}
             <span className="mt-1 block text-muted-foreground">
-              Billing and delivery states differ. Confirm the place of supply with your CA before finalizing.
+              Billing and delivery states differ. Confirm the place of supply with your CA before
+              finalizing.
             </span>
           </p>
         )}
@@ -520,9 +577,11 @@ export function InvoiceDocument({
         <div
           className={`hidden gap-2 border-b pb-3 text-xs text-muted-foreground lg:grid ${columns}`}
         >
-          <span>Description</span>
+          <span>Type</span>
+          <span>Item / description</span>
           <span>HSN/SAC</span>
-          <span>Qty / unit</span>
+          <span className="text-right">Qty</span>
+          <span>Unit</span>
           <span className="text-right">Rate (₹)</span>
           <span className="text-right">GST %</span>
           <span className="text-right">Amount</span>
@@ -536,78 +595,80 @@ export function InvoiceDocument({
             <div className="col-span-2 min-w-0 lg:col-span-1">
               <label
                 className="text-xs text-muted-foreground lg:sr-only"
+                htmlFor={`line-${index}-kind`}
+              >
+                Type
+              </label>
+              {issued ? (
+                <span className="flex min-h-8 items-center text-xs text-muted-foreground">
+                  {line.kind === "goods" ? "Goods" : "Service"}
+                </span>
+              ) : (
+                <InlineSelect
+                  id={`line-${index}-kind`}
+                  aria-label={`Item type ${index + 1}`}
+                  disabled={disabled}
+                  value={line.kind ?? "service"}
+                  className="w-full text-xs"
+                  onValueChange={(nextValue) =>
+                    onChange({
+                      lines: value.lines.map((entry, i) =>
+                        i === index
+                          ? { ...entry, kind: nextValue as "goods" | "service", sac: "", unit: "" }
+                          : entry,
+                      ),
+                    })
+                  }
+                >
+                  <SelectFieldOption value="service">Service</SelectFieldOption>
+                  <SelectFieldOption value="goods">Goods</SelectFieldOption>
+                </InlineSelect>
+              )}
+            </div>
+            <div className="col-span-2 min-w-0 lg:col-span-1">
+              <label
+                className="text-xs text-muted-foreground lg:sr-only"
                 htmlFor={`line-${index}-description`}
               >
                 Description
               </label>
-              <div className="flex min-w-0 items-start gap-2">
-                {issued ? (
-                  <span className="pt-2 text-xs text-muted-foreground lg:hidden">
-                    {line.kind === "goods" ? "Goods" : "Service"}
+              <div className="relative min-w-0">
+                <InlineTextarea
+                  id={`line-${index}-description`}
+                  required
+                  disabled={disabled}
+                  maxLength={1000}
+                  placeholder="What are you selling?"
+                  className={!issued ? "pr-9" : undefined}
+                  value={line.description}
+                  onChange={(e) => lineChange(index, "description", e.target.value)}
+                />
+                {!issued && (
+                  <span className="absolute right-1 top-1">
+                    <ServicePicker
+                      index={index}
+                      disabled={disabled}
+                      services={business.services ?? []}
+                      onSelect={(service) =>
+                        onChange({
+                          lines: value.lines.map((entry, i) =>
+                            i === index
+                              ? {
+                                  ...entry,
+                                  description: service.description,
+                                  kind: service.kind,
+                                  sac: service.sac,
+                                  unit: service.unit,
+                                  unit_price: service.unit_price,
+                                  gst_rate: service.gst_rate,
+                                }
+                              : entry,
+                          ),
+                        })
+                      }
+                    />
                   </span>
-                ) : (
-                  <InlineSelect
-                    aria-label={`Item type ${index + 1}`}
-                    disabled={disabled}
-                    value={line.kind ?? "service"}
-                    className="w-24 shrink-0 text-xs"
-                    onValueChange={(nextValue) =>
-                      onChange({
-                        lines: value.lines.map((entry, i) =>
-                          i === index
-                            ? {
-                                ...entry,
-                                kind: nextValue as "goods" | "service",
-                                sac: "",
-                                unit: "",
-                              }
-                            : entry,
-                        ),
-                      })
-                    }
-                  >
-                    <SelectFieldOption value="service">Service</SelectFieldOption>
-                    <SelectFieldOption value="goods">Goods</SelectFieldOption>
-                  </InlineSelect>
                 )}
-                <div className="relative min-w-0 flex-1">
-                  <InlineTextarea
-                    id={`line-${index}-description`}
-                    required
-                    disabled={disabled}
-                    maxLength={1000}
-                    placeholder="What are you selling?"
-                    className={!issued ? "pr-9" : undefined}
-                    value={line.description}
-                    onChange={(e) => lineChange(index, "description", e.target.value)}
-                  />
-                  {!issued && (
-                    <span className="absolute right-1 top-1">
-                      <ServicePicker
-                        index={index}
-                        disabled={disabled}
-                        services={business.services ?? []}
-                        onSelect={(service) =>
-                          onChange({
-                            lines: value.lines.map((entry, i) =>
-                              i === index
-                                ? {
-                                    ...entry,
-                                    description: service.description,
-                                    kind: service.kind,
-                                    sac: service.sac,
-                                    unit: service.unit,
-                                    unit_price: service.unit_price,
-                                    gst_rate: service.gst_rate,
-                                  }
-                                : entry,
-                            ),
-                          })
-                        }
-                      />
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
             <div className="min-w-0">
@@ -636,7 +697,7 @@ export function InvoiceDocument({
               >
                 Quantity
               </label>
-              <div className="flex min-w-0 items-center gap-1">
+              <div className="flex min-w-0 items-center">
                 <InlineInput
                   id={`line-${index}-quantity`}
                   required
@@ -645,44 +706,46 @@ export function InvoiceDocument({
                   min="0.0001"
                   step="0.0001"
                   value={line.quantity}
-                  className="w-12 shrink-0 tabular-nums text-right"
+                  className="w-full tabular-nums text-right"
                   onChange={(e) => lineChange(index, "quantity", e.target.value)}
                 />
-                {(!issued || line.unit) && (
-                  <>
-                    <label className="sr-only" htmlFor={`line-${index}-unit`}>
-                      Unit (optional)
-                    </label>
-                    {line.kind === "goods" ? (
-                      <InlineSelect
-                        id={`line-${index}-unit`}
-                        required
-                        disabled={disabled}
-                        value={line.unit ?? ""}
-                        className="min-w-0 flex-1 text-xs"
-                        onValueChange={(nextValue) => lineChange(index, "unit", nextValue)}
-                      >
-                        <SelectFieldOption value="">Unit</SelectFieldOption>
-                        {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
-                          <SelectFieldOption key={unit} value={unit}>
-                            {unit}
-                          </SelectFieldOption>
-                        ))}
-                      </InlineSelect>
-                    ) : (
-                      <InlineInput
-                        id={`line-${index}-unit`}
-                        disabled={disabled}
-                        maxLength={30}
-                        placeholder="unit"
-                        value={line.unit ?? ""}
-                        className="min-w-0 flex-1 text-xs text-muted-foreground"
-                        onChange={(e) => lineChange(index, "unit", e.target.value)}
-                      />
-                    )}
-                  </>
-                )}
               </div>
+            </div>
+            <div className="min-w-0">
+              <label
+                className="text-xs text-muted-foreground lg:sr-only"
+                htmlFor={`line-${index}-unit`}
+              >
+                Unit
+              </label>
+              {(!issued || line.unit) &&
+                (line.kind === "goods" ? (
+                  <InlineSelect
+                    id={`line-${index}-unit`}
+                    required
+                    disabled={disabled}
+                    value={line.unit ?? ""}
+                    className="w-full text-xs"
+                    onValueChange={(nextValue) => lineChange(index, "unit", nextValue)}
+                  >
+                    <SelectFieldOption value="">Unit</SelectFieldOption>
+                    {["NOS", "KGS", "LTR", "MTR", "BOX", "SET"].map((unit) => (
+                      <SelectFieldOption key={unit} value={unit}>
+                        {unit}
+                      </SelectFieldOption>
+                    ))}
+                  </InlineSelect>
+                ) : (
+                  <InlineInput
+                    id={`line-${index}-unit`}
+                    disabled={disabled}
+                    maxLength={30}
+                    placeholder="unit"
+                    value={line.unit ?? ""}
+                    className="w-full text-xs text-muted-foreground"
+                    onChange={(e) => lineChange(index, "unit", e.target.value)}
+                  />
+                ))}
             </div>
             <div className="min-w-0">
               <label

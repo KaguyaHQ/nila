@@ -1723,6 +1723,13 @@ function InvoiceForm({
   }
   async function issue() {
     if (busy || issued || !configured) return;
+    if (
+      form.delivery_address?.trim() &&
+      !form.delivery_state_code &&
+      !window.confirm("This ship-to site or address has no state. Finalize anyway?")
+    ) {
+      return;
+    }
     if (quotation) {
       const formElement = document.getElementById("business-invoice-form") as HTMLFormElement | null;
       if (!formElement?.reportValidity()) return;

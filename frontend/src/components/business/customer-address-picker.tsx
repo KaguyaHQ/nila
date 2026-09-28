@@ -195,7 +195,7 @@ export function CustomerAddressPicker({
                       value="manual-shipping-address"
                       onSelect={() => {
                         onSelect(null);
-                        setOpen(false);
+                        setTimeout(() => setOpen(false), 0);
                       }}
                     >
                       <Check className={!value ? "size-4 opacity-100" : "size-4 opacity-0"} />
@@ -208,7 +208,7 @@ export function CustomerAddressPicker({
                       value={`${address.label} ${address.address} ${address.state_code} ${address.gstin ?? ""}`}
                       onSelect={() => {
                         onSelect(address);
-                        setOpen(false);
+                        setTimeout(() => setOpen(false), 0);
                       }}
                     >
                       <Check className={address.id === Number(value) ? "size-4 opacity-100" : "size-4 opacity-0"} />

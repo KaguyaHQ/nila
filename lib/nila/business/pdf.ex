@@ -126,6 +126,7 @@ defmodule Nila.Business.Pdf do
     |> Map.put("purchase_order_date_display", display_date(snapshot["purchase_order_date"]))
     |> Map.put("original_invoice_date_display", display_date(snapshot["original_invoice_date"]))
     |> Map.put("place_of_supply_display", state(Map.fetch!(snapshot, "place_of_supply")))
+    |> Map.put("delivery_state_display", state(snapshot["delivery_state_code"]))
   end
 
   defp display_date(nil), do: nil

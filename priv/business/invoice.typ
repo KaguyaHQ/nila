@@ -6,6 +6,7 @@
 #let rule = rgb("dce0e3")
 #let credit = data.document_type == "credit_note"
 #let quotation = data.document_type == "quotation"
+#let has-ship-to = data.at("delivery_address", default: none) not in (none, "") or data.at("shipping_name", default: none) not in (none, "") or data.at("shipping_gstin", default: none) not in (none, "") or data.at("delivery_state_display", default: none) not in (none, "")
 #let label(value) = text(size: 8pt, fill: muted)[#value]
 #let value(value) = if value != none and value != "" { [#value] }
 
@@ -88,14 +89,20 @@
     ]
   ],
   [
-    #if data.at("delivery_address", default: none) not in (none, "") [
+    #if has-ship-to [
       #label("SHIP TO")
       #v(4pt)
       #if data.at("shipping_name", default: none) not in (none, "") [
         #text(weight: "semibold")[#data.shipping_name]
         #v(3pt)
       ]
-      #data.delivery_address
+      #if data.at("delivery_address", default: none) not in (none, "") [
+        #data.delivery_address
+      ]
+      #if data.at("delivery_state_display", default: none) not in (none, "") [
+        #v(3pt)
+        #data.delivery_state_display
+      ]
       #if data.at("shipping_gstin", default: none) not in (none, "") [
         #v(3pt)
         GSTIN #data.shipping_gstin

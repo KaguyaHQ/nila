@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -31,12 +32,27 @@ export function StateCombobox({
   required?: boolean;
 }) {
   const selected = states.find((state) => state.code === value) ?? null;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   return (
     <Combobox
       items={states}
       value={selected}
-      onValueChange={(state) => onChange(state?.code ?? "")}
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setQuery("");
+      }}
+      inputValue={query}
+      onInputValueChange={setQuery}
+      onValueChange={(state) => {
+        onChange(state?.code ?? "");
+        setQuery("");
+        // Base UI may report its open state after the selection callback.
+        // Close on the next task so choosing a state always wins that race.
+        setTimeout(() => setOpen(false), 0);
+      }}
       itemToStringLabel={(state) => state.name}
       isItemEqualToValue={(a, b) => a.code === b.code}
       disabled={disabled}
