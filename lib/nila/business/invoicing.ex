@@ -91,12 +91,7 @@ defmodule Nila.Business.Invoicing do
           )
 
         with %Profile{} = profile <- Repo.get_by(Profile, client_id: current.id),
-             false <-
-               Repo.exists?(
-                 from i in Invoice,
-                   where:
-                     i.client_id == ^current.id and i.number == ^attrs["next_quotation_number"]
-               ),
+             false <- quotation_number_overlap?(current.id, config, year),
              {:ok, _profile} <-
                profile
                |> change(%{
@@ -118,6 +113,31 @@ defmodule Nila.Business.Invoicing do
         end
       end)
     end
+  end
+
+  # Reject a reset that would eventually allocate an already issued number.
+  # The capture extracts the sequence independently of its zero padding.
+  defp quotation_number_overlap?(client_id, config, year) do
+    pattern =
+      case config do
+        %{style: "serial_fy"} ->
+          suffix = "#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
+          "^([0-9]+)/#{suffix}$"
+
+        %{style: "nila"} ->
+          prefix = "QT/#{rem(year, 100)}#{rem(year + 1, 100)}/"
+          "^#{Regex.escape(prefix)}([0-9]+)$"
+
+        %{style: "custom", prefix: prefix} ->
+          "^#{Regex.escape(prefix)}([0-9]+)$"
+      end
+
+    Repo.exists?(
+      from i in Invoice,
+        where:
+          i.client_id == ^client_id and
+            fragment("substring(? from ?)::numeric >= ?", i.number, ^pattern, ^config.next_number)
+    )
   end
 
   def configure_invoice_numbering(%Client{} = client, attrs) do
