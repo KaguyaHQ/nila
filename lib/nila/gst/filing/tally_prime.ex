@@ -48,6 +48,22 @@ defmodule Nila.Gst.Filing.TallyPrime do
   @doc "Whether direct local TallyPrime writes are available in this deployment."
   def available?, do: @available
 
+  @doc "The exact ledger amounts used by the accounting voucher builder, in paise."
+  def preview(invoice) when is_map(invoice) do
+    lines = List.wrap(invoice["line_items"])
+    effect = Invoice.document_effect(invoice)
+
+    with {:ok, _xml} <- voucher(invoice, nil),
+         {:ok, party} <- party_ledger(invoice),
+         {:ok, totals} <- amounts(lines),
+         {:ok, fallback} <- posting_ledger(invoice, "sales_ledger"),
+         {:ok, sales} <- sales_entries(invoice, lines, effect, fallback),
+         {:ok, taxes} <- tax_postings(invoice, effect, totals),
+         {:ok, party_amount} <- balanced_party_amount(sales, taxes) do
+      {:ok, %{party: party, party_amount: party_amount, sales: sales, taxes: taxes}}
+    end
+  end
+
   @doc "Requires the selected Tally company to carry the same GSTIN as the Nila client."
   def validate_company_gstin(%{gstin: nil}, client_gstin) when is_binary(client_gstin),
     do: {:error, :tally_company_gstin_missing}
@@ -226,20 +242,25 @@ defmodule Nila.Gst.Filing.TallyPrime do
          true <- present?(voucher_type),
          {:ok, party} <- party_ledger(invoice),
          {:ok, party_details} <- party_details(invoice),
+         place_of_supply when is_binary(place_of_supply) <-
+           invoice
+           |> Map.update("place_of_supply", nil, &Invoice.normalize_place_of_supply/1)
+           |> Nila.Gst.Sales.Gstr1.filing_place_of_supply()
+           |> StateCodes.name_for(),
          {:ok, amounts} <- amounts(lines),
          {:ok, sales_ledger} <- posting_ledger(invoice, "sales_ledger"),
          {:ok, sales_entries} <- sales_entries(invoice, lines, effect, sales_ledger),
          {:ok, postings} <- tax_postings(invoice, effect, amounts),
          {:ok, party_amount} <- balanced_party_amount(sales_entries, postings),
-         narration = blank_to_nil(invoice["narration"]) || "Imported from Nila",
+         narration = blank_to_nil(invoice["narration"]) || "",
+         false <- Regex.match?(@invalid_xml, narration),
          :ok <-
            valid_text_fields(
              [
                invoice["seller_gstin"],
                invoice["invoice_number"],
                party,
-               sales_ledger,
-               narration
+               sales_ledger
              ] ++
                Enum.map(sales_entries, & &1.ledger_name) ++
                Enum.map(postings, &elem(&1, 0))
@@ -268,10 +289,11 @@ defmodule Nila.Gst.Filing.TallyPrime do
          tag("GSTREGISTRATIONTYPE", party_details.registration_type),
          optional_tag("PARTYGSTIN", party_details.gstin),
          optional_tag("STATENAME", party_details.state),
+         tag("PLACEOFSUPPLY", place_of_supply),
          tag("COUNTRYOFRESIDENCE", "India"),
          tag("PERSISTEDVIEW", "Invoice Voucher View"),
          tag("ISINVOICE", "Yes"),
-         tag("ISGSTOVERRIDDEN", "Yes"),
+         tag("ISGSTOVERRIDDEN", "No"),
          tag("NARRATION", narration),
          entries,
          "</VOUCHER>",
@@ -555,15 +577,23 @@ defmodule Nila.Gst.Filing.TallyPrime do
       tag("ISDEEMEDPOSITIVE", if(entry.amount < 0, do: "Yes", else: "No")),
       tag("ISLASTDEEMEDPOSITIVE", "No"),
       tag("ISPARTYLEDGER", "No"),
+      tag("GSTSOURCETYPE", "Ledger"),
+      tag("GSTLEDGERSOURCE", entry.ledger_name),
+      # Persist the classification inputs normally filled when Tally saves its UI.
+      "<GSTOVRDNISREVCHARGEAPPL>&#4; Not Applicable</GSTOVRDNISREVCHARGEAPPL>",
+      "<GSTOVRDNSTOREDNATURE>&#4; System Inferred</GSTOVRDNSTOREDNATURE>",
       tag("GSTOVRDNTAXABILITY", "Taxable"),
       optional_tag("GSTOVRDNTYPEOFSUPPLY", entry.supply_type),
       hsn_tags(entry),
       tag("GSTRATEINFERAPPLICABILITY", "As per Masters/Company"),
-      tag("ISGSTASSESSABLEVALUEOVERRIDDEN", "Yes"),
-      tag("GSTOVRDNASSESSABLEVALUE", money(entry.amount)),
       rate_detail("CGST", half_rate),
       rate_detail("SGST/UTGST", half_rate),
       rate_detail("IGST", entry.rate),
+      # Tally requires its Not Applicable sentinel even when no cess is charged.
+      "<RATEDETAILS.LIST><GSTRATEDUTYHEAD>Cess</GSTRATEDUTYHEAD>" <>
+        "<GSTRATEVALUATIONTYPE>&#4; Not Applicable</GSTRATEVALUATIONTYPE>" <>
+        "<GSTRATE>0</GSTRATE></RATEDETAILS.LIST>",
+      rate_detail("State Cess", 0),
       tag("AMOUNT", money(entry.amount)),
       "<BASICUSERDESCRIPTION.LIST>",
       tag("BASICUSERDESCRIPTION", entry.description),
@@ -577,7 +607,10 @@ defmodule Nila.Gst.Filing.TallyPrime do
   defp hsn_tags(entry) do
     [
       tag("GSTHSNNAME", entry.hsn),
-      tag("GSTHSNDESCRIPTION", entry.description),
+      # Invoice wording belongs in BASICUSERDESCRIPTION, not the master's HSN description.
+      tag("GSTHSNDESCRIPTION", ""),
+      tag("HSNSOURCETYPE", "Ledger"),
+      tag("HSNLEDGERSOURCE", entry.ledger_name),
       tag("GSTHSNINFERAPPLICABILITY", "As per Masters/Company")
     ]
   end

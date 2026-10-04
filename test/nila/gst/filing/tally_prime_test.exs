@@ -79,11 +79,11 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<PARTYLEDGERNAME>Customer &amp; Co</PARTYLEDGERNAME>"
     assert xml =~ "<PARTYNAME>Customer &amp; Co</PARTYNAME>"
     assert xml =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
-    refute xml =~ "<PLACEOFSUPPLY>"
+    assert xml =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
     assert xml =~ "<GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>"
     assert xml =~ "<ISINVOICE>Yes</ISINVOICE>"
     assert xml =~ "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>"
-    assert xml =~ "<ISGSTOVERRIDDEN>Yes</ISGSTOVERRIDDEN>"
+    assert xml =~ "<ISGSTOVERRIDDEN>No</ISGSTOVERRIDDEN>"
     assert xml =~ "<LEDGERENTRIES.LIST>"
     assert xml =~ "<ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>"
     refute xml =~ "<ALLLEDGERENTRIES.LIST>"
@@ -91,9 +91,17 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<AMOUNT>-1180.00</AMOUNT>"
     assert xml =~ "<LEDGERNAME>Sales</LEDGERNAME>"
     assert xml =~ "<GSTOVRDNTAXABILITY>Taxable</GSTOVRDNTAXABILITY>"
+    assert xml =~ "<GSTSOURCETYPE>Ledger</GSTSOURCETYPE>"
+    assert xml =~ "<GSTLEDGERSOURCE>Sales</GSTLEDGERSOURCE>"
+    assert xml =~ "<HSNSOURCETYPE>Ledger</HSNSOURCETYPE>"
+    assert xml =~ "<HSNLEDGERSOURCE>Sales</HSNLEDGERSOURCE>"
+    assert xml =~ "<GSTOVRDNISREVCHARGEAPPL>&#4; Not Applicable</GSTOVRDNISREVCHARGEAPPL>"
+    assert xml =~ "<GSTOVRDNSTOREDNATURE>&#4; System Inferred</GSTOVRDNSTOREDNATURE>"
+    refute xml =~ "Local Sales - Taxable"
     assert xml =~ "<GSTOVRDNTYPEOFSUPPLY>Services</GSTOVRDNTYPEOFSUPPLY>"
     assert xml =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
-    assert xml =~ "<GSTHSNDESCRIPTION>Equipment maintenance</GSTHSNDESCRIPTION>"
+    assert xml =~ "<GSTHSNDESCRIPTION></GSTHSNDESCRIPTION>"
+    assert xml =~ "<BASICUSERDESCRIPTION>Equipment maintenance</BASICUSERDESCRIPTION>"
     assert xml =~ "<GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>"
     assert xml =~ "<GSTRATE>18</GSTRATE>"
     assert xml =~ "<AMOUNT>1000.00</AMOUNT>"
@@ -432,7 +440,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
     assert xml =~ "<AMOUNT>0.91</AMOUNT>"
   end
 
-  test "serializes corrected narration without overriding Tally's place of supply" do
+  test "serializes corrected narration and the invoice place of supply" do
     corrected =
       invoice(%{
         "narration" => "PO 4455 & corrected by reviewer",
@@ -452,24 +460,26 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert {:ok, xml} = TallyPrime.build(%{invoices: [corrected]})
     assert xml =~ "<NARRATION>PO 4455 &amp; corrected by reviewer</NARRATION>"
-    refute xml =~ "<PLACEOFSUPPLY>"
+    assert xml =~ "<PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>"
     assert xml =~ "<STATENAME>Karnataka</STATENAME>"
   end
 
-  test "keeps a registered party ledger in its GSTIN state without exporting voucher POS" do
+  test "keeps party state separate from the invoice place of supply" do
     invoice = invoice(%{"place_of_supply" => "37"})
 
     assert {:ok, [item]} =
              TallyPrime.build_items_for_company(%{invoices: [invoice]}, "Nila")
 
     assert item.party_ledger.state == "Karnataka"
-    refute item.xml =~ "<PLACEOFSUPPLY>"
+    assert item.xml =~ "<PLACEOFSUPPLY>Andhra Pradesh</PLACEOFSUPPLY>"
     assert item.xml =~ "<STATENAME>Karnataka</STATENAME>"
   end
 
-  test "falls back to Nila's narration when the corrected value is blank" do
-    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"narration" => "  "})]})
-    assert xml =~ "<NARRATION>Imported from Nila</NARRATION>"
+  test "leaves narration empty when no narration is entered" do
+    for narration <- [nil, "", "  "] do
+      assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"narration" => narration})]})
+      assert xml =~ "<NARRATION></NARRATION>"
+    end
   end
 
   test "refuses empty or incomplete active sales data before posting" do
@@ -557,7 +567,7 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert {:ok, xml} = TallyPrime.build(%{invoices: [missing_hsn]})
     assert xml =~ "<VOUCHERNUMBER>INV-001</VOUCHERNUMBER>"
-    assert xml =~ "<GSTOVRDNASSESSABLEVALUE>1000.00</GSTOVRDNASSESSABLEVALUE>"
+    assert xml =~ "<AMOUNT>1000.00</AMOUNT>"
     assert xml =~ "<GSTRATE>18</GSTRATE>"
     assert xml =~ "<BASICUSERDESCRIPTION>Equipment maintenance</BASICUSERDESCRIPTION>"
     refute xml =~ "<GSTHSNNAME>"
@@ -571,19 +581,50 @@ defmodule Nila.Gst.Filing.TallyPrimeTest do
 
     assert xml =~ "<GSTOVRDNTYPEOFSUPPLY>Services</GSTOVRDNTYPEOFSUPPLY>"
     assert xml =~ "<GSTHSNNAME>998719</GSTHSNNAME>"
-    assert xml =~ "<GSTHSNDESCRIPTION>Equipment maintenance</GSTHSNDESCRIPTION>"
+    assert xml =~ "<GSTHSNDESCRIPTION></GSTHSNDESCRIPTION>"
+    assert xml =~ "<BASICUSERDESCRIPTION>Equipment maintenance</BASICUSERDESCRIPTION>"
 
     assert xml =~
              "<GSTHSNINFERAPPLICABILITY>As per Masters/Company</GSTHSNINFERAPPLICABILITY>"
   end
 
-  test "builds a registered sales voucher without place of supply" do
-    invoice = Map.delete(invoice(), "place_of_supply")
+  test "refuses an unknown place of supply rather than relying on Tally autofill" do
+    for pos <- ["99", "Unknown"] do
+      assert {:error, :invalid_sales_data} =
+               TallyPrime.build(%{invoices: [invoice(%{"place_of_supply" => pos})]})
+    end
+  end
 
-    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice]})
-    assert xml =~ "<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>"
-    assert xml =~ "<STATENAME>Karnataka</STATENAME>"
-    refute xml =~ "<PLACEOFSUPPLY>"
+  test "uses the same registered buyer fallback as Nila filing when POS is unprinted" do
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"place_of_supply" => nil})]})
+    assert xml =~ "<PLACEOFSUPPLY>Karnataka</PLACEOFSUPPLY>"
+
+    assert {:error, :invalid_sales_data} =
+             TallyPrime.build(%{
+               invoices: [
+                 invoice(%{
+                   "place_of_supply" => nil,
+                   "buyer_gstin" => nil,
+                   "recipient_registration" => "unregistered"
+                 })
+               ]
+             })
+  end
+
+  test "declares zero cess explicitly without overriding taxable value" do
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice()]})
+
+    assert xml =~
+             "<GSTRATEDUTYHEAD>Cess</GSTRATEDUTYHEAD><GSTRATEVALUATIONTYPE>&#4; Not Applicable</GSTRATEVALUATIONTYPE><GSTRATE>0</GSTRATE>"
+
+    assert xml =~ "<GSTRATEDUTYHEAD>State Cess</GSTRATEDUTYHEAD>"
+    refute xml =~ "<ISGSTASSESSABLEVALUEOVERRIDDEN>Yes"
+    refute xml =~ "<GSTOVRDNASSESSABLEVALUE>"
+  end
+
+  test "accepts a named place of supply" do
+    assert {:ok, xml} = TallyPrime.build(%{invoices: [invoice(%{"place_of_supply" => "Kerala"})]})
+    assert xml =~ "<PLACEOFSUPPLY>Kerala</PLACEOFSUPPLY>"
   end
 
   defp invoice(overrides \\ %{}) do
