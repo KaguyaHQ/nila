@@ -4,20 +4,35 @@ defmodule NilaWeb.TallySyncController do
   alias Nila.TallyDevices
   alias Nila.TallySync
 
-  def create(conn, %{"company_identity" => identity}) when is_binary(identity) do
+  def create(conn, %{"company_identity" => identity} = params) when is_binary(identity) do
     with {:ok, device} <- authenticate(conn),
-         {:ok, run} <- TallySync.start(device, identity) do
+         {:ok, end_date, opts} <- requested_end_date(params["period"]),
+         {:ok, run} <- TallySync.start(device, identity, end_date, opts) do
       conn
       |> put_status(:created)
       |> json(run_json(run))
     else
       {:error, :unauthorized} -> error(conn, :unauthorized, "invalid_device")
       {:error, :company_not_found} -> error(conn, :not_found, "company_not_found")
+      {:error, :sync_in_progress} -> error(conn, :conflict, "sync_in_progress")
       _ -> error(conn, :unprocessable_entity, "sync_failed")
     end
   end
 
   def create(conn, _), do: error(conn, :unprocessable_entity, "invalid_request")
+
+  defp requested_end_date(nil), do: {:ok, TallySync.india_today(), []}
+
+  defp requested_end_date(period) when is_binary(period) do
+    with true <- Regex.match?(~r/\A\d{4}-\d{2}\z/, period),
+         {:ok, date} <- Date.from_iso8601(period <> "-01") do
+      {:ok, Date.end_of_month(date), [period_start: date]}
+    else
+      _ -> {:error, :invalid_period}
+    end
+  end
+
+  defp requested_end_date(_), do: {:error, :invalid_period}
 
   def masters(conn, params), do: put_pipeline(conn, params, :masters)
   def vouchers(conn, params), do: put_pipeline(conn, params, :vouchers)

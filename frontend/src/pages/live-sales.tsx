@@ -39,6 +39,7 @@ import {
   Plus,
   Search,
   Upload,
+  X,
 } from "lucide-react";
 import { useContext } from "react";
 import { useSalesRegisterScroll } from "@/lib/sales-register-scroll";
@@ -46,6 +47,9 @@ import { SelectField, SelectFieldOption } from "@/components/ui/select-field";
 import { SalesRecordInspector } from "@/components/sales-record-inspector";
 import { ReturnReview } from "@/components/return-review";
 import { SalesReportChecks } from "@/components/sales-report-checks";
+import { TallyEntry, TallyPostButton, TallyPostingStatus, TallyVerifyButton } from "@/components/sales-tally-entry";
+import { TallyRefresh } from "@/components/sales-tally-refresh";
+import { fetchSalesTally, tallyMoney, tallyQueryKey, tallyStatus } from "@/lib/sales-tally-api";
 
 const Workspace = SalesWorkspaceContext;
 const money = (value: string | null) => value ?? "—";
@@ -457,6 +461,21 @@ export function LiveSalesRegister() {
   const data = useSales();
   const params = useSearch({ from: "/gst/$clientId/$period/sales/register" });
   const navigate = useNavigate({ from: "/gst/$clientId/$period/sales/register" });
+  const tally = useQuery({
+    queryKey: tallyQueryKey(String(data.client.id), data.period),
+    queryFn: ({ signal }) => fetchSalesTally(String(data.client.id), data.period, signal),
+    retry: false,
+    refetchInterval: (query) => {
+      const current = query.state.data;
+      if (!current?.enabled) return false;
+      if (current.sync.status === "running" || current.proposals.some((item) => item.status === "pending")) return 3000;
+      return params.tally === "entries" && current.sync.status === "offline" ? 5000 : false;
+    },
+  });
+  const tallyData = tally.data?.enabled ? tally.data : undefined;
+  const tallyMode = params.tally === "entries";
+  const proposals = new Map(tallyData?.proposals?.map((item) => [item.source_id, item]));
+  const registerRows = tallyMode ? data.rows.filter((row) => proposals.has(row.id)) : data.rows;
   useSalesRegisterScroll(
     JSON.stringify([
       data.client.id,
@@ -471,9 +490,15 @@ export function LiveSalesRegister() {
   const search = params.q ?? "";
   const codes = new Map<string, string>();
   data.rows.forEach((row) => row.issues?.forEach((issue) => codes.set(issue.code, issue.title)));
-  const filtered = data.rows.filter(
+  const matchesStatus = (row: SalesWorkspace["rows"][number], value: string) => {
+    if (value === "all") return true;
+    if (!tallyMode) return row.status === value;
+    const status = proposals.get(row.id)?.status;
+    return value === "ready" ? status === "ready" : value === "needs_review" ? status === "needs_input" || status === "failed" || status === "unknown" : false;
+  };
+  const filtered = registerRows.filter(
     (row) =>
-      (filter === "all" || row.status === filter) &&
+      matchesStatus(row, filter) &&
       (!params.issue ||
         params.issue === "report_notes" ||
         row.issues?.some((issue) => issue.code === params.issue)) &&
@@ -489,7 +514,7 @@ export function LiveSalesRegister() {
     }
   });
   const visible = filtered.filter((row) => !params.buyer || row.gstin === params.buyer);
-  const selected = data.rows.find((row) => row.id === params.selected && row.path);
+  const selected = registerRows.find((row) => row.id === params.selected && row.path);
   const update = (changes: Partial<typeof params>) =>
     void navigate({
       search: { ...params, ...changes },
@@ -514,6 +539,31 @@ export function LiveSalesRegister() {
         <ArrowLeft className="size-4" /> Return summary
       </Link>
       <PeriodHeading register />
+      {(tally.data?.enabled || tallyMode) && <div className="mb-4 space-y-3">
+        <ToggleGroup aria-label="Sales review task" value={[tallyMode ? "tally" : "gst"]} onValueChange={(values) => {
+          if (values[0]) update({ tally: values[0] === "tally" ? "entries" : undefined, filter: undefined, issue: undefined, returnTask: undefined });
+        }}>
+          <ToggleGroupItem value="gst">GST review</ToggleGroupItem>
+          <ToggleGroupItem value="tally">Tally entries</ToggleGroupItem>
+        </ToggleGroup>
+        {tallyMode && tally.isPending && <p role="status">Preparing Tally entries…</p>}
+        {tallyMode && tally.isError && <div role="alert"><p>{tally.error.message}</p><Button variant="outline" onClick={() => void tally.refetch()}>Try again</Button></div>}
+        {tallyMode && tallyData && <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm font-medium">{tallyData.company.name}</p>
+              <TallyRefresh key={`refresh:${data.client.id}:${data.period}`} clientId={String(data.client.id)} period={data.period} data={tallyData} />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <TallyPostingStatus data={tallyData} />
+              <TallyPostButton key={`${data.client.id}:${data.period}`} clientId={String(data.client.id)} period={data.period} data={tallyData} />
+            </div>
+          </div>
+          {!tallyData.company.is_open && <p className="text-sm text-muted-foreground">Open this company in Tally before posting.</p>}
+          <TallyVerifyButton key={`verify:${data.client.id}:${data.period}`} clientId={String(data.client.id)} period={data.period} data={tallyData} />
+        </>}
+        {tallyMode && tally.data && !tally.data.enabled && <p>No Tally company is linked to this client.</p>}
+      </div>}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <ToggleGroup
           aria-label="Filter invoices by status"
@@ -533,11 +583,11 @@ export function LiveSalesRegister() {
             ["needs_review", "Needs attention"],
             ["ready", "Ready"],
             ["excluded", "Excluded"],
-          ].map(([value, label]) => (
+          ].filter(([value]) => !tallyMode || value !== "excluded").map(([value, label]) => (
             <ToggleGroupItem key={value} value={value}>
               {label}
               <span className="ml-1 text-muted-foreground">
-                {data.rows.filter((row) => value === "all" || row.status === value).length}
+                {registerRows.filter((row) => matchesStatus(row, value)).length}
               </span>
             </ToggleGroupItem>
           ))}
@@ -556,7 +606,7 @@ export function LiveSalesRegister() {
           />
         </div>
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      {!tallyMode && <div className="mb-4 flex flex-wrap items-center gap-3">
         <SelectField
           aria-label="Check type"
           value={params.returnTask ? "report_notes" : (params.issue ?? "")}
@@ -612,7 +662,7 @@ export function LiveSalesRegister() {
             Clear filters
           </Button>
         )}
-      </div>
+      </div>}
       {params.issue === "report_notes" || params.returnTask ? (
         <SalesReportChecks data={data} scope="sales" selectedTask={params.returnTask} />
       ) : (
@@ -665,9 +715,9 @@ export function LiveSalesRegister() {
                   <TableRow>
                     <TableHead className="pl-4">Invoice / Customer</TableHead>
                     {!selected && <TableHead>Date</TableHead>}
-                    <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">{tallyMode ? "Invoice total" : "Taxable"}</TableHead>
                     {!selected && <TableHead className="text-right">GST</TableHead>}
-                    <TableHead>Needs attention</TableHead>
+                    <TableHead>{tallyMode ? "Tally status" : "Needs attention"}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -699,14 +749,14 @@ export function LiveSalesRegister() {
                         <TableCell className="whitespace-nowrap">{row.date ?? "—"}</TableCell>
                       )}
                       <TableCell className="text-right tabular-nums">
-                        {money(row.taxable)}
+                        {tallyMode ? tallyMoney(proposals.get(row.id)?.grand_total) : money(row.taxable)}
                       </TableCell>
                       {!selected && (
                         <TableCell className="text-right tabular-nums">{money(row.tax)}</TableCell>
                       )}
                       <TableCell>
                         <p className="max-w-56 whitespace-normal text-xs">
-                          {row.reason ||
+                          {tallyMode ? (proposals.get(row.id) ? tallyStatus(proposals.get(row.id)!.status) : "Entry unavailable") : row.reason ||
                             (row.status === "ready"
                               ? "Ready"
                               : row.status === "excluded"
@@ -722,10 +772,10 @@ export function LiveSalesRegister() {
                         <Empty>
                           <EmptyHeader>
                             <EmptyTitle>
-                              {data.rows.length ? "No invoices match" : "No sales invoices yet"}
+                              {registerRows.length ? "No invoices match" : "No sales invoices yet"}
                             </EmptyTitle>
                             <EmptyDescription>
-                              {data.rows.length
+                              {registerRows.length
                                 ? "Try another search or clear the filters."
                                 : "Add sales bills to prepare this month."}
                             </EmptyDescription>
@@ -748,10 +798,23 @@ export function LiveSalesRegister() {
                 role="status"
                 className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground"
               >
-                Showing {visible.length} of {data.rows.length} invoices
+                Showing {visible.length} of {registerRows.length} invoices
               </p>
             </section>
             {selected && (
+              tallyMode ? <Card className="sticky top-4 max-h-[calc(100vh-2rem)] gap-3 overflow-y-auto p-5 shadow-none" aria-label="Selected Tally invoice">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="font-semibold">Invoice {selected.number}</h2>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {proposals.get(selected.id) && <Badge variant="secondary">{tallyStatus(proposals.get(selected.id)!.status)}</Badge>}
+                      <Button variant="ghost" size="icon-sm" aria-label="Close invoice details" onClick={() => update({ selected: undefined })}><X /></Button>
+                    </div>
+                  </div>
+                  {proposals.get(selected.id)?.date && <p className="text-sm text-muted-foreground">{new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${proposals.get(selected.id)!.date}T00:00:00Z`))}</p>}
+                </div>
+                {tallyData && proposals.get(selected.id) ? <TallyEntry key={selected.id} clientId={String(data.client.id)} period={data.period} data={tallyData} proposal={proposals.get(selected.id)!} reviewUrl={reviewUrl} editable summary /> : <p>Tally entry unavailable.</p>}
+              </Card> :
               <SalesRecordInspector
                 key={selected.id}
                 clientId={String(data.client.id)}

@@ -18,13 +18,19 @@ defmodule Nila.Gst.Sales.Tally.Register do
   @sales_types ~w(sales sale salesinvoice taxinvoice)
   @tax_heads ~w(cgst sgst igst cess)
 
+  @doc "Projects uploaded documents without adding records from linked books."
+  def documents(%Month{} = month) do
+    documents = tag_documents(month.invoices, "sales_month_#{month.id}")
+    %{invoices: documents, issues: [], summary: document_summary(documents)}
+  end
+
   def project(%Month{} = month) do
     companies = month |> linked_companies() |> with_completed_snapshot(month.period)
     {:ok, client} = Clients.get_client(month.org_id, month.client_id)
     documents = tag_documents(month.invoices, "sales_month_#{month.id}")
 
     if companies == [] do
-      %{invoices: documents, issues: [], summary: document_summary(documents)}
+      documents(month)
     else
       tally_invoices = tally_invoices(month, companies, client)
       {invoices, issues} = reconcile(documents, tally_invoices)

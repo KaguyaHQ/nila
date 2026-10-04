@@ -10,6 +10,65 @@ defmodule NilaWeb.SalesReviewControllerTest do
   alias Nila.Gst.Sales.Review.Resolutions
   alias Nila.Gst.Sales.Excel.Workbook
 
+  test "Tally comparison explicitly reviews original bill lines rather than summarized book entries",
+       c do
+    {:ok, device, _} = Nila.TallyDevices.create_device(c.org, %{name: "Accounts"})
+
+    {:ok, [company]} =
+      Nila.TallyDevices.report_companies(device, [
+        %{"name" => "Review client", "gstin" => c.client.gstin}
+      ])
+
+    c.client |> Ecto.Changeset.change(active_tally_company_id: company.id) |> Repo.update!()
+
+    Repo.insert!(%Nila.TallyDevices.SyncRun{
+      org_id: c.org.id,
+      device_id: device.id,
+      company_id: company.id,
+      status: "succeeded",
+      masters_status: "succeeded",
+      vouchers_status: "succeeded",
+      period_start: ~D[2025-10-01],
+      period_end: ~D[2025-10-31],
+      started_at: DateTime.utc_now(),
+      completed_at: DateTime.utc_now()
+    })
+
+    invoice = c.invoice
+
+    Repo.insert!(%Nila.TallyDevices.SyncedVoucher{
+      org_id: c.org.id,
+      company_id: company.id,
+      identity: "summary",
+      voucher_type: "Sales",
+      voucher_number: invoice["invoice_number"],
+      date: Nila.Gst.Dates.parse_date(invoice["invoice_date"]),
+      data: %{
+        "party_ledger_name" => invoice["buyer_name"],
+        "party_gstin" => invoice["buyer_gstin"],
+        "place_of_supply" => "33",
+        "line_items" => [
+          %{
+            "description" => "Tally summary",
+            "taxable_value" => 1500,
+            "cgst_amount" => 135,
+            "sgst_amount" => 135
+          }
+        ]
+      }
+    })
+
+    path =
+      "/api/workspace/sales/#{c.client.id}/2025-10/invoices/#{URI.encode_www_form(invoice["id"])}?tally=entries"
+
+    body = c.conn |> get(path) |> contract_response(200)
+
+    assert Enum.map(body["lines"], & &1["values"]["description"]) ==
+             Enum.map(invoice["line_items"], &(&1["description"] || ""))
+
+    refute Enum.any?(body["lines"], &(&1["values"]["description"] == "Tally summary"))
+  end
+
   setup %{conn: conn} do
     %{user: user, org: org} = user_with_org_fixture()
 

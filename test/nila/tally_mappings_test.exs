@@ -99,6 +99,16 @@ defmodule Nila.TallyMappingsTest do
 
     assert TallyMappings.list_ledger_choices(org.id, company.id) == [local]
 
+    assert {:ok, %{ledger: ^local}} =
+             TallyMappings.resolve_party(org.id, company.id, %{name: "Local"},
+               ledgers: [local, foreign]
+             )
+
+    assert {:error, :not_found} =
+             TallyMappings.resolve_party(org.id, company.id, %{name: "Foreign"},
+               ledgers: [local, foreign]
+             )
+
     assert {:error, :ledger_not_found} =
              TallyMappings.save_confirmed_party_choice(
                org.id,

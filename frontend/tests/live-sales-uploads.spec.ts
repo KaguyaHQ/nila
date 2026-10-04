@@ -313,7 +313,9 @@ test("history polls processing, retains failed sources and links to review and R
   ).toBe(true);
 });
 
-test("report packet keeps every source and removes the whole working after confirmation", async ({ page }, testInfo) => {
+test("report packet keeps every source and removes the whole working after confirmation", async ({
+  page,
+}, testInfo) => {
   await setup(page);
   let removed = false;
   let deletes = 0;
@@ -321,21 +323,23 @@ test("report packet keeps every source and removes the whole working after confi
     route.fulfill({
       json: {
         processing: false,
-        batches: [{
-          id: "41",
-          created_at: "2026-06-15T10:00:00Z",
-          active_invoice_ids: [],
-          removed_invoices: [],
-          files: ["B2B.csv", "B2CS.csv"].map((name, index) => ({
-            id: 41,
-            name,
-            state: removed ? "discarded" : "extracted",
-            label: removed ? "Discarded" : "Imported",
-            invoice_count: 0,
-            error: null,
-            original_url: `/gst/1/2026-06/original/41/${index}`,
-          })),
-        }],
+        batches: [
+          {
+            id: "41",
+            created_at: "2026-06-15T10:00:00Z",
+            active_invoice_ids: [],
+            removed_invoices: [],
+            files: ["B2B.csv", "B2CS.csv"].map((name, index) => ({
+              id: 41,
+              name,
+              state: removed ? "discarded" : "extracted",
+              label: removed ? "Discarded" : "Imported",
+              invoice_count: 0,
+              error: null,
+              original_url: `/gst/1/2026-06/original/41/${index}`,
+            })),
+          },
+        ],
       },
     }),
   );
@@ -343,7 +347,8 @@ test("report packet keeps every source and removes the whole working after confi
     if (route.request().method() !== "DELETE") return route.fallback();
     deletes += 1;
     expect(route.request().postDataJSON()).toEqual({ dump_id: 41 });
-    if (deletes === 1) return route.fulfill({ status: 409, json: { error: "This month is filed." } });
+    if (deletes === 1)
+      return route.fulfill({ status: 409, json: { error: "This month is filed." } });
     removed = true;
     return route.fulfill({ json: { ok: true } });
   });
@@ -353,26 +358,38 @@ test("report packet keeps every source and removes the whole working after confi
   await expect(page.getByText("B2CS.csv", { exact: true })).toBeVisible();
   await expect(page.getByText("0 invoices")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Upload actions" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Download original report for B2CS.csv (new tab)" }))
-    .toHaveAttribute("href", "/gst/1/2026-06/original/41/1");
+  await expect(
+    page.getByRole("link", { name: "Download original report for B2CS.csv (new tab)" }),
+  ).toHaveAttribute("href", "/gst/1/2026-06/original/41/1");
   await page.screenshot({ path: testInfo.outputPath("report-packet-history.png"), fullPage: true });
 
-  await page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" }).click();
+  await page
+    .getByRole("region", { name: /Upload from/ })
+    .getByRole("button", { name: "Remove report" })
+    .click();
   const dialog = page.getByRole("alertdialog", { name: "Remove this report?" });
   await expect(dialog).toContainText("Remove all 2 files from this month’s working.");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   expect(deletes).toBe(0);
 
-  await page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" }).click();
+  await page
+    .getByRole("region", { name: /Upload from/ })
+    .getByRole("button", { name: "Remove report" })
+    .click();
   await dialog.getByRole("button", { name: "Remove report" }).click();
   await expect(dialog.getByRole("alert")).toHaveText("This month is filed.");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Remove report" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText("Discarded")).toHaveCount(2);
-  await expect(page.getByRole("region", { name: /Upload from/ }).getByRole("button", { name: "Remove report" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Download original report for B2B.csv (new tab)" }))
-    .toHaveAttribute("href", "/gst/1/2026-06/original/41/0");
+  await expect(
+    page
+      .getByRole("region", { name: /Upload from/ })
+      .getByRole("button", { name: "Remove report" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Download original report for B2B.csv (new tab)" }),
+  ).toHaveAttribute("href", "/gst/1/2026-06/original/41/0");
 });
 
 test("history permission failure does not appear as an empty upload list", async ({ page }) => {
@@ -725,4 +742,69 @@ test("upload results show partial invoices, retry reading and keep completed rev
   await expect(page.getByRole("link", { name: "Review", exact: true })).toHaveCount(3);
 
   await expect(page.getByRole("button", { name: "Retry reading" })).toHaveCount(0);
+});
+
+test("upload results keep skipped quotation pages visible", async ({ page }, info) => {
+  await setup(page);
+  let included = false;
+  await page.route("**/uploads/42/include-document", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      dump_id: 42,
+      pages: [6],
+      reason: "Accountant confirmed this is an issued invoice.",
+    });
+    included = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route("**/api/workspace/sales/1/2026-06/uploads/42", (route) =>
+    route.fulfill({
+      json: {
+        id: "42",
+        processing: false,
+        files: [
+          {
+            id: 42,
+            name: "august-sales.pdf",
+            state: "extracted",
+            completed: 12,
+            total: 12,
+            reviewable: 12,
+            original_url: "/source/42",
+            message:
+              "Some PDF pages were not included as invoices. Check the skipped documents against the source PDF.",
+            rows: [],
+            skipped_documents: [
+              {
+                pages: [6],
+                document_type: "quotation",
+                reason: "Quotation heading conflicts with printed invoice number.",
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/app/gst/1/2026-06/sales/uploads/42");
+  await expect(page.getByRole("status")).toHaveText("12 of 12 invoices read");
+  await expect(page.getByText("1 skipped document to check", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("PDF page 6 · Classified as quotation", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Check source page" })).toHaveAttribute(
+    "href",
+    "/source/42#page=6",
+  );
+  await expect(page.getByRole("link", { name: "Review", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("skipped-quotation.png"), fullPage: true });
+  await page.getByRole("button", { name: "Include as invoice", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Include and read invoice" })).toBeDisabled();
+  await dialog
+    .getByRole("textbox", { name: "Why is this an invoice?" })
+    .fill("Accountant confirmed this is an issued invoice.");
+  await page.screenshot({ path: info.outputPath("include-invoice.png"), fullPage: true });
+  await dialog.getByRole("button", { name: "Include and read invoice" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(included).toBe(true);
 });

@@ -7,6 +7,25 @@ defmodule NilaWeb.TallySyncControllerTest do
   alias Nila.TallyDevices
   alias Nila.TallyDevices.{SyncRun, SyncedMaster, SyncedVoucher}
 
+  test "a connector can explicitly request a complete historical month", %{conn: conn} do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, token} = TallyDevices.create_device(org, %{name: "Accounts"})
+
+    {:ok, [_]} =
+      TallyDevices.report_companies(device, [
+        %{"name" => "Breeze", "tally_guid" => "history-guid"}
+      ])
+
+    response =
+      conn
+      |> authorize(token)
+      |> post(~p"/api/tally/syncs", %{company_identity: "guid:history-guid", period: "2026-08"})
+      |> json_response(201)
+
+    assert response["period_start"] == "2026-08-01"
+    assert response["period_end"] == "2026-08-31"
+  end
+
   test "a device syncs masters then current-period vouchers with independent status", %{
     conn: conn
   } do
@@ -81,7 +100,9 @@ defmodule NilaWeb.TallySyncControllerTest do
     assert Repo.aggregate(SyncedMaster, :count) == 1
     assert Repo.aggregate(SyncedVoucher, :count) == 1
     assert Repo.get!(SyncRun, run_id).completed_at
-    assert Date.from_iso8601!(period_start) == Date.beginning_of_month(Date.utc_today())
+
+    assert Date.from_iso8601!(period_start) ==
+             Nila.TallySync.financial_year_start(Nila.TallySync.india_today())
   end
 
   test "rejects a sync without a device credential", %{conn: conn} do

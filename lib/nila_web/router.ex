@@ -82,6 +82,11 @@ defmodule NilaWeb.Router do
     post "/clients/:client_id/gst-connection/verify", GstConnectionController, :verify
     post "/clients/:client_id/business-invitation", BusinessInvitationController, :create
     get "/sales/:client_id/:period", SalesWorkspaceController, :show
+    get "/sales/:client_id/:period/tally", SalesTallyController, :show
+    patch "/sales/:client_id/:period/invoices/:invoice_id/tally", SalesTallyController, :update
+    post "/sales/:client_id/:period/tally", SalesTallyController, :post
+    post "/sales/:client_id/:period/tally/verify", SalesTallyController, :verify
+    post "/sales/:client_id/:period/tally/sync", SalesTallyController, :sync
     get "/purchases/:client_id/:period", PurchaseWorkspaceController, :show
     get "/purchases/:client_id/:period/gstr2b", Gstr2bWorkspaceController, :show
     post "/purchases/:client_id/:period/gstr2b/fetch", Gstr2bWorkspaceController, :fetch
@@ -119,6 +124,11 @@ defmodule NilaWeb.Router do
     post "/sales/:client_id/:period/invoices/:invoice_id/confirm", SalesReviewController, :confirm
     get "/sales/:client_id/:period/uploads/:batch_ref", SalesUploadController, :show
     post "/sales/:client_id/:period/uploads/:batch_ref/retry", SalesUploadController, :retry
+
+    post "/sales/:client_id/:period/uploads/:batch_ref/include-document",
+         SalesUploadController,
+         :include_document
+
     get "/sales/:client_id/:period/uploads/:batch_ref/move", SalesUploadController, :move_preview
     post "/sales/:client_id/:period/uploads/:batch_ref/move", SalesUploadController, :move
     post "/sales/:client_id/:period/uploads/:batch_ref/removal", SalesUploadController, :removal
@@ -152,6 +162,7 @@ defmodule NilaWeb.Router do
     get "/gst/:client_id/:period/sales/invoices/:invoiceId", ReactAppController, :index
     get "/gst/:client_id/:period/sales/upload", ReactAppController, :index
     get "/gst/:client_id/:period/sales/uploads", ReactAppController, :index
+    get "/gst/:client_id/:period/sales/uploads/:batch_ref", ReactAppController, :index
     get "/gst/:client_id/:period/purchases", ReactAppController, :index
     get "/gst/:client_id/:period/purchases/register", ReactAppController, :index
     get "/gst/:client_id/:period/purchases/review", ReactAppController, :index

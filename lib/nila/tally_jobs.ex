@@ -70,6 +70,7 @@ defmodule Nila.TallyJobs do
                metadata: %{
                  "source_id" => item.source_id,
                  "invoice_source_id" => Map.get(item, :invoice_source_id),
+                 "proposal" => Map.get(item, :proposal),
                  "invoice_number" => item.invoice_number,
                  "party_ledger" => Map.get(item, :party_ledger)
                }

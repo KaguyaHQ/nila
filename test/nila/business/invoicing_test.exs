@@ -923,6 +923,78 @@ defmodule Nila.Business.InvoicingTest do
     assert {:ok, ^original_pdf} = Invoicing.download(ctx.client, quote.id)
   end
 
+  test "quotation reconfiguration rejects a sequence that would reach a used number", ctx do
+    assert {:ok, _} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-79"
+             })
+
+    {:ok, first} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-79"}} = issue(ctx, first)
+
+    assert {:error, :number_already_used} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-78"
+             })
+
+    assert Invoicing.quotation_numbering(ctx.client).next_quotation_number == "GR-80"
+
+    {:ok, second} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-80"}} = issue(ctx, second)
+
+    assert {:ok, %{next_quotation_number: "GR-90"}} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-90"
+             })
+
+    {:ok, third} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-90"}} = issue(ctx, third)
+  end
+
+  test "quotation reconfiguration allows a different zero padding width", ctx do
+    assert {:ok, _} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-0079"
+             })
+
+    {:ok, first} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-0079"}} = issue(ctx, first)
+
+    assert {:ok, %{next_quotation_number: "GR-78"}} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-78"
+             })
+
+    {:ok, second} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-78"}} = issue(ctx, second)
+
+    {:ok, third} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-79"}} = issue(ctx, third)
+
+    assert {:ok, %{next_quotation_number: "GR-0080"}} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-0080"
+             })
+
+    {:ok, fourth} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-0080"}} = issue(ctx, fourth)
+  end
+
+  test "quotation reconfiguration catches a collision after padding runs out", ctx do
+    assert {:ok, _} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-100"
+             })
+
+    {:ok, first} = draft(ctx, %{"document_type" => "quotation"})
+    assert {:ok, %{number: "GR-100"}} = issue(ctx, first)
+
+    assert {:error, :number_already_used} =
+             Invoicing.configure_quotation_numbering(ctx.client, %{
+               "next_quotation_number" => "GR-78"
+             })
+  end
+
   test "custom quotation numbers continue across financial years", ctx do
     {:ok, numbering} =
       Invoicing.configure_quotation_numbering(ctx.client, %{"next_quotation_number" => "GR-50"})

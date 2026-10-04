@@ -10,6 +10,16 @@ defmodule Nila.Gst.Sales.Processing do
 
   def snapshot(dump), do: (dump.meta || %{})["processing"] || %{}
 
+  def artifact_ordinal(dump, artifact, fallback) do
+    snapshot(dump)["segments"]
+    |> Kernel.||([])
+    |> Enum.filter(&(&1["kind"] == "invoice"))
+    |> Enum.with_index(1)
+    |> Enum.find_value(fallback, fn {segment, ordinal} ->
+      if segment["pages"] == artifact["source_pages"], do: ordinal
+    end)
+  end
+
   def discover(dump, segments) do
     update(dump, fn current ->
       state = snapshot(current)

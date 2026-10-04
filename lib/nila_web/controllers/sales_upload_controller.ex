@@ -6,6 +6,7 @@ defmodule NilaWeb.SalesUploadController do
 
   def show(conn, params), do: dispatch(conn, params, :show)
   def retry(conn, params), do: dispatch(conn, params, :retry)
+  def include_document(conn, params), do: dispatch(conn, params, :include_document)
 
   def index(conn, params), do: dispatch(conn, params, :index)
   def prepare(conn, params), do: dispatch(conn, params, :prepare)
@@ -142,6 +143,18 @@ defmodule NilaWeb.SalesUploadController do
         period,
         params["batch_ref"],
         params["dump_id"]
+      )
+
+  defp perform(:include_document, scope, client_id, period, params),
+    do:
+      Nila.Gst.Sales.UploadResults.include_document(
+        scope,
+        client_id,
+        period,
+        params["batch_ref"],
+        params["dump_id"],
+        params["pages"],
+        params["reason"]
       )
 
   defp perform(:index, scope, client_id, period, _),

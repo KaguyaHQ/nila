@@ -73,6 +73,27 @@ defmodule Nila.Gst.Sales.Tally.RegisterTest do
     assert projection.summary.conflicts == 1
   end
 
+  test "syncing books does not add or replace invoices in document workings", context do
+    tally_voucher!(context, "v-1", "INV-1", "33AABCP9487A1ZG", 250.0)
+    tally_voucher!(context, "v-2", "INV-1", "33AABCP9487A1ZG", 250.0)
+    tally_voucher!(context, "v-3", "INV-3", nil, 300.0)
+
+    workings = Nila.Gst.Sales.Review.Resolutions.workings(context.month)
+
+    assert Enum.map(workings.source_invoices, & &1["id"]) == ["DOC-1", "DOC-2"]
+    assert Enum.all?(workings.source_invoices, &(&1["buyer_name"] == "Document Customer"))
+
+    assert Enum.all?(
+             workings.source_invoices,
+             &(totals(%{invoices: [&1]}, &1["invoice_number"]) == 100.0)
+           )
+
+    refute Enum.any?(workings.issues, &(&1["code"] == "sales_document_missing"))
+
+    # The book snapshot remains available for deliberate reconciliation.
+    assert length(TallyRegister.project(context.month).invoices) == 5
+  end
+
   test "reads alterations and deletions from the latest snapshot without duplicating rows",
        context do
     voucher = tally_voucher!(context, "v-1", "INV-1", "33AABCP9487A1ZG", 100.0)
@@ -108,7 +129,7 @@ defmodule Nila.Gst.Sales.Tally.RegisterTest do
       "buyer_name" => "Document Customer",
       "buyer_gstin" => "33AABCP9487A1ZG",
       "place_of_supply" => "33",
-      "line_items" => [line(100.0)]
+      "line_items" => [Map.put(line(100.0), "printed_taxable_value", 100.0)]
     }
   end
 

@@ -318,6 +318,49 @@ defmodule Nila.Gst.Extraction.PipelineTest do
     end
   end
 
+  test "an included earlier page keeps saved segment order and reads only the new invoice" do
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      Req.Test.json(conn, chat_response(sales_invoice()))
+    end)
+
+    pdf = PdfFixtures.text_pdf(["NEW-INVOICE", "SAVED-INVOICE"])
+    assert {:ok, first} = Pipeline.extract_fixed_segments(:sales, pdf, [[2]], input: :text)
+    [saved] = first.pages
+    owner = self()
+
+    Req.Test.stub(OpenAICompatibleChat, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert String.contains?(body, "NEW-INVOICE")
+      refute String.contains?(body, "SAVED-INVOICE")
+      send(owner, :new_invoice_read)
+      Req.Test.json(conn, chat_response(sales_invoice()))
+    end)
+
+    segments =
+      Enum.map(
+        [[2], [1]],
+        &%{"kind" => "invoice", "pages" => &1, "document_type" => "tax_invoice"}
+      )
+
+    assert {:ok, result} =
+             Pipeline.extract(:sales, pdf,
+               input: :text,
+               resume_segments: segments,
+               completed_artifacts: %{"1" => saved},
+               on_segments: fn segments -> send(owner, {:segments, segments}) end,
+               on_invoice: fn artifact, ordinal, _ ->
+                 send(owner, {:invoice, ordinal, artifact["source_pages"]})
+               end
+             )
+
+    assert_receive :new_invoice_read
+    refute_received :new_invoice_read
+    assert_receive {:segments, [%{"pages" => [2]}, %{"pages" => [1]}]}
+    assert_receive {:invoice, 1, [2]}
+    assert_receive {:invoice, 2, [1]}
+    assert Enum.map(result.pages, & &1["source_pages"]) == [[1], [2]]
+  end
+
   test "a scanned continuation retains the complete invoice in vision" do
     stub(
       [

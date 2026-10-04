@@ -10,6 +10,37 @@ defmodule Nila.TallySyncTest do
   alias Nila.TallyDevices.SyncedMaster
   alias Nila.TallySync
 
+  test "financial year coverage crosses January and serializes company refreshes" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Nila"}])
+    assert TallySync.financial_year_start(~D[2027-01-31]) == ~D[2026-04-01]
+    assert TallySync.financial_year_start(~D[2027-04-01]) == ~D[2027-04-01]
+    assert {:ok, run} = TallySync.start(device, company.identity, ~D[2027-03-31])
+    assert run.period_start == ~D[2026-04-01]
+    assert {:error, :sync_in_progress} = TallySync.start(device, company.identity)
+    assert {:ok, _} = TallySync.put_pipeline(device, run.id, :masters, [], true)
+    assert {:ok, _} = TallySync.put_pipeline(device, run.id, :vouchers, [], true)
+    assert TallySync.coverage(org.id, company.id, "2027-01").covered
+    assert TallySync.coverage(org.id, company.id, "2027-03").covered
+  end
+
+  test "an old connection cannot interrupt a newer connection's refresh" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Nila"}])
+    old_connection = DateTime.add(DateTime.utc_now(), -60, :second)
+    new_connection = DateTime.utc_now()
+    device = device |> Ecto.Changeset.change(last_connected_at: new_connection) |> Repo.update!()
+    {:ok, run} = TallySync.start(device, company.identity)
+    :ok = TallySync.interrupt_running(device.id, old_connection)
+    assert Repo.get!(Nila.TallyDevices.SyncRun, run.id).status == "running"
+    :ok = TallySync.interrupt_running(device.id, new_connection)
+    assert Repo.get!(Nila.TallyDevices.SyncRun, run.id).status == "failed"
+    assert {:error, _} = TallySync.put_pipeline(device, run.id, :masters, [], true)
+    assert {:ok, _} = TallySync.start(device, company.identity)
+  end
+
   test "reports referenced ledgers absent from the company snapshot case-insensitively" do
     %{org: org} = user_with_org_fixture()
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})

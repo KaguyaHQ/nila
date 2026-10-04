@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, FileText, RotateCw } from "lucide-react";
@@ -8,6 +8,15 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Table,
   TableHeader,
   TableHead,
@@ -16,7 +25,12 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { RecordTableRow, RecordTableLink } from "@/components/record-table-row";
-import { fetchUploadResult, retryUploadRead, type UploadResult } from "@/lib/upload-api";
+import {
+  fetchUploadResult,
+  retryUploadRead,
+  includeUploadDocument,
+  type UploadResult,
+} from "@/lib/upload-api";
 import { urlDestination } from "@/lib/route-url";
 import { useSales } from "@/state/sales-workspace";
 
@@ -42,6 +56,7 @@ export function SalesUploadResult() {
   const knownTotal = files.length > 0 && files.every((file) => file.total !== null);
   const total = files.reduce((sum, file) => sum + (file.total ?? 0), 0);
   const failed = files.some((file) => file.state === "failed");
+  const skipped = files.reduce((sum, file) => sum + (file.skipped_documents?.length ?? 0), 0);
   const first = files.flatMap((file) => file.rows).find((row) => row.review_url);
   return (
     <div className="space-y-8">
@@ -95,6 +110,11 @@ export function SalesUploadResult() {
                       : "No invoices read"}
               </p>
               {failed && <Badge variant="secondary">Reading stopped</Badge>}
+              {skipped > 0 && (
+                <Badge variant="secondary">
+                  {skipped} skipped {skipped === 1 ? "document" : "documents"} to check
+                </Badge>
+              )}
             </div>
             {query.data.processing && (
               <Progress
@@ -107,7 +127,9 @@ export function SalesUploadResult() {
                 ? "Your completed results are saved. Retry the failed file below to finish reading."
                 : query.data.processing
                   ? "Start reviewing now. More invoices will appear here as they are read."
-                  : "Reading is finished. Check the invoices against their source PDFs."}
+                  : skipped > 0
+                    ? "Some PDF pages were not included as invoices. Check the skipped documents below."
+                    : "Reading is finished. Check the invoices against their source PDFs."}
             </p>
           </section>
           <div className="space-y-6">
@@ -143,6 +165,42 @@ function UploadFile({
 }) {
   const cache = useQueryClient();
   const request = useRef<AbortController | null>(null);
+  const [includePages, setIncludePages] = useState<number[] | null>(null);
+  const [reason, setReason] = useState("");
+  const include = useMutation({
+    mutationFn: ({
+      controller,
+      pages,
+      reason,
+    }: {
+      controller: AbortController;
+      pages: number[];
+      reason: string;
+    }) =>
+      includeUploadDocument(
+        Number(clientId),
+        period,
+        batchRef,
+        file.id,
+        pages,
+        reason,
+        controller.signal,
+      ),
+    retry: false,
+    networkMode: "always",
+    onSuccess: async () => {
+      setIncludePages(null);
+      setReason("");
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["sales-upload-result", clientId, period, batchRef] }),
+        cache.invalidateQueries({ queryKey: ["sales-uploads", Number(clientId), period] }),
+        cache.invalidateQueries({ queryKey: ["sales", clientId, period] }),
+      ]);
+    },
+    onSettled: () => {
+      request.current = null;
+    },
+  });
   useEffect(() => () => request.current?.abort(), []);
   const retry = useMutation({
     mutationFn: (controller: AbortController) =>
@@ -202,6 +260,99 @@ function UploadFile({
           {retry.error.message}
         </p>
       )}
+      {(file.skipped_documents?.length ?? 0) > 0 && (
+        <div className="space-y-3 border-b bg-muted/40 px-5 py-4">
+          <p className="text-sm font-medium">Skipped documents to check</p>
+          <p className="text-sm text-muted-foreground">{file.message}</p>
+          {file.skipped_documents.map((document) => (
+            <div key={document.pages.join(",")} className="space-y-1 text-sm">
+              <p>
+                PDF {document.pages.length === 1 ? "page" : "pages"} {document.pages.join(", ")} ·
+                Classified as{" "}
+                {document.document_type?.replaceAll("_", " ") ?? "unreadable document"}
+              </p>
+              {document.reason && <p className="text-muted-foreground">{document.reason}</p>}
+              {file.original_url && (
+                <a
+                  href={`${file.original_url}#page=${document.pages[0]}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-4"
+                >
+                  Check source page
+                </a>
+              )}
+              {canRetry && file.state === "extracted" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    include.reset();
+                    setReason("");
+                    setIncludePages(document.pages);
+                  }}
+                >
+                  Include as invoice
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <Dialog
+        open={includePages !== null}
+        onOpenChange={(open) => {
+          if (!open && !include.isPending) {
+            setIncludePages(null);
+            include.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Include as invoice?</DialogTitle>
+            <DialogDescription>
+              Confirm that PDF {includePages?.length === 1 ? "page" : "pages"}{" "}
+              {includePages?.join(", ")} is an issued sales invoice. Nila will read it and keep your
+              reason with the original classification.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="space-y-2 text-sm">
+            <span>Why is this an invoice?</span>
+            <Textarea
+              value={reason}
+              maxLength={2000}
+              disabled={include.isPending}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          {include.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {include.error.message}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={include.isPending}
+              onClick={() => setIncludePages(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={include.isPending || !reason.trim()}
+              onClick={() => {
+                if (request.current || !includePages || !reason.trim()) return;
+                const controller = new AbortController();
+                request.current = controller;
+                include.mutate({ controller, pages: includePages, reason: reason.trim() });
+              }}
+            >
+              {include.isPending ? "Starting…" : "Include and read invoice"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {file.rows.length > 0 ? (
         <Table>
           <TableHeader>

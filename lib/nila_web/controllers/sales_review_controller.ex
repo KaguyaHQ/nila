@@ -53,9 +53,10 @@ defmodule NilaWeb.SalesReviewController do
          {:ok, client_id} <- parse_id(id),
          :ok <- validate_period(period),
          {:ok, client} <- Clients.get_client(scope.current_org.id, client_id),
-         {:ok, context} <- Workspace.load(scope, client, period, source_id),
+         opts = if(params["tally"] == "entries", do: [source: :documents], else: []),
+         {:ok, context} <- Workspace.load(scope, client, period, source_id, opts),
          :ok <- perform(action, context, params),
-         {:ok, context} <- refresh(action, context, scope, client, period, source_id) do
+         {:ok, context} <- refresh(action, context, scope, client, period, source_id, opts) do
       conn
       |> put_resp_header("cache-control", "private, no-store")
       |> json(Workspace.project(context))
@@ -96,10 +97,10 @@ defmodule NilaWeb.SalesReviewController do
   defp perform(:show, _, _), do: :ok
   defp perform(:update, context, params), do: Workspace.update(context, params)
   defp perform(:confirm, context, params), do: Workspace.confirm(context, params["target"])
-  defp refresh(:show, context, _, _, _, _), do: {:ok, context}
+  defp refresh(:show, context, _, _, _, _, _), do: {:ok, context}
 
-  defp refresh(_, _, scope, client, period, source_id),
-    do: Workspace.load(scope, client, period, source_id)
+  defp refresh(_, _, scope, client, period, source_id, opts),
+    do: Workspace.load(scope, client, period, source_id, opts)
 
   defp access(nil), do: {:error, :unauthenticated}
   defp access(%{user: %{confirmed_at: nil}}), do: {:error, :forbidden}

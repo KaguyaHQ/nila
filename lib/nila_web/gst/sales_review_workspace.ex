@@ -22,9 +22,13 @@ defmodule NilaWeb.Gst.SalesReviewWorkspace do
   @totals ~w(printed_total_taxable printed_total_tax printed_grand_total)
   @money_fields ~w(printed_unit_price printed_line_amount printed_line_total printed_taxable_value taxable_value cgst_amount sgst_amount igst_amount)
 
-  def load(scope, client, period, source_id) do
+  def load(scope, client, period, source_id, opts \\ []) do
     with {:ok, month} <- Months.get_by_period(scope.current_org.id, client.id, period),
-         workings = Resolutions.effective_workings(Processing.review_month(month)),
+         workings =
+           if(Keyword.get(opts, :source) == :documents,
+             do: Resolutions.workings(Processing.review_month(month), source: :documents),
+             else: Resolutions.effective_workings(Processing.review_month(month))
+           ),
          review = Review.build(workings),
          %{} = item <- Review.lookup(review.all, source_id) do
       source = InvoiceWorkbench.source_batch(scope.current_org.id, client.id, period, source_id)

@@ -282,7 +282,7 @@ test("compact help blocks navigation and ignores the retired disable preference"
   const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
-  await expect(dialog.locator('[data-slot="kbd"]')).toHaveCount(14);
+  await expect(dialog.locator('[data-slot="kbd"]')).toHaveCount(13);
   await page.keyboard.press("]");
   await pressSequence(page, "p");
   await expect(page).toHaveURL("/app/gst/2/2026-06/sales");
@@ -300,21 +300,48 @@ test("compact help blocks navigation and ignores the retired disable preference"
   await expect(page).toHaveURL("/app/gst/2/2026-07/sales");
 });
 
-test("invoice Alt arrows pause in help and resume after closing", async ({ page }) => {
+test("invoice arrows pause in help and resume after closing", async ({ page }) => {
   await setup(page);
   await page.goto("/app/gst/2/2026-06/sales/invoices/one");
   await ready(page);
-  await page.keyboard.press("Alt+ArrowRight");
+  await page.evaluate(() => {
+    for (const details of [
+      { repeat: true },
+      { isComposing: true },
+      { altKey: true },
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+    ]) {
+      const event = new KeyboardEvent("keydown", {
+        key: "ArrowRight", bubbles: true, cancelable: true, ...details,
+      });
+      document.body.dispatchEvent(event);
+      if (event.defaultPrevented) throw new Error("Reserved key was intercepted");
+    }
+    for (const attrs of [
+      { role: "combobox" }, { role: "slider" }, { "data-pdf-action": "in" },
+      { "data-pdf-surface": "" },
+    ]) {
+      const control = document.createElement("div");
+      for (const [name, value] of Object.entries(attrs)) control.setAttribute(name, value);
+      document.body.append(control);
+      control.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      control.remove();
+    }
+  });
+  await expect(page).toHaveURL(/\/invoices\/one$/);
+  await page.keyboard.press("ArrowRight");
   await expect(page).toHaveURL(/\/invoices\/two$/);
   await ready(page);
   await page.keyboard.press("?");
   const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(dialog).toBeVisible();
-  await page.keyboard.press("Alt+ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
   await expect(page).toHaveURL(/\/invoices\/two$/);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await ready(page);
-  await page.keyboard.press("Alt+ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
   await expect(page).toHaveURL(/\/invoices\/one$/);
 });

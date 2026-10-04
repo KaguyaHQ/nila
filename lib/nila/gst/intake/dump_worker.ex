@@ -326,7 +326,11 @@ defmodule Nila.Gst.Intake.DumpWorker do
         pages
         |> Enum.with_index(1)
         |> Enum.map(fn {artifact, ordinal} ->
-          normalize_sales_invoice(dump, artifact, ordinal)
+          normalize_sales_invoice(
+            dump,
+            artifact,
+            Nila.Gst.Sales.Processing.artifact_ordinal(dump, artifact, ordinal)
+          )
         end)
 
       store_evidence(dump, images, &SalesMonths.evidence_key/4)

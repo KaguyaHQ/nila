@@ -43,13 +43,16 @@ defmodule Nila.TallyMappings do
 
   def resolve_tax_ledger(_org_id, _company_id, _head), do: {:error, :invalid_tax_head}
 
-  def resolve_party(org_id, company_id, identity)
+  def resolve_party(org_id, company_id, identity, opts \\ [])
+
+  def resolve_party(org_id, company_id, identity, opts)
       when is_integer(org_id) and is_integer(company_id) and is_map(identity) do
     with {:ok, normalized} <- normalize_identity(identity),
          {:ok, _company} <- company(org_id, company_id) do
       ledgers =
-        org_id
-        |> list_ledger_choices(company_id)
+        opts
+        |> Keyword.get_lazy(:ledgers, fn -> list_ledger_choices(org_id, company_id) end)
+        |> Enum.filter(&(&1.org_id == org_id and &1.company_id == company_id))
         |> Enum.filter(&party_ledger?/1)
 
       case saved_ledger(org_id, company_id, normalized.source_key, ledgers) do
@@ -62,25 +65,30 @@ defmodule Nila.TallyMappings do
     end
   end
 
-  def resolve_party(_org_id, _company_id, _identity), do: {:error, :invalid_identity}
+  def resolve_party(_org_id, _company_id, _identity, _opts), do: {:error, :invalid_identity}
 
   def save_confirmed_party_choice(org_id, company_id, identity, ledger_identity)
       when is_integer(org_id) and is_integer(company_id) and is_map(identity) and
              is_binary(ledger_identity) do
     Repo.transact(fn ->
-      with {:ok, normalized} <- normalize_identity(identity),
-           {:ok, _company} <- company(org_id, company_id),
-           %SyncedMaster{} = ledger <- party_ledger(org_id, company_id, ledger_identity) do
-        put_party_mapping(org_id, company_id, normalized, ledger)
-      else
-        nil -> {:error, :ledger_not_found}
-        error -> error
-      end
+      save_confirmed_party_choice_in_transaction(org_id, company_id, identity, ledger_identity)
     end)
   end
 
   def save_confirmed_party_choice(_org_id, _company_id, _identity, _ledger_identity),
     do: {:error, :invalid_identity}
+
+  @doc false
+  def save_confirmed_party_choice_in_transaction(org_id, company_id, identity, ledger_identity) do
+    with {:ok, normalized} <- normalize_identity(identity),
+         {:ok, _company} <- company(org_id, company_id),
+         %SyncedMaster{} = ledger <- party_ledger(org_id, company_id, ledger_identity) do
+      put_party_mapping(org_id, company_id, normalized, ledger)
+    else
+      nil -> {:error, :ledger_not_found}
+      error -> error
+    end
+  end
 
   def resolve_sales_ledger(org_id, company_id, line)
       when is_integer(org_id) and is_integer(company_id) and is_map(line) do
@@ -95,12 +103,25 @@ defmodule Nila.TallyMappings do
          %SyncedMaster{} = ledger <- sales_ledger(org_id, company_id, mapping.ledger_identity) do
       {:ok, %{ledger: ledger, matched_by: :saved}}
     else
-      nil -> {:error, :not_found}
+      nil -> legacy_sales_mapping_result(org_id, company_id, line)
       error -> error
     end
   end
 
   def resolve_sales_ledger(_org_id, _company_id, _line), do: {:error, :invalid_line}
+
+  defp legacy_sales_mapping_result(org_id, company_id, line) do
+    with {:ok, normalized} <- normalize_sales_line(line),
+         digest =
+           :crypto.hash(:sha256, normalized.description) |> Base.url_encode64(padding: false),
+         key = "hsn:#{normalized.hsn_sac || "-"}:description:#{digest}",
+         %SalesLineMapping{} <-
+           Repo.get_by(SalesLineMapping, org_id: org_id, company_id: company_id, source_key: key) do
+      {:error, :legacy_mapping_needs_confirmation}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
 
   def save_sales_ledger_choice(org_id, company_id, line, ledger_identity)
       when is_integer(org_id) and is_integer(company_id) and is_map(line) and
@@ -126,15 +147,20 @@ defmodule Nila.TallyMappings do
   def save_posting_profile(org_id, company_id, attrs)
       when is_integer(org_id) and is_integer(company_id) and is_map(attrs) do
     Repo.transact(fn ->
-      with {:ok, _company} <- company(org_id, company_id),
-           {:ok, normalized} <- normalize_profile_attrs(attrs),
-           :ok <- validate_profile_ledgers(org_id, company_id, normalized) do
-        put_posting_profile(org_id, company_id, normalized)
-      end
+      save_posting_profile_in_transaction(org_id, company_id, attrs)
     end)
   end
 
   def save_posting_profile(_org_id, _company_id, _attrs), do: {:error, :invalid_profile}
+
+  @doc false
+  def save_posting_profile_in_transaction(org_id, company_id, attrs) do
+    with {:ok, _company} <- company(org_id, company_id),
+         {:ok, normalized} <- normalize_profile_attrs(attrs),
+         :ok <- validate_profile_ledgers(org_id, company_id, normalized) do
+      put_posting_profile(org_id, company_id, normalized)
+    end
+  end
 
   def save_sales_posting(
         org_id,
@@ -521,7 +547,20 @@ defmodule Nila.TallyMappings do
         normalize_name(Map.get(line, :description, Map.get(line, "description")))
 
     if description do
-      digest = :crypto.hash(:sha256, description) |> Base.url_encode64(padding: false)
+      tax_rates =
+        for field <- ~w(cgst_rate sgst_rate igst_rate gst_rate) do
+          value =
+            case Nila.Gst.Money.decimal_or_error(Map.get(line, field)) do
+              {:ok, value} -> value |> Decimal.normalize() |> Decimal.to_string(:normal)
+              _ -> nil
+            end
+
+          {field, value}
+        end
+
+      digest =
+        :crypto.hash(:sha256, :erlang.term_to_binary({description, tax_rates}))
+        |> Base.url_encode64(padding: false)
 
       {:ok,
        %{

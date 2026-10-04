@@ -1485,6 +1485,86 @@ export interface paths {
         patch: operations["correctSalesReturnReport"];
         trace?: never;
     };
+    "/api/workspace/sales/{client_id}/{period}/tally": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSalesTallyWorkspace"];
+        put?: never;
+        post: operations["postSalesTallyEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/tally": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateSalesTallyEntry"];
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}/include-document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["includeSalesUploadDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/tally/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifySalesTallyEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspace/sales/{client_id}/{period}/tally/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refreshSalesTallySnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2793,6 +2873,11 @@ export interface components {
                     pages: number[];
                     review_url: string | null;
                 }[];
+                skipped_documents: {
+                    pages: number[];
+                    document_type: string | null;
+                    reason: string | null;
+                }[];
             }[];
         };
         UploadedSalesBatch: {
@@ -2909,6 +2994,111 @@ export interface components {
                 after: number;
             };
         };
+        TallyLedgerChoice: {
+            identity: string;
+            name: string;
+        };
+        TallySalesEntry: {
+            line_id: string;
+            description: string | null;
+            ledger_identity: string | null;
+            ledger_name: string | null;
+            amount: string;
+            basis?: string | null;
+            history_count?: number;
+            suggested_ledger_identity?: string | null;
+            suggested_ledger_name?: string | null;
+        };
+        TallyTaxEntry: {
+            /** @enum {string} */
+            head: "cgst" | "sgst" | "igst";
+            ledger_identity: string | null;
+            ledger_name: string | null;
+            amount: string;
+            basis?: string | null;
+            history_count?: number;
+        };
+        SalesTallyProposal: {
+            source_id: string;
+            number: string | null;
+            date: string | null;
+            /** @enum {string} */
+            status: "ready" | "needs_input" | "pending" | "posted" | "failed" | "unknown";
+            party_ledger: components["schemas"]["TallyLedgerChoice"] | null;
+            sales_entries: components["schemas"]["TallySalesEntry"][];
+            tax_entries: components["schemas"]["TallyTaxEntry"][];
+            grand_total: string;
+            issues: string[];
+            sales_summary: {
+                ledger_identity: string | null;
+                ledger_name: string | null;
+                line_ids: string[];
+                amount: string;
+            }[];
+        };
+        SalesTallyWorkspace: {
+            /** @constant */
+            enabled: false;
+        } | {
+            /** @constant */
+            enabled: true;
+            company: {
+                id: number;
+                name: string;
+                is_open: boolean;
+            };
+            proposals: components["schemas"]["SalesTallyProposal"][];
+            ledger_choices: components["schemas"]["TallyLedgerChoice"][];
+            party_choices: components["schemas"]["TallyLedgerChoice"][];
+            sales_ledger_choices: components["schemas"]["TallyLedgerChoice"][];
+            tax_ledger_choices: components["schemas"]["TallyLedgerChoice"][];
+            preview_token: string;
+            ready_count: number;
+            ready_total: string;
+            can_post: boolean;
+            can_edit: boolean;
+            tax_choices_by_head: {
+                cgst: components["schemas"]["TallyLedgerChoice"][];
+                sgst: components["schemas"]["TallyLedgerChoice"][];
+                igst: components["schemas"]["TallyLedgerChoice"][];
+            };
+            can_refresh: boolean;
+            sync: {
+                /** @enum {string} */
+                status: "not_synced" | "running" | "succeeded" | "failed" | "offline";
+                run_id: number | null;
+                period_start: string | null;
+                period_end: string | null;
+                last_completed_at: string | null;
+                error: string | null;
+                covered: boolean;
+            };
+        };
+        SalesTallyUpdate: {
+            /** @description Corrections to source fields, including line_items[index].field paths. Saved atomically with ledger choices. */
+            source_changes?: {
+                [key: string]: string;
+            };
+            party_ledger_identity?: string;
+            line_sales_ledger_identities?: {
+                [key: string]: string;
+            };
+            tax_ledger_identities?: {
+                cgst?: string;
+                sgst?: string;
+                igst?: string;
+            };
+            preview_token: string;
+        };
+        SalesTallyPost: {
+            company_id: number;
+            invoice_ids: string[];
+            preview_token: string;
+        };
+        SalesTallyPostResult: {
+            queued_count: number;
+            tally: components["schemas"]["SalesTallyWorkspace"];
+        };
     };
     responses: never;
     parameters: never;
@@ -2979,7 +3169,10 @@ export interface operations {
     };
     getSalesInvoice: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Review original document facts for proposed Tally entries. */
+                tally?: "entries";
+            };
             header?: never;
             path: {
                 client_id: number;
@@ -3057,7 +3250,10 @@ export interface operations {
     };
     updateSalesInvoice: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Review original document facts for proposed Tally entries. */
+                tally?: "entries";
+            };
             header: {
                 "X-CSRF-Token": string;
             };
@@ -3177,7 +3373,10 @@ export interface operations {
     };
     confirmSalesInvoiceIssue: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Review original document facts for proposed Tally entries. */
+                tally?: "entries";
+            };
             header: {
                 "X-CSRF-Token": string;
             };
@@ -10424,6 +10623,450 @@ export interface operations {
                 };
             };
             /** @description Request failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSalesTallyWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sales Tally entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesTallyWorkspace"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postSalesTallyEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesTallyPost"];
+            };
+        };
+        responses: {
+            /** @description Sales Tally entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesTallyPostResult"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateSalesTallyEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesTallyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Sales Tally entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesTallyWorkspace"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    includeSalesUploadDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+                batch_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dump_id: number;
+                    pages: number[];
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommittedUpload"];
+                };
+            };
+            /** @description Request could not be completed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifySalesTallyEntries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sales Tally entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesTallyPostResult"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    refreshSalesTallySnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: number;
+                period: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sales Tally entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesTallyWorkspace"];
+                };
+            };
+            /** @description Request could not be completed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request could not be completed */
             422: {
                 headers: {
                     [name: string]: unknown;

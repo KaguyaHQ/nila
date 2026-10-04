@@ -145,6 +145,21 @@ export function changeUploadRemoval(
 }
 
 export type UploadResult = components["schemas"]["UploadResult"];
+export function includeUploadDocument(
+  client: number,
+  period: string,
+  ref: string,
+  dumpId: number,
+  pages: number[],
+  reason: string,
+  signal: AbortSignal,
+) {
+  return request<CommittedUpload>(
+    `${uploadPath(client, period)}/${encodeURIComponent(ref)}/include-document`,
+    signal,
+    { dump_id: dumpId, pages, reason },
+  );
+}
 export function fetchUploadResult(
   client: number,
   period: string,

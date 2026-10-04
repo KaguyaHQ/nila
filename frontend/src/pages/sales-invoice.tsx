@@ -35,17 +35,20 @@ import { ApiError } from "@/lib/sales-api";
 import {
   confirmSalesInvoiceIssue,
   fetchSalesInvoice,
+  salesReviewKey,
   ReviewApiError,
   updateSalesInvoice,
   type ReviewChange,
   type ReviewValues,
   type SalesInvoiceReviewData,
 } from "@/lib/sales-review-api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, FileText, Pencil } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Layout } from "react-resizable-panels";
+import { TallyEntry } from "@/components/sales-tally-entry";
+import { fetchSalesTally, tallyQueryKey, tallyStatus } from "@/lib/sales-tally-api";
 
 const SourcePdf = lazy(() => import("@/components/source-pdf"));
 const filters = [
@@ -119,14 +122,15 @@ export default function SalesInvoiceReview() {
     },
     [],
   );
-  const key = ["sales-review", clientId, period, invoiceId];
+  const key = salesReviewKey(clientId, period, invoiceId, params.tally === "entries");
   const query = useQuery({
     queryKey: key,
-    queryFn: ({ signal }) => fetchSalesInvoice(clientId, period, invoiceId, signal),
+    queryFn: ({ signal }) => fetchSalesInvoice(clientId, period, invoiceId, signal, params.tally === "entries"),
     placeholderData: (previous, previousQuery) =>
       previous?.source?.spreadsheet &&
       previousQuery?.queryKey[1] === clientId &&
       previousQuery?.queryKey[2] === period
+      && previousQuery?.queryKey[4] === (params.tally === "entries" ? "documents" : undefined)
         ? previous
         : undefined,
     staleTime: 0,
@@ -139,6 +143,7 @@ export default function SalesInvoiceReview() {
         : "/gst/$clientId/$period/sales"
       : "/gst/$clientId/$period/sales/register";
   const backSearch = {
+    tally: params.tally,
     filter:
       params.filter === "needs_review" || params.filter === "ready" ? params.filter : undefined,
     q: params.q,
@@ -230,10 +235,19 @@ function InvoiceReview({
   const setParams = useNavigate({ from: "/gst/$clientId/$period/sales/invoices/$invoiceId" });
   const navigate = useNavigate();
   const cache = useQueryClient();
+  const tally = useQuery({
+    queryKey: tallyQueryKey(clientId, period),
+    queryFn: ({ signal }) => fetchSalesTally(clientId, period, signal),
+    enabled: params.tally === "entries",
+    retry: false,
+  });
+  const tallyData = tally.data?.enabled ? tally.data : undefined;
+  const tallyProposal = tallyData?.proposals.find((item) => item.source_id === invoiceId);
   const [edit, setEdit] = useState<{ section: ReviewChange["section"]; index?: number } | null>(
     null,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [tallyEditing, setTallyEditing] = useState(false);
   const [values, setValues] = useState<ReviewValues>({});
   const initialValues = useRef<ReviewValues>({});
   const [confirmation, setConfirmation] = useState<SalesInvoiceReviewData["issues"][number] | null>(
@@ -254,14 +268,15 @@ function InvoiceReview({
       | { change?: never; target: string }
     )) =>
       change
-        ? updateSalesInvoice(clientId, period, invoiceId, change, controller.signal)
-        : confirmSalesInvoiceIssue(clientId, period, invoiceId, target, controller.signal),
+        ? updateSalesInvoice(clientId, period, invoiceId, change, controller.signal, params.tally === "entries")
+        : confirmSalesInvoiceIssue(clientId, period, invoiceId, target, controller.signal, params.tally === "entries"),
     onSuccess: async (saved, { change, controller }) => {
       if (controller.signal.aborted) return;
       await cache.cancelQueries({ queryKey: ["sales-review", clientId, period, invoiceId] });
       if (controller.signal.aborted) return;
-      cache.setQueryData(["sales-review", clientId, period, invoiceId], saved);
+      cache.setQueryData(salesReviewKey(clientId, period, invoiceId, params.tally === "entries"), saved);
       void cache.invalidateQueries({ queryKey: ["sales"] });
+      void cache.invalidateQueries({ queryKey: tallyQueryKey(clientId, period) });
       void cache.invalidateQueries({ queryKey: ["sales-uploads"] });
       void cache.invalidateQueries({ queryKey: ["sales-reports", Number(clientId), period] });
       void cache.invalidateQueries({ queryKey: ["sales-review"], refetchType: "none" });
@@ -281,7 +296,8 @@ function InvoiceReview({
       if (operation.current === controller) operation.current = null;
     },
   });
-  const busy = mutation.isPending || transitioning;
+  const ledgerSaving = useIsMutating({ mutationKey: ["tally-ledger", clientId, period, invoiceId] }) > 0;
+  const busy = mutation.isPending || transitioning || ledgerSaving || tallyEditing;
   const error = mutation.error;
   const taskQuery = useQuery({
     queryKey: ["sales-reports", Number(clientId), period],
@@ -306,6 +322,7 @@ function InvoiceReview({
   const filter =
     requestedFilter === "ready" || requestedFilter === "needs_review" ? requestedFilter : "all";
   const matchesScope = (item: SalesInvoiceReviewData["queue"][number]) =>
+    (params.tally !== "entries" || !tallyData || tallyData.proposals.some((entry) => entry.source_id === item.id)) &&
     (!constrainTaskQueue || taskIds.has(item.id)) &&
     (!params.buyer || item.buyer_gstin === params.buyer) &&
     (!params.issue ||
@@ -316,13 +333,19 @@ function InvoiceReview({
         .toLowerCase()
         .includes(params.q.trim().toLowerCase()));
   const scopedQueue = data.queue.filter(matchesScope);
-  const visible = scopedQueue.filter((item) => filter === "all" || item.status === filter);
+  const matchesReviewStatus = (item: SalesInvoiceReviewData["queue"][number], value: string) => {
+    if (value === "all") return true;
+    if (params.tally !== "entries") return item.status === value;
+    const proposal = tallyData?.proposals.find((entry) => entry.source_id === item.id);
+    return value === "ready" ? proposal?.status === "ready" : proposal?.status === "needs_input" || proposal?.status === "failed" || proposal?.status === "unknown";
+  };
+  const visible = scopedQueue.filter((item) => matchesReviewStatus(item, filter));
   const position = visible.findIndex((item) => item.id === data.invoice.id);
   // Keep the current invoice on screen if a save removes it from the filter.
   // Neighbours still follow its position in the full, server-ordered queue.
   const currentIndex = data.queue.findIndex((item) => item.id === data.invoice.id);
   const matchesFilter = (item: SalesInvoiceReviewData["queue"][number]) =>
-    matchesScope(item) && (filter === "all" || item.status === filter);
+    matchesScope(item) && matchesReviewStatus(item, filter);
   const previous = data.queue.slice(0, currentIndex).filter(matchesFilter).at(-1);
   const next = data.queue.slice(currentIndex + 1).find(matchesFilter);
   const positionLabel =
@@ -342,6 +365,7 @@ function InvoiceReview({
         : "/gst/$clientId/$period/sales"
       : "/gst/$clientId/$period/sales/register";
   const registerSearch = {
+    tally: params.tally,
     filter: filter === "all" ? undefined : filter,
     q: params.q,
     selected: params.origin === "register" || params.selected ? invoiceId : undefined,
@@ -440,13 +464,14 @@ function InvoiceReview({
         event.shiftKey ||
         busy ||
         dialogOpen ||
-        !event.altKey ||
+        inlineEditor ||
+        event.altKey ||
         event.ctrlKey ||
         event.metaKey ||
         (target instanceof HTMLElement &&
           (target.isContentEditable ||
             /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
-            target.closest('[role="dialog"]')))
+            target.closest('[role="dialog"], [data-pdf-action], [data-pdf-surface]')))
       )
         return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -712,7 +737,7 @@ function InvoiceReview({
                 <span className="ml-1 tabular-nums text-muted-foreground">
                   {
                     scopedQueue.filter(
-                      (invoice) => item.value === "all" || invoice.status === item.value,
+                      (invoice) => matchesReviewStatus(invoice, item.value),
                     ).length
                   }
                 </span>
@@ -815,9 +840,9 @@ function InvoiceReview({
                     <div className="mb-2">
                       <Badge
                         variant="secondary"
-                        className={status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
+                        className={params.tally !== "entries" && status === "needs_review" ? "bg-amber-50 text-amber-800" : ""}
                       >
-                        {status === "ready" ? "Ready" : "Needs review"}
+                        {params.tally === "entries" ? tallyProposal ? tallyStatus(tallyProposal.status) : "Loading Tally entry…" : status === "ready" ? "Ready" : "Needs review"}
                       </Badge>
                     </div>
                     <h1 className="text-2xl font-semibold tracking-tight">
@@ -845,7 +870,7 @@ function InvoiceReview({
                         }
                       />
                     )}
-                    <Button
+                    {params.tally !== "entries" && <Button
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Edit invoice details"
@@ -854,9 +879,15 @@ function InvoiceReview({
                       onClick={(event) => openEditor("facts", event.currentTarget)}
                     >
                       <Pencil />
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
+                {params.tally === "entries" && <div className="border-b pb-4">
+                  {tally.isPending && <p role="status">Loading Tally entry…</p>}
+                  {tally.isError && <p role="alert">{tally.error.message}</p>}
+                  {tallyData && tallyProposal && <TallyEntry key={invoiceId} clientId={clientId} period={period} data={tallyData} proposal={tallyProposal} editable compact showStatus={false} review={data} onEditingChange={setTallyEditing} />}
+                </div>}
+                {params.tally !== "entries" && <>
                 <div className="border-b pb-4">
                   <p className="text-sm font-semibold">
                     {data.invoice.buyer_name || "Customer not provided"}
@@ -1041,6 +1072,7 @@ function InvoiceReview({
                     </Collapsible>
                   </>
                 )}
+                </>}
                 {openIssues.length > 0 && (
                   <section aria-label="Needs your review" className="space-y-3">
                     {openIssues
@@ -1100,7 +1132,7 @@ function InvoiceReview({
               </div>
               <Collapsible
                 render={<footer />}
-                className="shrink-0 border-t bg-background px-5 py-3"
+                className={tallyEditing ? "hidden" : "shrink-0 border-t bg-background px-5 py-3"}
               >
                 <CollapsibleContent
                   id="invoice-checks"
@@ -1158,18 +1190,20 @@ function InvoiceReview({
                     <ChevronDown className="group-data-panel-open:rotate-180" />
                   </CollapsibleTrigger>
                   <div className="flex items-center gap-2">
-                    <Button
+                    {params.tally !== "entries" && <Button
                       variant="outline"
                       aria-label="Previous invoice"
-                      title="Previous invoice (Alt+Left)"
+                      title="Previous invoice (←)"
+                      aria-keyshortcuts="ArrowLeft"
                       disabled={!previous || busy || dialogOpen}
                       onClick={() => go(previous?.id)}
                     >
                       <ArrowLeft /> Previous
-                    </Button>
+                    </Button>}
                     <Button
                       aria-label="Next invoice"
-                      title="Next invoice (Alt+Right)"
+                      title="Next invoice (→)"
+                      aria-keyshortcuts="ArrowRight"
                       disabled={!next || busy || dialogOpen}
                       onClick={() => go(next?.id)}
                     >

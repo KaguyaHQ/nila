@@ -167,8 +167,8 @@ export function KeyboardShortcuts({ children }: { children: ReactNode }) {
     {
       title: "Review",
       rows: [
-        { label: "Previous invoice", keys: ["Alt", "←"] },
-        { label: "Next invoice", keys: ["Alt", "→"] },
+        { label: "Previous invoice", keys: pathname.includes("/purchases") ? ["Alt", "←"] : ["←"] },
+        { label: "Next invoice", keys: pathname.includes("/purchases") ? ["Alt", "→"] : ["→"] },
         { label: "Back to register", keys: ["Esc"] },
         { label: "Save and next · purchases", keys: [modifier, "↵"] },
         { label: "Close dialog", keys: ["Esc"] },

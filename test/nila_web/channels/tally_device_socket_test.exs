@@ -29,6 +29,22 @@ defmodule NilaWeb.TallyDeviceSocketTest do
 
     assert reply == %{device_id: device.id, org_id: org.id}
 
+    payload = %{
+      id: 123,
+      company_identity: "guid:company-nila",
+      company_name: "Nila",
+      period_start: "2026-08-01",
+      period_end: "2026-08-31"
+    }
+
+    Phoenix.PubSub.broadcast(
+      Nila.PubSub,
+      TallyJobs.device_topic(device.id),
+      {:tally_sync_requested, payload}
+    )
+
+    assert_push "sync_requested", ^payload
+
     assert %{metas: [meta]} =
              Presence.get_by_key("tally_devices:#{org.id}", Integer.to_string(device.id))
 

@@ -19,6 +19,12 @@ export class ReviewApiError extends ApiError {
 function reviewPath(client: string, period: string, invoice: string) {
   return `/api/workspace/sales/${encodeURIComponent(client)}/${encodeURIComponent(period)}/invoices/${encodeURIComponent(invoice)}`;
 }
+function reviewBasis(path: string, tallyMode: boolean) {
+  return tallyMode ? `${path}?tally=entries` : path;
+}
+export function salesReviewKey(client: string, period: string, invoice: string, tallyMode = false) {
+  return tallyMode ? ["sales-review", client, period, invoice, "documents"] : ["sales-review", client, period, invoice];
+}
 async function request(
   path: string,
   signal: AbortSignal,
@@ -55,8 +61,9 @@ export function fetchSalesInvoice(
   period: string,
   invoice: string,
   signal: AbortSignal,
+  tallyMode = false,
 ) {
-  return request(reviewPath(client, period, invoice), signal);
+  return request(reviewBasis(reviewPath(client, period, invoice), tallyMode), signal);
 }
 export function updateSalesInvoice(
   client: string,
@@ -64,8 +71,9 @@ export function updateSalesInvoice(
   invoice: string,
   changes: ReviewChange,
   signal: AbortSignal,
+  tallyMode = false,
 ) {
-  return request(reviewPath(client, period, invoice), signal, "PATCH", changes);
+  return request(reviewBasis(reviewPath(client, period, invoice), tallyMode), signal, "PATCH", changes);
 }
 export function confirmSalesInvoiceIssue(
   client: string,
@@ -73,8 +81,9 @@ export function confirmSalesInvoiceIssue(
   invoice: string,
   target: string,
   signal: AbortSignal,
+  tallyMode = false,
 ) {
-  return request(`${reviewPath(client, period, invoice)}/confirm`, signal, "POST", {
+  return request(reviewBasis(`${reviewPath(client, period, invoice)}/confirm`, tallyMode), signal, "POST", {
     target,
   } satisfies components["schemas"]["ConfirmInvoiceIssue"]);
 }

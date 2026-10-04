@@ -91,12 +91,7 @@ defmodule Nila.Business.Invoicing do
           )
 
         with %Profile{} = profile <- Repo.get_by(Profile, client_id: current.id),
-             false <-
-               Repo.exists?(
-                 from i in Invoice,
-                   where:
-                     i.client_id == ^current.id and i.number == ^attrs["next_quotation_number"]
-               ),
+             false <- quotation_number_overlap?(current.id, config, year),
              {:ok, _profile} <-
                profile
                |> change(%{
@@ -118,6 +113,39 @@ defmodule Nila.Business.Invoicing do
         end
       end)
     end
+  end
+
+  # Match only numbers the new format would produce, including its zero padding.
+  defp quotation_number_overlap?(client_id, config, year) do
+    digits =
+      case config do
+        %{style: "serial_fy"} -> 1
+        %{style: "nila"} -> 4
+        %{style: "custom", min_digits: min_digits} -> min_digits
+      end
+
+    sequence = "([0-9]{#{digits}}|[1-9][0-9]{#{digits},})"
+
+    pattern =
+      case config do
+        %{style: "serial_fy"} ->
+          suffix = "#{year}-#{String.pad_leading(to_string(rem(year + 1, 100)), 2, "0")}"
+          "^#{sequence}/#{suffix}$"
+
+        %{style: "nila"} ->
+          prefix = "QT/#{rem(year, 100)}#{rem(year + 1, 100)}/"
+          "^#{Regex.escape(prefix)}#{sequence}$"
+
+        %{style: "custom", prefix: prefix} ->
+          "^#{Regex.escape(prefix)}#{sequence}$"
+      end
+
+    Repo.exists?(
+      from i in Invoice,
+        where:
+          i.client_id == ^client_id and
+            fragment("substring(? from ?)::numeric >= ?", i.number, ^pattern, ^config.next_number)
+    )
   end
 
   def configure_invoice_numbering(%Client{} = client, attrs) do

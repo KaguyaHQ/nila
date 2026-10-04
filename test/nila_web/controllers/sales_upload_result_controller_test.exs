@@ -33,6 +33,29 @@ defmodule NilaWeb.SalesUploadResultControllerTest do
     }
   end
 
+  test "completed uploads expose skipped source documents without changing invoice identities",
+       c do
+    segment = %{
+      "kind" => "non_invoice",
+      "pages" => [6],
+      "document_type" => "quotation",
+      "reason" => "Quotation heading conflicts with printed invoice number."
+    }
+
+    meta =
+      c.dump.meta
+      |> Map.put("processing", %{"segments" => [segment]})
+      |> Map.put("unaccounted_pages", [6])
+
+    c.dump |> Ecto.Changeset.change(status: "extracted", meta: meta) |> Repo.update!()
+
+    [file] = (c.conn |> get(c.path) |> contract_response(200))["files"]
+    assert file["skipped_documents"] == [Map.delete(segment, "kind")]
+    assert file["message"] =~ "not included as invoices"
+    assert Enum.map(file["rows"], & &1["id"]) == c.ids
+    assert file["completed"] == length(c.dump.invoices)
+  end
+
   test "partial results identify the unread invoice and preserve completed review links", c do
     [first | _] = c.dump.invoices
     first = Map.put(first, "id", Nila.Gst.Sales.Processing.source_id(c.dump, 1))
@@ -77,6 +100,71 @@ defmodule NilaWeb.SalesUploadResultControllerTest do
              ),
              :count
            ) == 1
+  end
+
+  test "including a skipped page appends its identity and records who confirmed it", c do
+    segments =
+      Enum.with_index(c.dump.invoices, 1)
+      |> Enum.map(fn {_, index} ->
+        %{"kind" => "invoice", "pages" => [index + 1], "invoice_no" => "OLD-#{index}"}
+      end)
+
+    skipped = %{"kind" => "non_invoice", "pages" => [1], "document_type" => "quotation"}
+
+    artifacts =
+      Map.new(Enum.with_index(c.dump.invoices, 1), fn {_, index} ->
+        {to_string(index), %{"source_pages" => [index + 1]}}
+      end)
+
+    meta =
+      Map.put(c.dump.meta, "processing", %{
+        "segments" => [skipped | segments],
+        "artifacts" => artifacts
+      })
+
+    c.dump |> Ecto.Changeset.change(status: "extracted", meta: meta) |> Repo.update!()
+
+    body = %{
+      dump_id: c.dump.id,
+      pages: [1],
+      reason: "Accountant confirmed the heading was copied by mistake."
+    }
+
+    c.conn |> post(c.path <> "/include-document", body) |> contract_response(200)
+    saved = Repo.reload!(c.dump)
+    assert Enum.map(saved.invoices, & &1["id"]) == c.ids
+    assert Enum.take(saved.meta["processing"]["segments"], length(segments)) == segments
+
+    assert Nila.Gst.Sales.Processing.artifact_ordinal(saved, %{"source_pages" => [1]}, 1) ==
+             length(segments) + 1
+
+    assert Nila.Gst.Sales.Processing.artifact_ordinal(saved, %{"source_pages" => [2]}, 2) == 1
+    assert [override] = saved.meta["document_overrides"]
+    assert override["user_id"] == c.user.id
+    assert override["original_classification"] == skipped
+    assert override["reason"] == body.reason
+    c.conn |> post(c.path <> "/include-document", body) |> contract_response(409)
+
+    assert Repo.aggregate(
+             from(j in Oban.Job,
+               where: fragment("?->>'dump_id'", j.args) == ^to_string(c.dump.id)
+             ),
+             :count
+           ) == 1
+  end
+
+  test "include refuses filed periods and viewers", c do
+    {:ok, month} = Months.get_by_period(c.org.id, c.client.id, "2025-10")
+    month |> Ecto.Changeset.change(filed_at: DateTime.utc_now()) |> Repo.update!()
+    body = %{dump_id: c.dump.id, pages: [6], reason: "Confirmed invoice"}
+    c.conn |> post(c.path <> "/include-document", body) |> contract_response(409)
+
+    Repo.update_all(
+      from(m in Nila.Orgs.Membership, where: m.org_id == ^c.org.id and m.user_id == ^c.user.id),
+      set: [role: "viewer"]
+    )
+
+    c.conn |> post(c.path <> "/include-document", body) |> contract_response(403)
   end
 
   test "retry refuses filed months and unrelated files", c do

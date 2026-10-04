@@ -3,6 +3,7 @@ defmodule NilaWeb.TallyDeviceChannel do
 
   alias Nila.TallyDevices
   alias Nila.TallyJobs
+  alias Nila.TallySync
   alias NilaWeb.Presence
 
   @impl true
@@ -14,6 +15,7 @@ defmodule NilaWeb.TallyDeviceChannel do
          %{} = device <- TallyDevices.get_active_device(authenticated_device.id),
          {:ok, device} <- TallyDevices.mark_connected(device, connected_at),
          {:ok, _interrupted_jobs} <- TallyJobs.interrupt_running(device.id, connected_at),
+         :ok <- TallySync.interrupt_running(device.id, connected_at, connected_at),
          {:ok, _companies} <-
            TallyDevices.report_companies(device, companies(payload), connected_at),
          {:ok, _presence} <-
@@ -72,11 +74,17 @@ defmodule NilaWeb.TallyDeviceChannel do
   @impl true
   def terminate(_reason, %{assigns: %{device: device, connected_at: connected_at}}) do
     TallyDevices.mark_companies_closed(device.id, connected_at)
+    TallySync.interrupt_running(device.id, connected_at)
   end
 
   @impl true
   def handle_info(:tally_job_available, socket) do
     if is_nil(socket.assigns.in_flight_job_id), do: send(self(), :deliver_tally_jobs)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tally_sync_requested, payload}, socket) do
+    push(socket, "sync_requested", payload)
     {:noreply, socket}
   end
 

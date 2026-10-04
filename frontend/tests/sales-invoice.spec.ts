@@ -508,12 +508,12 @@ test("review navigation preserves filters, stays in React and ignores editing ke
   const opener = page.getByRole("button", { name: "Edit invoice details", exact: true });
   await opener.click();
   await page.getByLabel("Invoice number", { exact: true }).focus();
-  await page.keyboard.press("Alt+ArrowRight");
+  await page.keyboard.press("ArrowRight");
   await expect(page).toHaveURL(/\/invoices\/one$/);
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(opener).toBeFocused();
-  await page.keyboard.press("Alt+ArrowRight");
+  await page.keyboard.press("ArrowRight");
   await expect(page).toHaveURL(/\/invoices\/two$/);
   await expect(page.getByRole("heading", { name: "Invoice INV-002", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Needs review 1", exact: true }).click();

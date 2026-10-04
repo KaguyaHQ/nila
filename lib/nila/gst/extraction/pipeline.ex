@@ -207,13 +207,8 @@ defmodule Nila.Gst.Extraction.Pipeline do
   defp group_pages(:purchase, pages, count), do: PurchasePages.group(pages, count)
 
   defp read_segments(kind, source, discovery, opts, hooks) do
-    discovery =
-      Map.update!(
-        discovery,
-        :segments,
-        &Enum.sort_by(&1, fn segment -> List.first(segment.pages) end)
-      )
-
+    # Saved segment order assigns source IDs and cached artifact ordinals.
+    # A confirmed skipped document is appended, even when its page is earlier.
     segments = Enum.filter(discovery.segments, &(&1.kind == :invoice))
     on_invoice = Keyword.get(opts, :on_invoice, fn _artifact, _ordinal, _evidence -> :ok end)
     Keyword.get(opts, :on_segments, fn _segments -> :ok end).(encode_segments(discovery.segments))

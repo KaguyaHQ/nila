@@ -112,6 +112,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "tally",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "entries"
+              ]
+            },
+            "description": "Review original document facts for proposed Tally entries."
           }
         ],
         "responses": {
@@ -223,6 +235,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "tally",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "entries"
+              ]
+            },
+            "description": "Review original document facts for proposed Tally entries."
           }
         ],
         "responses": {
@@ -417,6 +441,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "tally",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "entries"
+              ]
+            },
+            "description": "Review original document facts for proposed Tally entries."
           }
         ],
         "responses": {
@@ -9572,6 +9608,616 @@
           "422": {"description": "Report cannot be removed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
         }
       }
+    },
+    "/api/workspace/sales/{client_id}/{period}/tally": {
+      "get": {
+        "operationId": "getSalesTallyWorkspace",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales Tally entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTallyWorkspace"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postSalesTallyEntries",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales Tally entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTallyPostResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesTallyPost"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/sales/{client_id}/{period}/invoices/{invoice_id}/tally": {
+      "patch": {
+        "operationId": "updateSalesTallyEntry",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales Tally entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTallyWorkspace"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesTallyUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/sales/{client_id}/{period}/uploads/{batch_ref}/include-document": {
+      "post": {
+        "operationId": "includeSalesUploadDocument",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommittedUpload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dump_id": {
+                    "type": "integer"
+                  },
+                  "pages": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "minItems": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "dump_id",
+                  "pages",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/sales/{client_id}/{period}/tally/verify": {
+      "post": {
+        "operationId": "verifySalesTallyEntries",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales Tally entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTallyPostResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/sales/{client_id}/{period}/tally/sync": {
+      "post": {
+        "operationId": "refreshSalesTallySnapshot",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "period",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales Tally entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTallyWorkspace"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request could not be completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -15767,6 +16413,38 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "skipped_documents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pages": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "document_type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "reason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "pages",
+                      "document_type",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -15778,7 +16456,8 @@
                 "reviewable",
                 "original_url",
                 "message",
-                "rows"
+                "rows",
+                "skipped_documents"
               ],
               "additionalProperties": false
             }
@@ -16242,6 +16921,511 @@
             }
           }
         }
+      },
+      "TallyLedgerChoice": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "TallySalesEntry": {
+        "type": "object",
+        "properties": {
+          "line_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ledger_identity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ledger_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amount": {
+            "type": "string"
+          },
+          "basis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "history_count": {
+            "type": "integer"
+          },
+          "suggested_ledger_identity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggested_ledger_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "line_id",
+          "description",
+          "ledger_identity",
+          "ledger_name",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "TallyTaxEntry": {
+        "type": "object",
+        "properties": {
+          "head": {
+            "type": "string",
+            "enum": [
+              "cgst",
+              "sgst",
+              "igst"
+            ]
+          },
+          "ledger_identity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ledger_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amount": {
+            "type": "string"
+          },
+          "basis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "history_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "head",
+          "ledger_identity",
+          "ledger_name",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "SalesTallyProposal": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "needs_input",
+              "pending",
+              "posted",
+              "failed",
+              "unknown"
+            ]
+          },
+          "party_ledger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TallyLedgerChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sales_entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TallySalesEntry"
+            }
+          },
+          "tax_entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TallyTaxEntry"
+            }
+          },
+          "grand_total": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sales_summary": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ledger_identity": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "ledger_name": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "line_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "amount": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ledger_identity",
+                "ledger_name",
+                "line_ids",
+                "amount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "source_id",
+          "number",
+          "date",
+          "status",
+          "party_ledger",
+          "sales_entries",
+          "tax_entries",
+          "grand_total",
+          "issues",
+          "sales_summary"
+        ],
+        "additionalProperties": false
+      },
+      "SalesTallyWorkspace": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "const": false
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "const": true
+              },
+              "company": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "is_open": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "is_open"
+                ],
+                "additionalProperties": false
+              },
+              "proposals": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SalesTallyProposal"
+                }
+              },
+              "ledger_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TallyLedgerChoice"
+                }
+              },
+              "party_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TallyLedgerChoice"
+                }
+              },
+              "sales_ledger_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TallyLedgerChoice"
+                }
+              },
+              "tax_ledger_choices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TallyLedgerChoice"
+                }
+              },
+              "preview_token": {
+                "type": "string"
+              },
+              "ready_count": {
+                "type": "integer"
+              },
+              "ready_total": {
+                "type": "string"
+              },
+              "can_post": {
+                "type": "boolean"
+              },
+              "can_edit": {
+                "type": "boolean"
+              },
+              "tax_choices_by_head": {
+                "type": "object",
+                "properties": {
+                  "cgst": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TallyLedgerChoice"
+                    }
+                  },
+                  "sgst": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TallyLedgerChoice"
+                    }
+                  },
+                  "igst": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TallyLedgerChoice"
+                    }
+                  }
+                },
+                "required": [
+                  "cgst",
+                  "sgst",
+                  "igst"
+                ],
+                "additionalProperties": false
+              },
+              "can_refresh": {
+                "type": "boolean"
+              },
+              "sync": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "not_synced",
+                      "running",
+                      "succeeded",
+                      "failed",
+                      "offline"
+                    ]
+                  },
+                  "run_id": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "period_start": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "period_end": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "last_completed_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "covered": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "status",
+                  "run_id",
+                  "period_start",
+                  "period_end",
+                  "last_completed_at",
+                  "error",
+                  "covered"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "enabled",
+              "company",
+              "proposals",
+              "ledger_choices",
+              "party_choices",
+              "sales_ledger_choices",
+              "tax_ledger_choices",
+              "preview_token",
+              "ready_count",
+              "ready_total",
+              "can_post",
+              "can_edit",
+              "tax_choices_by_head",
+              "can_refresh",
+              "sync"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SalesTallyUpdate": {
+        "type": "object",
+        "properties": {
+          "source_changes": {
+            "type": "object",
+            "description": "Corrections to source fields, including line_items[index].field paths. Saved atomically with ledger choices.",
+            "additionalProperties": { "type": "string" }
+          },
+          "party_ledger_identity": {
+            "type": "string"
+          },
+          "line_sales_ledger_identities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "tax_ledger_identities": {
+            "type": "object",
+            "properties": {
+              "cgst": {
+                "type": "string"
+              },
+              "sgst": {
+                "type": "string"
+              },
+              "igst": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "preview_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "preview_token"
+        ],
+        "additionalProperties": false
+      },
+      "SalesTallyPost": {
+        "type": "object",
+        "properties": {
+          "company_id": {
+            "type": "integer"
+          },
+          "invoice_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preview_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_id",
+          "invoice_ids",
+          "preview_token"
+        ],
+        "additionalProperties": false
+      },
+      "SalesTallyPostResult": {
+        "type": "object",
+        "properties": {
+          "queued_count": {
+            "type": "integer"
+          },
+          "tally": {
+            "$ref": "#/components/schemas/SalesTallyWorkspace"
+          }
+        },
+        "required": [
+          "queued_count",
+          "tally"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

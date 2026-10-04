@@ -221,9 +221,13 @@ defmodule Nila.Gst.Sales.Review.Resolutions do
   engine's output: `%{invoices, issues, derived, decisions, silent_errors}`.
   This is the projection every sales surface renders.
   """
-  def workings(%Month{} = month) do
+  def workings(%Month{} = month, opts \\ []) do
     resolutions = month.id |> list() |> Enum.map(&resolution_map/1)
-    tally = TallyRegister.project(month)
+
+    tally =
+      if Keyword.get(opts, :source) == :tally,
+        do: TallyRegister.project(month),
+        else: TallyRegister.documents(month)
 
     invoices =
       InvoiceCorrections.apply_sources(month.org_id, month.client_id, tally.invoices)

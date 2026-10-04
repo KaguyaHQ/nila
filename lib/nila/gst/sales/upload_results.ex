@@ -80,6 +80,89 @@ defmodule Nila.Gst.Sales.UploadResults do
 
   def retry(_, _, _, _, _), do: {:error, :invalid}
 
+  def include_document(scope, client_id, period, ref, dump_id, pages, reason)
+      when is_integer(dump_id) and is_list(pages) and is_binary(reason) do
+    if Nila.Accounts.Policy.can?(scope, :edit_records) do
+      Repo.transact(fn ->
+        org_id = scope.current_org.id
+
+        months =
+          Repo.all(
+            from m in Month,
+              where: m.org_id == ^org_id and m.client_id == ^client_id,
+              order_by: m.id,
+              lock: "FOR UPDATE"
+          )
+
+        with {:ok, dumps} <- fetch(org_id, client_id, period, ref),
+             true <- Enum.any?(dumps, &(&1.id == dump_id)) || {:error, :not_found},
+             dump <- Repo.one!(from d in Dump, where: d.id == ^dump_id, lock: "FOR UPDATE"),
+             true <-
+               (dump.org_id == org_id and dump.client_id == client_id and dump.period == period) ||
+                 {:error, :not_found},
+             false <-
+               Enum.any?(months, fn month ->
+                 affected =
+                   month.period == period or
+                     Enum.any?(month.invoices, fn invoice ->
+                       Enum.any?(
+                         dump.invoices,
+                         &(Invoice.source_id(&1) == Invoice.source_id(invoice))
+                       )
+                     end)
+
+                 affected and (month.filed_at != nil or month.state == "filed")
+               end),
+             true <- dump.status == "extracted" || {:error, :processing},
+             true <-
+               (String.trim(reason) != "" and byte_size(reason) <= 2000) || {:error, :invalid},
+             snapshot <- Processing.snapshot(dump),
+             segments <- snapshot["segments"] || [],
+             segment when not is_nil(segment) <-
+               Enum.find(segments, &(&1["kind"] != "invoice" and &1["pages"] == pages)),
+             true <-
+               Enum.all?(
+                 Enum.with_index(Enum.filter(segments, &(&1["kind"] == "invoice")), 1),
+                 fn {segment, ordinal} ->
+                   artifact = (snapshot["artifacts"] || %{})[to_string(ordinal)]
+                   is_map(artifact) and artifact["source_pages"] == segment["pages"]
+                 end
+               ) || {:error, :evidence_unavailable} do
+          included =
+            segment |> Map.put("kind", "invoice") |> Map.put("document_type", "tax_invoice")
+
+          snapshot =
+            Map.put(snapshot, "segments", Enum.reject(segments, &(&1 == segment)) ++ [included])
+
+          override = %{
+            "pages" => pages,
+            "original_classification" => segment,
+            "reason" => String.trim(reason),
+            "user_id" => scope.user.id,
+            "recorded_at" => DateTime.to_iso8601(DateTime.utc_now())
+          }
+
+          meta =
+            dump.meta
+            |> Map.put("processing", snapshot)
+            |> Map.update("document_overrides", [override], &(&1 ++ [override]))
+
+          dump |> Dump.changeset(%{status: "received", meta: meta, error: nil}) |> Repo.update!()
+          Oban.insert!(DumpWorker.new(%{dump_id: dump.id}))
+          {:ok, %{ok: true}}
+        else
+          true -> {:error, :filed}
+          nil -> {:error, :stale}
+          error -> error
+        end
+      end)
+    else
+      {:error, :read_only}
+    end
+  end
+
+  def include_document(_, _, _, _, _, _, _), do: {:error, :invalid}
+
   defp fetch(org, client, period, ref) do
     with {:ok, dumps} <- Batch.fetch(org, client, ref),
          true <-
@@ -123,6 +206,16 @@ defmodule Nila.Gst.Sales.UploadResults do
       completed: length(dump.invoices),
       total: if(segments == [], do: nil, else: length(segments)),
       reviewable: length(active),
+      skipped_documents:
+        (snapshot["segments"] || [])
+        |> Enum.reject(&(&1["kind"] == "invoice"))
+        |> Enum.map(fn segment ->
+          %{
+            pages: segment["pages"] || [],
+            document_type: segment["document_type"],
+            reason: segment["reason"]
+          }
+        end),
       rows: rows,
       original_url:
         if(dump.file_keys != [], do: "/gst/#{client}/#{period}/original/#{dump.id}/0"),
@@ -170,8 +263,13 @@ defmodule Nila.Gst.Sales.UploadResults do
   defp message(%{status: status}) when status in ~w(received extracting),
     do: "You can review completed invoices while the rest are being read."
 
-  defp message(%{status: "extracted"}),
-    do: "Reading finished. Review the invoices before using the working."
+  defp message(%{status: "extracted"} = dump) do
+    if (dump.meta || %{})["unaccounted_pages"] in [nil, []] do
+      "Reading finished. Review the invoices before using the working."
+    else
+      "Some PDF pages were not included as invoices. Check the skipped documents against the source PDF."
+    end
+  end
 
   defp message(_), do: "This upload needs attention before its invoices can enter the working."
 end
