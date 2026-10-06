@@ -1,0 +1,75 @@
+{
+  "simple-54": {
+    "invoice_number": "I-SS-2627-54",
+    "seller": "33AEHFS3648M1ZL",
+    "buyer": "33AACCR5866L1ZZ",
+    "date": "2026-07-04",
+    "values": [
+      32712,
+      7820
+    ],
+    "hsn": [
+      "854239",
+      "853321"
+    ],
+    "item_taxes": [
+      [],
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 3647.88,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 3647.88,
+        "rate": 9
+      }
+    ],
+    "grand": 47828,
+    "taxable": 40532,
+    "tax_heads": {
+      "cgst": 3647.88,
+      "sgst": 3647.88,
+      "igst": 0
+    },
+    "rounding": 0.24
+  },
+  "ets-24": {
+    "invoice_number": "ETS-26-27-0024",
+    "seller": "33AAICE0305R1ZM",
+    "buyer": "33AAACT2761Q1Z1",
+    "date": "2026-08-05",
+    "values": [
+      94000
+    ],
+    "hsn": [
+      "998335"
+    ],
+    "item_taxes": [
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 8460,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 8460,
+        "rate": 9
+      }
+    ],
+    "grand": 110920,
+    "taxable": 94000,
+    "tax_heads": {
+      "cgst": 8460,
+      "sgst": 8460,
+      "igst": 0
+    },
+    "rounding": 0
+  }
+}

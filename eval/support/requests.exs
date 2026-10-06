@@ -30,21 +30,34 @@ defmodule Nila.Eval.Requests do
   @doc """
   Records a Req.post or Req adapter callback without changing its return value.
   Returns {callback_result, measurements, decoded_invoice_or_error}. The caller
-  owns experiment metadata and the final result file. Existing prefixes are refused.
+  owns experiment metadata and the final result file. Call artifacts live under
+  attempts/<prefix>/; use attempt_dir/2 for additional per-call files.
+  Existing attempts are refused before calling the provider.
   """
   def capture(dir, prefix, payload, schema, call) when is_function(call, 0) do
-    if Path.basename(prefix) != prefix or prefix in ["", ".", ".."],
-      do: raise(ArgumentError, "Expected a filename prefix")
-
+    artifact_dir = attempt_dir(dir, prefix)
     File.mkdir_p!(dir)
 
     if Enum.any?(File.ls!(dir), &String.starts_with?(&1, prefix <> "-")),
       do: raise("Refusing to overwrite existing attempt: #{prefix}")
 
-    # Exclusive creation also prevents two workers from sharing an attempt ID.
-    request_path = Path.join(dir, prefix <> "-request.json")
+    File.mkdir_p!(Path.dirname(artifact_dir))
+
+    # Reserve the whole attempt atomically, including interrupted or failed calls.
+    case File.mkdir(artifact_dir) do
+      :ok ->
+        :ok
+
+      {:error, :eexist} ->
+        raise("Refusing to overwrite existing attempt: #{prefix}")
+
+      {:error, reason} ->
+        raise File.Error, reason: reason, action: "create directory", path: artifact_dir
+    end
+
+    request_path = Path.join(artifact_dir, prefix <> "-request.json")
     File.write!(request_path, Jason.encode!(payload, pretty: true), [:exclusive])
-    write(dir, prefix <> "-schema.json", schema)
+    write(artifact_dir, prefix <> "-schema.json", schema)
     started_at = DateTime.utc_now() |> DateTime.to_iso8601()
     started = System.monotonic_time(:millisecond)
     {_request_or_status, response} = result = call.()
@@ -56,8 +69,20 @@ defmodule Nila.Eval.Requests do
       duration_ms: System.monotonic_time(:millisecond) - started
     }
 
-    {measurements, decoded} = record(dir, prefix, response, schema)
+    {measurements, decoded} = record(artifact_dir, prefix, response, schema)
     {result, Map.merge(timing, measurements), decoded}
+  end
+
+  @doc "Directory for a call's raw artifacts, decoded output and measurements."
+  def attempt_dir(dir, prefix) do
+    if not is_binary(prefix) or not Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/, prefix),
+      do:
+        raise(
+          ArgumentError,
+          "Expected a filename prefix using letters, numbers, dots, dashes or underscores"
+        )
+
+    Path.join([dir, "attempts", prefix])
   end
 
   def write(dir, name, data),

@@ -494,7 +494,7 @@ defmodule Nila.Gst.Sales.Gstr1 do
       round2(document["printed_grand_total"])
     else
       tax = if Invoice.tax_excluded_from_total?(document), do: 0, else: invoice_tax(document)
-      round2(invoice_taxable(document) + tax)
+      round2(invoice_taxable(document) + tax + num(document["printed_rounding_adjustment"]))
     end
   end
 

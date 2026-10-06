@@ -28,7 +28,7 @@ defmodule Nila.MeasureSalesExtractionModels do
       end)
 
     write(
-      context.dir,
+      Nila.Eval.Requests.attempt_dir(context.dir, prefix),
       prefix <> "-result.json",
       Map.merge(measurements, %{
         call_id: call_id,

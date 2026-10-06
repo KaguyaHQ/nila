@@ -314,6 +314,11 @@ defmodule Nila.Gst.Extraction.InvoiceSchema do
               "string",
               "Literal label printed for this invoice-level tax total."
             ),
+          printed_rate:
+            described_nullable(
+              "number",
+              "Tax percentage printed for this invoice-summary tax entry, including an applicable heading; null when absent or unclear. Do not calculate it."
+            ),
           printed_amount: described_nullable("number", "Tax total printed with this label.")
         })
     }

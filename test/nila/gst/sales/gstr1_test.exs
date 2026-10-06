@@ -19,6 +19,23 @@ defmodule Nila.Gst.Sales.Gstr1Test do
   alias Nila.Eval.Gstr1Diff
   alias Nila.Gst.Sales.Gstr1
 
+  test "invoice value includes signed printed rounding without changing taxable value or tax" do
+    for {rounding, expected} <- [{0.2, 1180.2}, {-0.2, 1179.8}, {nil, 1180.0}] do
+      invoice =
+        seq_invoice("ROUND-1")
+        |> Map.put("printed_rounding_adjustment", rounding)
+        |> Map.put("printed_grand_total", expected)
+
+      derived = Gstr1.derive([invoice], %{"gstin" => "33AEWPH4158J1Z3", "fp" => "052026"})
+      [%{"inv" => [entry]}] = derived["b2b"]
+      assert entry["val"] == expected
+      [%{"itm_det" => amounts}] = entry["itms"]
+      assert amounts["txval"] == 1000.0
+      assert amounts["camt"] == 90.0
+      assert amounts["samt"] == 90.0
+    end
+  end
+
   test "component-only GST blocks non-taxable filing even when line tax is zero" do
     for components <- [
           [%{"printed_label" => "IGST", "printed_amount" => 180}],

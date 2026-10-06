@@ -1,0 +1,141 @@
+{
+  "simple-52": {
+    "invoice_number": "I-SS-2627-52",
+    "seller": "33AEHFS3648M1ZL",
+    "buyer": "33AACCR5866L1ZZ",
+    "date": "2026-07-04",
+    "values": [
+      16500,
+      500
+    ],
+    "hsn": [
+      "85423100",
+      "996812"
+    ],
+    "item_taxes": [
+      [],
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 1530,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 1530,
+        "rate": 9
+      }
+    ],
+    "grand": 20060,
+    "taxable": 17000,
+    "tax_heads": {
+      "cgst": 1530,
+      "sgst": 1530,
+      "igst": 0
+    },
+    "rounding": 0
+  },
+  "ets-22": {
+    "invoice_number": "ETS-26-27-0022",
+    "seller": "33AAICE0305R1ZM",
+    "buyer": "33AGNPD9318H3ZB",
+    "date": "2026-08-01",
+    "values": [
+      49500,
+      48000
+    ],
+    "hsn": [
+      "850110",
+      "850110"
+    ],
+    "item_taxes": [
+      [],
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 8775,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 8775,
+        "rate": 9
+      }
+    ],
+    "grand": 115050,
+    "taxable": 97500,
+    "tax_heads": {
+      "cgst": 8775,
+      "sgst": 8775,
+      "igst": 0
+    },
+    "rounding": 0
+  },
+  "caltech-may-p1": {
+    "invoice_number": "25/2026-27",
+    "seller": "33BPBPK1081A1ZO",
+    "buyer": "32AAVCS8021P1ZO",
+    "date": "2026-05-06",
+    "values": [
+      3000,
+      4200,
+      3000,
+      2000
+    ],
+    "hsn": [
+      "29037100",
+      "71069290",
+      "998717",
+      "998717"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "igst",
+          "amount": 540,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "igst",
+          "amount": 126,
+          "rate": 3
+        }
+      ],
+      [
+        {
+          "kind": "igst",
+          "amount": 540,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "igst",
+          "amount": 360,
+          "rate": 18
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "combined",
+        "amount": 1566,
+        "rate": null
+      }
+    ],
+    "grand": 13766,
+    "taxable": 12200,
+    "tax_heads": {
+      "cgst": 0,
+      "sgst": 0,
+      "igst": 1566
+    },
+    "rounding": 0
+  }
+}

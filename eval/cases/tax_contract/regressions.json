@@ -1,0 +1,734 @@
+{
+  "breeze-111": {
+    "invoice_number": "111/2025-26",
+    "seller": "33AEWPH4158J1Z3",
+    "buyer": "33AABCP9487A1ZG",
+    "date": "2025-11-05",
+    "values": [
+      35802,
+      35802,
+      5967,
+      31824,
+      43758,
+      7956,
+      8950.5,
+      43758,
+      39780,
+      31824,
+      2983.5,
+      23868,
+      19890,
+      15912,
+      17901,
+      15912,
+      17901,
+      15912,
+      31824,
+      43758,
+      43758,
+      32818.5,
+      43758,
+      19890,
+      23868,
+      11934,
+      20884.5
+    ],
+    "hsn": [
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998720",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719",
+      "998719"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "cgst",
+          "amount": 3222.18,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3222.18,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3222.18,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3222.18,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 537.03,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 537.03,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2864.16,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2864.16,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3938.22,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3938.22,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 716.04,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 716.04,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 805.55,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 805.55,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3938.22,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3938.22,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3580.2,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3580.2,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2864.16,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2864.16,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 268.52,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 268.52,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2148.12,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2148.12,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1790.1,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1790.1,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1432.08,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1432.08,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1611.09,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1611.09,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1432.08,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1432.08,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1611.09,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1611.09,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1432.08,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1432.08,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2864.16,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2864.16,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3938.22,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3938.22,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3938.22,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3938.22,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2953.67,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2953.67,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 3938.22,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3938.22,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1790.1,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1790.1,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 2148.12,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 2148.12,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1074.06,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1074.06,
+          "rate": 9
+        }
+      ],
+      [
+        {
+          "kind": "cgst",
+          "amount": 1879.61,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1879.61,
+          "rate": 9
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "combined",
+        "amount": 123874.92,
+        "rate": null
+      }
+    ],
+    "grand": 812068.92,
+    "rounding": 0,
+    "notes": "Two pages. Row 18 prints 998720. Item tax rounding differs from footer; preserve both.",
+    "taxable": 688194.0,
+    "tax_heads": {
+      "cgst": 61937.48,
+      "sgst": 61937.48,
+      "igst": 0
+    }
+  },
+  "breeze-112": {
+    "invoice_number": "112/2025-26",
+    "seller": "33AEWPH4158J1Z3",
+    "buyer": "33AABCP9487A1ZG",
+    "date": "2025-11-05",
+    "values": [
+      34100
+    ],
+    "hsn": [
+      "998719"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "cgst",
+          "amount": 3069,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 3069,
+          "rate": 9
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "combined",
+        "amount": 6138,
+        "rate": null
+      }
+    ],
+    "grand": 40238,
+    "rounding": 0,
+    "notes": "",
+    "taxable": 34100,
+    "tax_heads": {
+      "cgst": 3069,
+      "sgst": 3069,
+      "igst": 0
+    }
+  },
+  "caltech-jan-p1": {
+    "invoice_number": "122/2025-26",
+    "seller": "33BPBPK1081A1ZO",
+    "buyer": "33AAVCS8021P1ZM",
+    "date": "2026-01-12",
+    "values": [
+      13750
+    ],
+    "hsn": [
+      "29053100"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "cgst",
+          "amount": 1237.5,
+          "rate": 9
+        },
+        {
+          "kind": "sgst",
+          "amount": 1237.5,
+          "rate": 9
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "combined",
+        "amount": 2475,
+        "rate": null
+      }
+    ],
+    "grand": 16225,
+    "rounding": 0,
+    "notes": "",
+    "taxable": 13750,
+    "tax_heads": {
+      "cgst": 1237.5,
+      "sgst": 1237.5,
+      "igst": 0
+    }
+  },
+  "caltech-jan-p2": {
+    "invoice_number": "123/2025-26",
+    "seller": "33BPBPK1081A1ZO",
+    "buyer": "09AAVCS8021P1ZD",
+    "date": "2026-01-24",
+    "values": [
+      20500,
+      5500
+    ],
+    "hsn": [
+      "84159000",
+      "996531"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "igst",
+          "amount": 3690,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "igst",
+          "amount": 990,
+          "rate": 18
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "igst",
+        "amount": 4680,
+        "rate": null
+      }
+    ],
+    "grand": 30680,
+    "rounding": 0,
+    "notes": "Single IGST head throughout; accept IGST or combined classification of the generic Tax Amount footer, amount must be 4680.",
+    "taxable": 26000,
+    "tax_heads": {
+      "cgst": 0,
+      "sgst": 0,
+      "igst": 4680
+    }
+  },
+  "ets-31": {
+    "invoice_number": "ETS-26-27-0031",
+    "seller": "33AAICE0305R1ZM",
+    "buyer": "33AAACS7032B1ZZ",
+    "date": "2026-08-29",
+    "values": [
+      18000
+    ],
+    "hsn": [
+      "903040"
+    ],
+    "item_taxes": [
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 1620,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 1620,
+        "rate": 9
+      }
+    ],
+    "grand": 21240,
+    "rounding": 0,
+    "notes": "",
+    "taxable": 18000,
+    "tax_heads": {
+      "cgst": 1620,
+      "sgst": 1620,
+      "igst": 0
+    }
+  },
+  "ets-32": {
+    "invoice_number": "ETS-26-27-0032",
+    "seller": "33AAICE0305R1ZM",
+    "buyer": "33AADFS7974E1Z1",
+    "date": "2026-08-31",
+    "values": [
+      3500,
+      3000
+    ],
+    "hsn": [
+      "998338",
+      "998338"
+    ],
+    "item_taxes": [
+      [],
+      []
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 585,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 585,
+        "rate": 9
+      }
+    ],
+    "grand": 7670,
+    "rounding": 0,
+    "notes": "",
+    "taxable": 6500,
+    "tax_heads": {
+      "cgst": 585,
+      "sgst": 585,
+      "igst": 0
+    }
+  },
+  "simple-49": {
+    "invoice_number": "I-SS-2627-49",
+    "seller": "33AEHFS3648M1ZL",
+    "buyer": "33AACCR5866L1ZZ",
+    "date": "2026-07-01",
+    "values": [
+      57510,
+      8700,
+      11550,
+      400
+    ],
+    "hsn": [
+      "85411000",
+      "85411000",
+      "85411000",
+      "996511"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "combined",
+          "amount": 10351.8,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "combined",
+          "amount": 1566,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "combined",
+          "amount": 2079,
+          "rate": 18
+        }
+      ],
+      [
+        {
+          "kind": "combined",
+          "amount": 72,
+          "rate": 18
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 7034.4,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 7034.4,
+        "rate": 9
+      },
+      {
+        "kind": "combined",
+        "amount": 14068.8,
+        "rate": null
+      }
+    ],
+    "grand": 92229,
+    "rounding": 0.2,
+    "notes": "",
+    "taxable": 78160,
+    "tax_heads": {
+      "cgst": 7034.4,
+      "sgst": 7034.4,
+      "igst": 0
+    }
+  },
+  "simple-50": {
+    "invoice_number": "I-SS-2627-50",
+    "seller": "33AEHFS3648M1ZL",
+    "buyer": "33AACCR5866L1ZZ",
+    "date": "2026-07-02",
+    "values": [
+      1900
+    ],
+    "hsn": [
+      "8542"
+    ],
+    "item_taxes": [
+      [
+        {
+          "kind": "combined",
+          "amount": 342,
+          "rate": 18
+        }
+      ]
+    ],
+    "summary": [
+      {
+        "kind": "cgst",
+        "amount": 171,
+        "rate": 9
+      },
+      {
+        "kind": "sgst",
+        "amount": 171,
+        "rate": 9
+      },
+      {
+        "kind": "combined",
+        "amount": 342,
+        "rate": null
+      }
+    ],
+    "grand": 2242,
+    "rounding": 0,
+    "notes": "",
+    "taxable": 1900,
+    "tax_heads": {
+      "cgst": 171,
+      "sgst": 171,
+      "igst": 0
+    }
+  }
+}

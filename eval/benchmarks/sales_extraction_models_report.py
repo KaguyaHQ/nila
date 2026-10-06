@@ -37,7 +37,8 @@ for path in sorted((root / "full").glob("*/summary.json")):
     run["stages"] = {event["metadata"]["stage"]: event["duration_ms"] for event in events if event["event"] == "stage_completed"}
     groups[(run["model_alias"], run["pages"])].append(run)
     all_runs.append(run)
-    for call_path in path.parent.glob("*-result.json"):
+    # Read both archived flat runs and new attempts/<id>/ artifacts.
+    for call_path in sorted(path.parent.rglob("*-result.json")):
         call = read(call_path)
         call["run_id"] = run["run_id"]
         calls[run["model_alias"]].append(call)

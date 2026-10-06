@@ -161,7 +161,7 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
     only row amounts. Footer taxes remain at invoice level; payments do not change
     the printed invoice total.
     ```json
-    {"line_items":[["Bolt",null,null,2,null,null,null,null,null,null,200,"unknown",[],1],["Nut",null,null,1,null,null,null,null,null,null,50,"unknown",[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_amount":22.5},{"printed_label":"SGST","printed_amount":22.5}],"printed_grand_total":295}
+    {"line_items":[["Bolt",null,null,2,null,null,null,null,null,null,200,"unknown",[],1],["Nut",null,null,1,null,null,null,null,null,null,50,"unknown",[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_rate":null,"printed_amount":22.5},{"printed_label":"SGST","printed_rate":null,"printed_amount":22.5}],"printed_grand_total":295}
     ```
     """
   end
@@ -187,7 +187,7 @@ defmodule Nila.Gst.Extraction.InvoicePrompt do
 
     4. Items: Bolt | Qty 2 | Taxable Value 200; Nut | Qty 1 | Taxable Value 50. Footer only: CGST 22.50; SGST 22.50; Invoice Total 295; Paid 100; Balance Due 195.
     ```json
-    {"line_items":[["Bolt",null,null,2,null,null,null,null,200,null,[],1],["Nut",null,null,1,null,null,null,null,50,null,[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_amount":22.5},{"printed_label":"SGST","printed_amount":22.5}],"printed_grand_total":295}
+    {"line_items":[["Bolt",null,null,2,null,null,null,null,200,null,[],1],["Nut",null,null,1,null,null,null,null,50,null,[],1]],"printed_tax_totals":[{"printed_label":"CGST","printed_rate":null,"printed_amount":22.5},{"printed_label":"SGST","printed_rate":null,"printed_amount":22.5}],"printed_grand_total":295}
     ```
     """
   end

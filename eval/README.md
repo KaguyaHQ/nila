@@ -1,7 +1,35 @@
 # Sales extraction evaluations
 
 Keep repeatable experiments here; keep raw runs and one-off probes in
-`tmp/<date>/invoice-extraction/`. Do not copy the PDFs from the evaluation corpus.
+`outputs/<experiment>/`. Do not copy the PDFs from the evaluation corpus.
+
+## Artifact layout
+
+Keep the report and aggregate results at the experiment root. Put prepared
+requests, source manifests and expectations under `inputs/`, and one-off scripts
+under `scripts/`. The shared request helper automatically puts each call's raw
+files under `attempts/<attempt-id>/`; callers must use `Requests.attempt_dir/2`
+for that call's decoded answer and measurements too.
+
+```text
+outputs/<experiment>/
+  REPORT.md
+  results.json
+  inputs/
+  scripts/
+  attempts/
+    <attempt-id>/
+      <attempt-id>-request.json
+      <attempt-id>-schema.json
+      <attempt-id>-response.json
+      <attempt-id>-headers.json
+      <attempt-id>-decoded.json
+      <attempt-id>-result.json
+```
+
+Do not write individual call files at the experiment root. Existing flat archives
+can stay where they are; readers that support those archives also need to read
+the new attempt directories.
 
 ## What is shared
 
@@ -65,6 +93,10 @@ cached/reasoning tokens. Do not invent unlabelled financial ground truth for a s
 corpus. New vendors need their own reviewed cases and applicable scoring rules.
 
 ## Cleanup verification
+
+For controlled sales tax-schema comparisons, see
+[the tax-contract runner](tax_contract/README.md). It freezes requests, keeps
+numbered run folders and scores final accounting separately from raw extraction.
 
 ```powershell
 mix run --no-start --no-compile eval/support/requests_test.exs

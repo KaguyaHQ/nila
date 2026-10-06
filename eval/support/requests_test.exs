@@ -40,15 +40,33 @@ defmodule Nila.Eval.RequestsTest do
     assert {:ok, %{"amount" => 1180}, _} = decoded
     assert meta.local_schema_valid
     assert meta.usage == %{"completion_tokens" => 8}
-    assert File.read!(Path.join(dir, "001-response.json")) == body
-    assert Jason.decode!(File.read!(Path.join(dir, "001-request.json"))) == @payload
+    artifact_dir = Requests.attempt_dir(dir, "001")
+    assert File.ls!(dir) == ["attempts"]
+    assert File.read!(Path.join(artifact_dir, "001-response.json")) == body
+    assert Jason.decode!(File.read!(Path.join(artifact_dir, "001-request.json"))) == @payload
 
-    assert Jason.decode!(File.read!(Path.join(dir, "001-headers.json"))) == %{
+    assert Jason.decode!(File.read!(Path.join(artifact_dir, "001-headers.json"))) == %{
              "x-request-id" => ["abc"]
            }
 
     assert_raise RuntimeError, ~r/overwrite/, fn ->
       Requests.capture(dir, "001", @payload, @schema, fn -> flunk("must not resend") end)
+    end
+  end
+
+  test "refuses an attempt already saved in the old flat layout", %{dir: dir} do
+    File.write!(Path.join(dir, "old-request.json"), "{}")
+
+    assert_raise RuntimeError, ~r/overwrite/, fn ->
+      Requests.capture(dir, "old", @payload, @schema, fn -> flunk("must not resend") end)
+    end
+  end
+
+  test "attempt names cannot escape their directory", %{dir: dir} do
+    for prefix <- ["../outside", "..\\outside", "C:outside", "", ".", ".."] do
+      assert_raise ArgumentError, fn ->
+        Requests.capture(dir, prefix, @payload, @schema, fn -> flunk("must not send") end)
+      end
     end
   end
 
