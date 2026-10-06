@@ -1,4 +1,5 @@
 .public-site {
+  min-height: 100svh;
   --public-paper: #f5f2eb;
   --public-ink: #302437;
   --public-muted: #756d77;
