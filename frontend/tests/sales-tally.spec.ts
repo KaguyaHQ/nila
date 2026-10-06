@@ -333,7 +333,7 @@ test("Refresh from Tally requests the selected month and waits for completed sna
   };
   const completed: EnabledTallySalesData = {
     ...tally,
-    sync: { ...tally.sync, run_id: 2, last_completed_at: "2026-10-04T07:00:00Z" },
+    sync: { ...tally.sync, period_start: "2025-08-01", run_id: 2, last_completed_at: "2026-10-04T07:00:00Z" },
   };
   const calls: string[] = [];
   let started = false;
@@ -365,9 +365,9 @@ test("Refresh from Tally requests the selected month and waits for completed sna
   await expect(
     page.getByText("This invoice already exists in Tally.", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText(/Books 1 Aug 2026–31 Aug 2026/)).not.toBeVisible();
+  await expect(page.getByText(/Books 1 Aug 2025–31 Aug 2026/)).not.toBeVisible();
   await page.getByRole("button", { name: "Tally sync details", exact: true }).click();
-  await expect(page.getByText(/Books 1 Aug 2026–31 Aug 2026/)).toBeVisible();
+  await expect(page.getByText(/Books 1 Aug 2025–31 Aug 2026/)).toBeVisible();
   await expect(page.getByText(/Updated 4 Oct 2026/)).toBeVisible();
   await page.screenshot({ path: info.outputPath("tally-refresh-completed.png"), fullPage: true });
 });
@@ -555,6 +555,69 @@ test("uncertain posting is verified without posting another voucher", async ({ p
   ).toBeVisible();
   expect(verified).toBe(1);
   expect(posts).toEqual([]);
+});
+
+test("missing ledgers are resolved beside the bill with evidence and explicit saves", async ({ page }, info) => {
+  const data = structuredClone(tally);
+  const proposal = data.proposals[0];
+  const entry = proposal.sales_entries[0];
+  proposal.status = "needs_input";
+  proposal.issues = ["Choose a sales ledger for each invoice line."];
+  entry.ledger_identity = null;
+  entry.ledger_name = null;
+  entry.hsn_sac = "998719";
+  entry.tax_rates = [{head: "cgst", rate: "9"}, {head: "sgst", rate: "9"}];
+  entry.candidates = [
+    {identity: "sales18", name: "Labour A", history_count: 3, party_history_count: 0},
+    {identity: "other18", name: "Labour B", history_count: 1, party_history_count: 0},
+  ];
+  data.sales_ledger_choices = [...entry.candidates, {identity: "unrelated", name: "Unrelated ledger"}];
+  data.ready_count = 0;
+  data.can_post = false;
+  await setup(page, data);
+  const review: SalesInvoiceReviewData = {
+    client: month.client, period: month.period,
+    invoice: {id: "one", number: proposal.number!, date: proposal.date!, buyer_name: "Philips India Ltd", buyer_gstin: "33AABCP9487A1ZG", place_of_supply: "Tamil Nadu"},
+    facts: {}, printed_totals: {}, totals: [], checks: [], issues: [], states: [], source: null,
+    lines: [{index: 0, values: {description: "", taxable_value: "10000"}, display: {}}],
+    queue: [{id: "one", number: proposal.number!, customer: "Philips India Ltd", buyer_gstin: "33AABCP9487A1ZG", status: "ready", issue_codes: []}],
+    can_edit: true, lock_reason: null, editable_fields: {facts: [], line: [], totals: []},
+  };
+  await page.route("**/api/workspace/sales/1/2026-08/invoices/one?*", route => route.fulfill({json: review}));
+  const writes: unknown[] = [];
+  await page.route("**/api/workspace/sales/1/2026-08/invoices/one/tally", route => {
+    writes.push(route.request().postDataJSON());
+    entry.ledger_identity = "sales18";
+    entry.ledger_name = "Labour A";
+    proposal.status = "ready";
+    proposal.issues = [];
+    data.preview_token = "saved-preview";
+    data.ready_count = 1;
+    data.can_post = true;
+    return route.fulfill({json: data});
+  });
+  await page.goto("/app/gst/1/2026-08/sales/invoices/one?tally=entries");
+  const question = page.getByRole("group", {name: "Ledger choice for AC servicing", exact: true});
+  await expect(question).toContainText("2 ledgers match");
+  await expect(question).toContainText("HSN/SAC 998719 · CGST 9% · SGST 9%");
+  await expect(question).toContainText("3 earlier CGST + SGST sales · 0 for this customer");
+  await expect(question.getByText("Unrelated ledger", {exact:true})).toHaveCount(0);
+  await question.getByRole("button", {name: "Search all ledgers", exact:true}).click();
+  await question.getByLabel("Search all sales ledgers for AC servicing", {exact:true}).click();
+  await expect(page.getByRole("option", {name:"Unrelated ledger",exact:true})).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", {name: "Edit entry", exact: true}).click();
+  await expect(page.getByLabel("Line 1 description", {exact:true})).toHaveValue("AC servicing");
+  await expect(page.getByRole("button", {name:"Save changes",exact:true})).toBeDisabled();
+  await page.getByRole("button", {name:"Cancel",exact:true}).click();
+  expect(writes).toEqual([]);
+  await page.screenshot({path: info.outputPath("ledger-question.png"), animations:"disabled"});
+  await question.getByRole("button", {name: "Use Labour A for AC servicing", exact:true}).click();
+  await expect(question).toHaveCount(0);
+  await expect(page.getByRole("status").filter({hasText:"Changes saved. Entry recalculated."})).toBeVisible();
+  await expect(page.getByText("Ready to post", {exact:true})).toBeVisible();
+  expect(writes).toEqual([{line_sales_ledger_identities:{"0":"sales18"},preview_token:"reviewed-preview"}]);
+  await expect(page.getByRole("form", {name:"Edit Tally entry"})).toHaveCount(0);
 });
 
 test("bill comparison returns to the same selected Tally entry", async ({ page }, info) => {

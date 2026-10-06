@@ -296,7 +296,7 @@ defmodule Nila.Gst.Sales.Uploads do
       name: name,
       state: dump.status,
       label:
-        if((dump.meta || %{})["excel_import"] and dump.status == "extracted",
+        if((dump.meta || %{})["excel_import"] == true and dump.status == "extracted",
           do: "Imported",
           else: label(dump)
         ),

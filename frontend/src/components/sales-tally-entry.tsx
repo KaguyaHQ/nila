@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 
 import { TallyEntryEditor } from "./sales-tally-editor";
+import { SalesLedgerQuestion } from "./sales-tally-question";
 import type { SalesInvoiceReviewData } from "@/lib/sales-review-api";
 
 import { InlineLedger } from "./sales-tally-ledger";
@@ -162,7 +163,7 @@ export function TallyEntry({
         });
         void cache.invalidateQueries({ queryKey: ["sales"] });
         void cache.invalidateQueries({ queryKey: ["sales-reports"] });
-        closeEditor();
+        if (editing) closeEditor();
       }
     },
 
@@ -189,6 +190,11 @@ export function TallyEntry({
     !["pending", "posted", "unknown", "failed"].includes(proposal.status);
 
   const shared = { editable: canEdit && !review, pending: save.isPending };
+  const unresolved = proposal.sales_entries.filter(entry => !entry.ledger_identity);
+  const guided = !!review && canEdit && unresolved.length > 0;
+  const issues = guided ? proposal.issues.filter(issue =>
+    !["Choose a sales ledger for each invoice line.", "Confirm or change the suggested sales ledger."].includes(issue)
+  ) : proposal.issues;
 
   if (editing && review)
     return (
@@ -232,9 +238,21 @@ export function TallyEntry({
           </div>
         </div>
       )}
-      {!!proposal.issues.length && (
+      {save.isPending && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Saving ledger choice…
+        </p>
+      )}
+      {save.isSuccess && (
+        <p role="status" className="flex items-center gap-2 text-sm">
+          <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
+          {review ? "Changes saved. Entry recalculated." : "Ledger choice saved."}
+        </p>
+      )}
+      {guided && <p className="text-sm font-medium">{unresolved.length} sales ledger {unresolved.length === 1 ? "choice needs" : "choices need"} your decision.</p>}
+      {!!issues.length && (
         <ul className="space-y-1 text-sm">
-          {proposal.issues.map((issue) => (
+          {issues.map((issue) => (
             <li key={issue}>{issue}</li>
           ))}
         </ul>
@@ -280,6 +298,17 @@ export function TallyEntry({
             const entry = proposal.sales_entries.find(
               (item) => item.line_id === group.line_ids[0],
             )!;
+            if (review && canEdit && !entry.ledger_identity)
+              return (
+                <TableRow key={entry.line_id}>
+                  <TableCell className="whitespace-normal align-top">
+                    <SalesLedgerQuestion entry={entry} choices={data.sales_ledger_choices}
+                      pending={save.isPending}
+                      onChange={identity => change({ line_sales_ledger_identities: { [entry.line_id]: identity } })} />
+                  </TableCell>
+                  <TableCell className="pt-4 text-right align-top tabular-nums">{tallyMoney(entry.amount)}</TableCell>
+                </TableRow>
+              );
             if (group.line_ids.length > 1)
               return (
                 <TableRow key={group.line_ids.join(",")}>
@@ -363,16 +392,6 @@ export function TallyEntry({
           {save.error instanceof ApiError && save.error.status === 409
             ? "This bill or its ledger choices changed. Review the refreshed entry before choosing a ledger again."
             : save.error.message}
-        </p>
-      )}
-      {save.isPending && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Saving ledger choice…
-        </p>
-      )}
-      {save.isSuccess && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {review ? "Changes saved. Entry recalculated." : "Ledger choice saved."}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -7,17 +7,18 @@ defmodule Nila.TallySyncTest do
   alias Nila.Gst.Sales.{Month, Months}
   alias Nila.Repo
   alias Nila.TallyDevices
-  alias Nila.TallyDevices.SyncedMaster
+  alias Nila.TallyDevices.{SyncedMaster, SyncedVoucher}
   alias Nila.TallySync
 
-  test "financial year coverage crosses January and serializes company refreshes" do
+  test "history coverage crosses financial years and serializes company refreshes" do
     %{org: org} = user_with_org_fixture()
     {:ok, device, _token} = TallyDevices.create_device(org, %{name: "Accounts PC"})
     {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Nila"}])
-    assert TallySync.financial_year_start(~D[2027-01-31]) == ~D[2026-04-01]
-    assert TallySync.financial_year_start(~D[2027-04-01]) == ~D[2027-04-01]
+    assert TallySync.history_start(~D[2027-01-31]) == ~D[2026-01-01]
+    assert TallySync.history_start(~D[2027-04-01]) == ~D[2026-04-01]
+    assert TallySync.history_start(~D[2024-02-29]) == ~D[2023-02-01]
     assert {:ok, run} = TallySync.start(device, company.identity, ~D[2027-03-31])
-    assert run.period_start == ~D[2026-04-01]
+    assert run.period_start == ~D[2026-03-01]
     assert {:error, :sync_in_progress} = TallySync.start(device, company.identity)
     assert {:ok, _} = TallySync.put_pipeline(device, run.id, :masters, [], true)
     assert {:ok, _} = TallySync.put_pipeline(device, run.id, :vouchers, [], true)
@@ -39,6 +40,42 @@ defmodule Nila.TallySyncTest do
     assert Repo.get!(Nila.TallyDevices.SyncRun, run.id).status == "failed"
     assert {:error, _} = TallySync.put_pipeline(device, run.id, :masters, [], true)
     assert {:ok, _} = TallySync.start(device, company.identity)
+  end
+
+  test "monthly chunks preserve unread vouchers until the whole refresh completes" do
+    %{org: org} = user_with_org_fixture()
+    {:ok, device, _} = TallyDevices.create_device(org, %{name: "Accounts"})
+    {:ok, [company]} = TallyDevices.report_companies(device, [%{"name" => "Nila"}])
+    older = Map.put(voucher("OLD"), "date", "2025-07-15")
+
+    {:ok, first} =
+      TallySync.start(device, company.identity, ~D[2026-08-31], period_start: ~D[2025-07-01])
+
+    {:ok, _} = TallySync.put_pipeline(device, first.id, :masters, [], true)
+
+    {:ok, _} =
+      TallySync.put_pipeline(
+        device,
+        first.id,
+        :vouchers,
+        [older, voucher("KEEP"), voucher("STALE")],
+        true
+      )
+
+    {:ok, refresh} = TallySync.start(device, company.identity, ~D[2026-08-31])
+    {:ok, _} = TallySync.put_pipeline(device, refresh.id, :masters, [], true)
+    {:ok, _} = TallySync.put_pipeline(device, refresh.id, :vouchers, [], false)
+    assert Repo.aggregate(SyncedVoucher, :count) == 3
+    refute TallySync.coverage(org.id, company.id, "2026-08").covered
+    {:ok, _} = TallySync.put_pipeline(device, refresh.id, :vouchers, [voucher("KEEP")], false)
+    assert Repo.aggregate(SyncedVoucher, :count) == 3
+    {:ok, _} = TallySync.put_pipeline(device, refresh.id, :vouchers, [], true)
+    assert TallySync.coverage(org.id, company.id, "2026-08").covered
+
+    assert Enum.sort(Repo.all(from v in SyncedVoucher, select: v.voucher_number)) == [
+             "KEEP",
+             "OLD"
+           ]
   end
 
   test "reports referenced ledgers absent from the company snapshot case-insensitively" do

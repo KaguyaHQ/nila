@@ -47,14 +47,14 @@ defmodule NilaWeb.SalesTallyControllerTest do
       |> contract_response(200)
 
     assert body["sync"]["status"] == "running"
-    assert body["sync"]["period_start"] == "2026-08-01"
+    assert body["sync"]["period_start"] == "2025-08-01"
     assert body["sync"]["period_end"] == "2026-08-31"
 
     assert_receive {:tally_sync_requested,
                     %{
                       id: run_id,
                       company_identity: "guid:test-guid",
-                      period_start: "2026-08-01",
+                      period_start: "2025-08-01",
                       period_end: "2026-08-31"
                     }}
 

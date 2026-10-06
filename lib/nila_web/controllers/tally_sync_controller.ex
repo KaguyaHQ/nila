@@ -26,7 +26,7 @@ defmodule NilaWeb.TallySyncController do
   defp requested_end_date(period) when is_binary(period) do
     with true <- Regex.match?(~r/\A\d{4}-\d{2}\z/, period),
          {:ok, date} <- Date.from_iso8601(period <> "-01") do
-      {:ok, Date.end_of_month(date), [period_start: date]}
+      {:ok, Date.end_of_month(date), []}
     else
       _ -> {:error, :invalid_period}
     end

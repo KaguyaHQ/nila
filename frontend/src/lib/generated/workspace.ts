@@ -2999,6 +2999,18 @@ export interface components {
             name: string;
         };
         TallySalesEntry: {
+            hsn_sac?: string;
+            tax_rates?: {
+                /** @enum {string} */
+                head: "cgst" | "sgst" | "igst";
+                rate: string;
+            }[];
+            candidates?: {
+                identity: string;
+                name: string;
+                history_count: number;
+                party_history_count: number;
+            }[];
             line_id: string;
             description: string | null;
             ledger_identity: string | null;

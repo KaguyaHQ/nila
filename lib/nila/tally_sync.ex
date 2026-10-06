@@ -74,8 +74,8 @@ defmodule Nila.TallySync do
 
   def india_today, do: DateTime.utc_now() |> DateTime.add(19_800, :second) |> DateTime.to_date()
 
-  def financial_year_start(%Date{} = date),
-    do: Date.new!(if(date.month < 4, do: date.year - 1, else: date.year), 4, 1)
+  @doc "The twelve complete months before the month being refreshed."
+  def history_start(%Date{} = date), do: Date.new!(date.year - 1, date.month, 1)
 
   def start(%Device{} = device, company_identity, today \\ india_today(), opts \\ []) do
     Repo.transact(fn ->
@@ -91,7 +91,7 @@ defmodule Nila.TallySync do
              ),
            :ok <- available_sync(company.id) do
         now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-        period_start = Keyword.get(opts, :period_start, financial_year_start(today))
+        period_start = Keyword.get(opts, :period_start, history_start(today))
 
         %SyncRun{
           org_id: device.org_id,

@@ -114,7 +114,7 @@ export function TallyRefresh({
       )}
       {running && (
         <p role="status" className="text-sm text-muted-foreground">
-          Reading Tally entries for {period}. Posting waits until this refresh finishes.
+          Reading Tally entries for {period} and the preceding 12 months. Posting waits until this refresh finishes.
         </p>
       )}
       {!data.sync.covered && !running && data.sync.status === "not_synced" && (

@@ -132,6 +132,10 @@ defmodule Nila.Gst.Sales.Tally.PostingTest do
     assert {:ok, data} = Posting.load(c.org.id, c.client, "2026-08")
     [row] = data.proposals
 
+    assert Enum.map(row.sales_entries, & &1.description) == ["Labour", "Materials"]
+    assert hd(hd(data._rows).invoice["line_items"])["description"] ==
+             "Labour for August service contract"
+
     assert Enum.map(row.sales_entries, &{&1.ledger_name, &1.amount}) == [
              {"Labour @ 18%", "1000.00"},
              {"Materials @ 18%", "500.00"}
@@ -488,7 +492,7 @@ defmodule Nila.Gst.Sales.Tally.PostingTest do
              })
   end
 
-  test "a first-use master suggestion becomes ready only after explicit confirmation", c do
+  test "a unique first-use master match is ready without saving a ledger choice", c do
     import Ecto.Query
 
     Repo.delete_all(
@@ -530,19 +534,12 @@ defmodule Nila.Gst.Sales.Tally.PostingTest do
     |> Repo.update!()
 
     {:ok, before} = Posting.load(c.org.id, c.client, "2026-08")
-    assert hd(before.proposals).status == "needs_input"
-    assert hd(hd(before.proposals).sales_entries).suggested_ledger_identity == "sales18"
-    assert is_nil(hd(hd(before.proposals).sales_entries).ledger_identity)
-
-    assert {:ok, :saved} =
-             Posting.update(c.org.id, c.client, "2026-08", "d1_inv1", %{
-               "preview_token" => before.preview_token,
-               "line_sales_ledger_identities" => %{"0" => "sales18"}
-             })
-
-    {:ok, after_confirmation} = Posting.load(c.org.id, c.client, "2026-08")
-    assert hd(after_confirmation.proposals).status == "ready"
-    assert hd(hd(after_confirmation.proposals).sales_entries).basis == "Saved ledger choice."
+    assert hd(before.proposals).status == "ready"
+    assert is_nil(hd(hd(before.proposals).sales_entries).suggested_ledger_identity)
+    assert hd(hd(before.proposals).sales_entries).ledger_identity == "sales18"
+    assert hd(hd(before.proposals).sales_entries).history_count == 0
+    assert Repo.aggregate(Nila.TallyMappings.SalesLineMapping, :count) == 0
+    assert Repo.aggregate(Nila.TallyJobs.Job, :count) == 0
   end
 
   defp replace_lines(c, lines) do

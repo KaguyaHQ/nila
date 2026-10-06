@@ -13,18 +13,45 @@ defmodule Nila.Gst.Sales.Tally.HistoryTest do
     assert %{ledger: nil} =
              History.sales(history, Map.put(invoice(), "invoice_date", "2026-05-01"), line())
 
-    assert %{ledger: nil, suggestion: ^ledger} =
+    assert %{ledger: ^ledger, suggestion: nil, history_count: 0} =
              History.sales(history, Map.put(invoice(), "buyer_gstin", "NEW"), line())
 
-    assert %{ledger: nil, suggestion: ^ledger} =
+    assert %{ledger: ^ledger, suggestion: nil, history_count: 0} =
              History.sales(history, Map.put(invoice(), "buyer_gstin", nil), line())
+  end
+
+  test "a unique configured sales ledger needs no history but must match HSN, rate and date" do
+    ledger = sales("labour")
+    history = History.build([ledger], [])
+    assert %{ledger: ^ledger, history_count: 0} = History.sales(history, invoice(), line())
+    assert %{ledger: nil} = History.sales(history, invoice(), Map.put(line(), "hsn_sac", "OTHER"))
+    assert %{ledger: nil} = History.sales(history, invoice(), Map.put(line(), "igst_rate", 5))
+
+    assert %{ledger: nil} =
+             History.sales(history, Map.put(invoice(), "invoice_date", nil), line())
+
+    non_sales = %{ledger | data: Map.put(ledger.data, "parent", "Purchase Accounts")}
+    assert %{ledger: nil} = History.sales(History.build([non_sales], []), invoice(), line())
+
+    assert %{ledger: nil} =
+             History.sales(History.build([ledger, sales("other")], []), invoice(), line())
   end
 
   test "ambiguous usage does not choose the most frequent ledger" do
     a = sales("a")
     b = sales("b")
     history = History.build([a, b, tax()], [voucher("a"), voucher("a"), voucher("b")])
-    assert %{ledger: nil, suggestion: nil} = History.sales(history, invoice(), line())
+
+    assert %{ledger: nil, suggestion: nil, candidates: candidates} =
+             History.sales(history, invoice(), line())
+
+    assert Enum.map(candidates, &{&1.name, &1.history_count, &1.party_history_count}) ==
+             [{"a", 2, 2}, {"b", 1, 1}]
+
+    assert %{candidates: other_party} =
+             History.sales(history, Map.put(invoice(), "buyer_gstin", "NEW"), line())
+
+    assert Enum.map(other_party, &{&1.history_count, &1.party_history_count}) == [{2, 0}, {1, 0}]
   end
 
   test "tax proposals use duty head, exact rate and positive sales usage" do

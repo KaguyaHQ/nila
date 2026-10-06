@@ -117,9 +117,7 @@ defmodule NilaWeb.SalesTallyController do
          true <- company.is_open and connector_online?(org_id, company),
          {:ok, date} <- Date.from_iso8601(params["period"] <> "-01"),
          {:ok, run} <-
-           Nila.TallySync.start(company.device, company.identity, Date.end_of_month(date),
-             period_start: date
-           ) do
+           Nila.TallySync.start(company.device, company.identity, Date.end_of_month(date)) do
       payload = %{
         id: run.id,
         company_identity: company.identity,

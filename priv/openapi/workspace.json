@@ -16941,6 +16941,60 @@
       "TallySalesEntry": {
         "type": "object",
         "properties": {
+          "hsn_sac": {
+            "type": "string"
+          },
+          "tax_rates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "head": {
+                  "type": "string",
+                  "enum": [
+                    "cgst",
+                    "sgst",
+                    "igst"
+                  ]
+                },
+                "rate": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "head",
+                "rate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "identity": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "history_count": {
+                  "type": "integer"
+                },
+                "party_history_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "identity",
+                "name",
+                "history_count",
+                "party_history_count"
+              ],
+              "additionalProperties": false
+            }
+          },
           "line_id": {
             "type": "string"
           },

@@ -338,7 +338,7 @@ defmodule Nila.Gst.Sales.Tally.Posting do
 
         %{
           line_id: to_string(i),
-          description: line["description"] || line["item_name"],
+          description: line["item_name"] || line["description"],
           ledger_identity: ledger && ledger.identity,
           ledger_name: ledger && ledger.name,
           suggested_ledger_identity:
@@ -351,6 +351,14 @@ defmodule Nila.Gst.Sales.Tally.Posting do
               else: inference.basis
             ),
           history_count: if(ledger == inference.ledger, do: inference.history_count, else: 0),
+          candidates: inference.candidates,
+          hsn_sac: to_string(line["hsn_sac"] || ""),
+          tax_rates:
+            for(
+              head <- ~w(cgst sgst igst),
+              Money.paise(line[head <> "_amount"]) > 0,
+              do: %{head: head, rate: to_string(line[head <> "_rate"] || "")}
+            ),
           amount: money(Money.paise(line["taxable_value"])),
           line: line
         }

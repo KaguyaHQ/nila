@@ -85,28 +85,52 @@ defmodule Nila.Gst.Sales.Tally.History do
       end)
       |> Enum.filter(fn {_, rows} -> rows != [] end)
 
-    case supported do
-      [{ledger, rows}] ->
-        result(
-          ledger,
-          nil,
-          "HSN and rates match; used in #{length(rows)} earlier sales for this GSTIN.",
-          length(rows)
-        )
+    selection =
+      case {supported, candidates} do
+        {[{ledger, rows}], _} ->
+          result(
+            ledger,
+            nil,
+            "HSN and rates match; used in #{length(rows)} earlier sales for this GSTIN.",
+            length(rows)
+          )
 
-      _ ->
-        suggestion = if length(candidates) == 1, do: hd(candidates)
+        {[], [ledger]} ->
+          result(
+            ledger,
+            nil,
+            "Only sales ledger with matching HSN and rates for the invoice date.",
+            0
+          )
 
-        result(
-          nil,
-          suggestion,
-          if(suggestion,
-            do: "HSN and rates match. Confirm first use for this party.",
-            else: "No unique ledger supported by HSN, rates and earlier sales."
-          ),
-          0
-        )
-    end
+        _ ->
+          result(
+            nil,
+            nil,
+            "No unique ledger supported by HSN, rates and earlier sales.",
+            0
+          )
+      end
+
+    Map.put(
+      selection,
+      :candidates,
+      Enum.map(candidates, fn ledger ->
+        gstin = invoice["buyer_gstin"]
+
+        same_party =
+          if is_binary(gstin) and String.trim(gstin) != "",
+            do: length(usage(history, ledger, heads, gstin)),
+            else: 0
+
+        %{
+          identity: ledger.identity,
+          name: ledger.name,
+          history_count: length(usage(history, ledger, heads, nil)),
+          party_history_count: same_party
+        }
+      end)
+    )
   end
 
   def tax(history, head, rate) do

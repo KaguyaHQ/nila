@@ -59,7 +59,8 @@ export function TallyEntryEditor({
         ...Object.entries(review.facts),
         ...Object.entries(review.printed_totals),
         ...review.lines.flatMap((line) =>
-          Object.entries(line.values).map(([field, value]) => [
+          Object.entries({ ...line.values, description: line.values.description ||
+            proposal.sales_entries.find((entry) => entry.line_id === String(line.index))?.description || "" }).map(([field, value]) => [
             `line_items[${line.index}].${field}`,
             value,
           ]),
@@ -201,7 +202,12 @@ export function TallyEntryEditor({
                     }
                   />
                   {line ? (
-                    field(prefix + "description", `Line ${number} description`, "text", true)
+                    <>
+                      {entry.description && line.values.description && entry.description !== line.values.description && (
+                        <p className="text-sm">{entry.description}</p>
+                      )}
+                      {field(prefix + "description", `Line ${number} description`, "text", true)}
+                    </>
                   ) : (
                     <p className="text-xs text-muted-foreground">{entry.description}</p>
                   )}
