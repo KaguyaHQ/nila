@@ -1,8 +1,12 @@
-{$PHX_HOST} {
+{$PHX_HOST}, nilahq.com {
   encode zstd gzip
   reverse_proxy nila:8080
 }
 
-www.nila.tax, nilahq.com, www.nilahq.com {
+www.nila.tax {
   redir https://nila.tax{uri} permanent
+}
+
+www.nilahq.com {
+  redir https://nilahq.com{uri} temporary
 }
