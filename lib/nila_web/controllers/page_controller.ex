@@ -9,7 +9,16 @@ defmodule NilaWeb.PageController do
   @callback_limit 3
 
   def home(conn, _params) do
-    NilaWeb.PublicPage.render(conn, "home")
+    page = if conn.host in ["nila.tax", "www.nila.tax"], do: "india", else: "home"
+    NilaWeb.PublicPage.render(conn, page)
+  end
+
+  def india(conn, _params) do
+    NilaWeb.PublicPage.render(conn, "india")
+  end
+
+  def india_contact(conn, _params) do
+    render_contact(conn, ContactRequest.changeset(%ContactRequest{}, %{}))
   end
 
   def business(conn, _params) do
@@ -33,7 +42,11 @@ defmodule NilaWeb.PageController do
   end
 
   def contact(conn, _params) do
-    render_contact(conn, ContactRequest.changeset(%ContactRequest{}, %{}))
+    if conn.host in ["nila.tax", "www.nila.tax"] do
+      render_contact(conn, ContactRequest.changeset(%ContactRequest{}, %{}))
+    else
+      NilaWeb.PublicPage.render(conn, "contact")
+    end
   end
 
   def request_callback(conn, %{"callback" => callback_params}) do
@@ -75,9 +88,12 @@ defmodule NilaWeb.PageController do
   end
 
   defp callback_requested(conn) do
+    path =
+      if conn.host in ["nila.tax", "www.nila.tax"], do: ~p"/contact", else: ~p"/india/contact"
+
     conn
     |> put_flash(:info, "Thanks — we’ll call you shortly to arrange the test.")
-    |> redirect(to: ~p"/contact")
+    |> redirect(to: path)
   end
 
   defp callback_delivery_failed(conn, changeset) do
@@ -91,7 +107,7 @@ defmodule NilaWeb.PageController do
   end
 
   defp render_contact(conn, changeset) do
-    NilaWeb.PublicPage.render(conn, "contact", changeset)
+    NilaWeb.PublicPage.render(conn, "india_contact", changeset)
   end
 
   defp callback_bucket(request) do

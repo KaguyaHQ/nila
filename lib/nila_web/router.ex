@@ -281,6 +281,8 @@ defmodule NilaWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/india", PageController, :india
+    get "/india/contact", PageController, :india_contact
     get "/business", PageController, :business
     get "/privacy", PageController, :privacy
     get "/terms", PageController, :terms

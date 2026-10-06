@@ -3,6 +3,7 @@ import { buttonVariants } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { InvoiceStory } from "./invoice-story";
 import { legalPages } from "./legal";
+import { BenchmarkContact, BookkeepingHome } from "./bookkeeping";
 
 export const whatsapp =
   "https://wa.me/918148183716?text=" +
@@ -11,20 +12,32 @@ const action = buttonVariants({ size: "lg" });
 
 export function PublicPage({ page }: { page: string }) {
   const legal = legalPages[page as keyof typeof legalPages];
+  const benchmark = page === "home" || page === "contact";
+  const homeHref = benchmark ? "/" : "https://nila.tax/";
+  const contactHref = benchmark ? "/contact" : "/india/contact";
   return (
-    <div className={`public-site${page === "home" ? " public-home" : ""}${page === "business" ? " public-business-page" : ""}`}>
+    <div
+      className={`public-site${page === "home" || page === "india" ? " public-home" : ""}${benchmark ? " public-benchmark" : ""}${page === "business" ? " public-business-page" : ""}`}
+    >
       <a href="#main" className="public-skip">
         Skip to content
       </a>
       <header className="public-header public-wrap">
-        <a href="/" aria-label="Nila home" className="public-logo">
+        <a href={homeHref} aria-label="Nila home" className="public-logo">
           nila
         </a>
         <nav aria-label="Main navigation">
-          {page === "business" ? (
+          {benchmark ? (
             <>
-              <a href="/">For CA firms</a>
-              <a href="/contact">Contact</a>
+              <a href="/#how-it-works">How it works</a>
+              <a href="/contact" className={action}>
+                Discuss a free test <ArrowRight />
+              </a>
+            </>
+          ) : page === "business" ? (
+            <>
+              <a href="https://nila.tax/">For CA firms</a>
+              <a href={contactHref}>Contact</a>
               <a href="/users/log_in">Log in</a>
               <a href="/users/business_sign_up" className={action}>
                 Create business account <ArrowRight />
@@ -32,10 +45,10 @@ export function PublicPage({ page }: { page: string }) {
             </>
           ) : (
             <>
-              <a href="/#how-it-works">How it works</a>
-              <a href="/contact">Contact</a>
+              <a href="https://nila.tax/#how-it-works">How it works</a>
+              <a href={contactHref}>Contact</a>
               <a href="/users/log_in">Log in</a>
-              <a href="/contact" className={action}>
+              <a href={contactHref} className={action}>
                 Try one client free <ArrowRight />
               </a>
             </>
@@ -48,10 +61,14 @@ export function PublicPage({ page }: { page: string }) {
         </p>
       </div>
       {page === "home" ? (
+        <BookkeepingHome />
+      ) : page === "india" ? (
         <Home />
       ) : page === "business" ? (
         <Business />
       ) : page === "contact" ? (
+        <BenchmarkContact />
+      ) : page === "india_contact" ? (
         <Contact />
       ) : legal ? (
         <main id="main" className="public-legal public-wrap">
@@ -63,26 +80,32 @@ export function PublicPage({ page }: { page: string }) {
       ) : null}
       <footer className="public-footer public-wrap">
         <div>
-          <a href="/" className="public-logo" aria-label="Nila home">
+          <a href={homeHref} className="public-logo" aria-label="Nila home">
             nila
           </a>
           <p>
-            {page === "business"
-              ? "Quotations and invoices for your business."
-              : "GST preparation. With the evidence attached."}
+            {benchmark
+              ? "Bookkeeping for accounting firms."
+              : page === "business"
+                ? "Quotations and invoices for your business."
+                : "GST preparation. With the evidence attached."}
           </p>
         </div>
-        {page !== "business" ? (
+        {!benchmark && page !== "business" ? (
           <a href="/business" className="public-footer-business">
             <span>Nila Business</span>
             Invoices and quotations <ArrowRight size={14} aria-hidden="true" />
           </a>
         ) : null}
         <nav aria-label="Footer">
-          <a href="/contact">Contact</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/terms">Terms</a>
-          <a href="/data-deletion">Data deletion</a>
+          <a href={contactHref}>Contact</a>
+          {!benchmark && (
+            <>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">Terms</a>
+              <a href="/data-deletion">Data deletion</a>
+            </>
+          )}
         </nav>
         <small>© 2026 Nila · Kaguya Media Private Limited</small>
       </footer>
@@ -188,7 +211,7 @@ function Home() {
           <br />
           Agree on a secure handoff before sharing client documents.
         </p>
-        <a href="/contact" className={action}>
+        <a href="/india/contact" className={action}>
           Try one client free <ArrowRight />
         </a>
         <span className="public-small">

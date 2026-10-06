@@ -34,7 +34,7 @@ defmodule NilaWeb.RetiredLiveviewTest do
   end
 
   test "public pages use static links and HTTP flash", %{conn: conn} do
-    html = conn |> get("/contact") |> html_response(200)
+    html = conn |> get("/india/contact") |> html_response(200)
     refute html =~ "data-phx-session"
     refute html =~ "data-phx-link"
     refute html =~ "phx-hook"

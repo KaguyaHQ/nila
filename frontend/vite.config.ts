@@ -24,7 +24,19 @@ export default defineConfig(({ command }) => ({
       configureServer(server) {
         server.middlewares.use("/__public", async (req, res, next) => {
           const page = req.url?.slice(1);
-          if (!page || !["home", "business", "contact", "privacy", "terms", "data_deletion"].includes(page))
+          if (
+            !page ||
+            ![
+              "home",
+              "india",
+              "business",
+              "contact",
+              "india_contact",
+              "privacy",
+              "terms",
+              "data_deletion",
+            ].includes(page)
+          )
             return next();
           try {
             const { renderPublicPage } = await server.ssrLoadModule("/src/public/render.tsx");

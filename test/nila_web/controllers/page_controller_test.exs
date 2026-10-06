@@ -3,6 +3,47 @@ defmodule NilaWeb.PageControllerTest do
 
   import Swoosh.TestAssertions
 
+  setup %{conn: conn} do
+    {:ok, conn: %{conn | host: "nila.tax"}}
+  end
+
+  test "nilahq.com presents the historical-month offer", %{conn: conn} do
+    html = %{conn | host: "nilahq.com"} |> get(~p"/") |> html_response(200)
+
+    assert html =~ "Test our bookkeeping."
+    assert html =~ "without seeing your completed bookkeeping"
+    assert html =~ "Nothing is posted"
+    assert html =~ ~s(rel="canonical" href="https://nilahq.com/")
+    assert html =~ ~s(property="og:url" content="https://nilahq.com/")
+    refute html =~ "GST"
+    refute html =~ "₹"
+    refute html =~ "/users/log_in"
+    refute html =~ "type=\"module\""
+  end
+
+  test "the benchmark contact page works without a form or application login", %{conn: conn} do
+    html = %{conn | host: "nilahq.com"} |> get(~p"/contact") |> html_response(200)
+
+    assert html =~ "vasanth@nilahq.com"
+    assert html =~ "mailto:vasanth@nilahq.com?subject="
+    assert html =~ "Before you share files"
+    assert html =~ ~s(rel="canonical" href="https://nilahq.com/contact")
+    refute html =~ "callback-form"
+    refute html =~ "WhatsApp"
+  end
+
+  test "the India page and callback form remain available on the company domain", %{conn: conn} do
+    html = %{conn | host: "nilahq.com"} |> get(~p"/india") |> html_response(200)
+    assert html =~ "to GST workings."
+    assert html =~ ~s(rel="canonical" href="https://nila.tax/")
+    assert html =~ "type=\"module\""
+    assert html =~ ~s(href="/india/contact")
+
+    html = %{build_conn() | host: "nilahq.com"} |> get(~p"/india/contact") |> html_response(200)
+    assert html =~ "callback-form"
+    assert html =~ "hello@nila.tax"
+  end
+
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
     html = html_response(conn, 200)
@@ -12,7 +53,7 @@ defmodule NilaWeb.PageControllerTest do
     assert html =~ ~s(type="module")
     assert html =~ ~s(rel="canonical")
     assert html =~ "Try one client free"
-    assert html =~ ~s(href="/contact")
+    assert html =~ ~s(href="/india/contact")
     assert html =~ ~s(href="/business")
     assert html =~ "Invoices and quotations"
     assert html =~ "GST preparation. With the evidence attached."
@@ -190,7 +231,9 @@ defmodule NilaWeb.PageControllerTest do
     }
 
     for _ <- 1..3 do
-      assert build_conn() |> post(~p"/contact/callback", params) |> redirected_to() ==
+      assert %{build_conn() | host: "nila.tax"}
+             |> post(~p"/contact/callback", params)
+             |> redirected_to() ==
                ~p"/contact"
     end
 

@@ -36,13 +36,20 @@ defmodule NilaWeb.PublicPage do
         escape(replacements[key])
       end)
 
-    path = if page == "home", do: "/", else: "/" <> String.replace(page, "_", "-")
+    canonical =
+      case page do
+        "home" -> "https://nilahq.com/"
+        "contact" -> "https://nilahq.com/contact"
+        "india" -> "https://nila.tax/"
+        "india_contact" -> "https://nila.tax/contact"
+        _ -> "https://nila.tax/" <> String.replace(page, "_", "-")
+      end
 
     document = """
     <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>#{escape(content["title"])}</title><meta name="description" content="#{escape(content["description"])}">
-    <link rel="canonical" href="https://nila.tax#{path}"><meta property="og:title" content="#{escape(content["title"])}"><meta property="og:description" content="#{escape(content["description"])}">
-    <meta property="og:type" content="website"><meta property="og:url" content="https://nila.tax#{path}">
+    <link rel="canonical" href="#{canonical}"><meta property="og:title" content="#{escape(content["title"])}"><meta property="og:description" content="#{escape(content["description"])}">
+    <meta property="og:type" content="website"><meta property="og:url" content="#{canonical}">
     <link rel="icon" href="/favicon.ico">#{styles}</head><body>#{body}#{animation_script(page)}</body></html>
     """
 
@@ -68,7 +75,7 @@ defmodule NilaWeb.PublicPage do
     end
   end
 
-  defp animation_script("home") do
+  defp animation_script("india") do
     case Application.get_env(:nila, :vite_origin) do
       origin when is_binary(origin) ->
         ~s(<script type="module" src="#{origin}/src/public/animate.ts"></script>)
