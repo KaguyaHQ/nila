@@ -56,7 +56,7 @@ RUN mix compile
 COPY --from=frontend /app/priv/static/frontend ./priv/static/frontend
 RUN mix phx.digest
 
-# runtime.exs is read at boot, not compile time — copy after compile
+# runtime.exs is read at boot, not compile time â€” copy after compile
 COPY config/runtime.exs config/
 
 COPY rel rel
@@ -67,7 +67,7 @@ FROM ${RUNNER_IMAGE}
 
 # Points the GHCR package at this repo (the package was first pushed from the
 # now-archived nila-ops repo, which left the source link stale).
-LABEL org.opencontainers.image.source="https://github.com/KaguyaHQ/nila"
+LABEL org.opencontainers.image.source="https://github.com/benzene73/nila"
 
 # poppler-utils: `pdftocairo` renders packet pages as the evidence a reviewer
 # checks against, while `pdfinfo` and `pdftoppm` serve eval and benchmark tools.
