@@ -12,6 +12,10 @@ for why this is the first product, and [the sales code guide](lib/nila/gst/sales
 for how it is organized. Tally, WhatsApp, banking, and purchase workflows also
 exist in the repository; they do not define the current product scope.
 
+![Invoice review showing the original bill beside extracted items, taxes, and matching totals](docs/images/invoice-review.webp)
+
+*Review extracted sales invoices against the original bills, with tax calculations and totals checked side by side.*
+
 ## Stack
 
 - Phoenix 1.8 backend; React, TypeScript, shadcn and Vite frontend
