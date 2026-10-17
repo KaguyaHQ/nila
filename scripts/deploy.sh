@@ -4,7 +4,7 @@
 # Requires: gh CLI (brew install gh)
 set -euo pipefail
 
-REPO="KaguyaHQ/nila"
+REPO="benzene73/nila"
 WORKFLOW="deploy.yml"
 HEAD_SHA="$(git rev-parse HEAD)"
 

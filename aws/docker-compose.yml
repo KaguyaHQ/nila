@@ -30,7 +30,7 @@ services:
         max-file: "3"
 
   nila:
-    image: ${NILA_IMAGE:-ghcr.io/kaguyahq/nila:arm64}
+    image: ${NILA_IMAGE:-ghcr.io/benzene73/nila:arm64}
     restart: unless-stopped
     env_file: .env
     environment:
