@@ -56,7 +56,7 @@ RUN mix compile
 COPY --from=frontend /app/priv/static/frontend ./priv/static/frontend
 RUN mix phx.digest
 
-# runtime.exs is read at boot, not compile time â€” copy after compile
+# runtime.exs is read at boot, not compile time — copy after compile
 COPY config/runtime.exs config/
 
 COPY rel rel
